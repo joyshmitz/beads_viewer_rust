@@ -14,7 +14,7 @@ Legend:
 | `--robot-plan` | complete | Track grouping and summary implemented. |
 | `--robot-insights` | complete | Core graph metrics + cycle + bottleneck output. |
 | `--robot-priority` | complete | Ranked recommendation surface implemented. |
-| `--robot-diff` | partial | Snapshot diff now emits legacy-style nested metadata (`from/to` timestamps, revision, removed issues, cycle deltas, metric deltas, health summary) and legacy-shaped issue payloads (compact fields, dependency metadata, comments, zero-time defaults) with expanded fixture-backed conformance assertions. |
+| `--robot-diff` | complete | Snapshot diff emits legacy-style nested metadata (`from/to` timestamps, revision, removed issues, cycle deltas, metric deltas, health summary) and legacy-shaped issue payloads (compact fields, dependency metadata, comments, zero-time defaults) with full fixture-backed conformance assertions; Go reference does not include `output_format`/`version` for diff output. |
 | `--robot-history` | partial | Git-aware commit correlation, commit index, milestones, method stats, `--history-since`, and `--min-confidence` filtering are implemented; robot-history export shape now omits bead-only fields to align with legacy output contracts; milestones and cycle_time now use `skip_serializing_if` to omit null fields matching Go behavior; commits serialize as `null` when empty (matching Go); word-boundary-aware event type inference prevents false positives. |
 | `--robot-forecast` | partial | ETA forecast now supports `--forecast-label`, `--forecast-sprint`, and `--forecast-agents` with legacy-compatible all-vs-single filtering semantics, plus legacy-style ETA payload fields (`eta_date_low/high`, `velocity_minutes_per_day`), `output_format` and `version` envelope metadata, and order/factor/value conformance assertions against fixture data. |
 | `--robot-capacity` | partial | Implemented `--agents` + `--capacity-label`, critical path/actionable/bottleneck metrics, ETA-minute projection via legacy-inspired `EstimateETAForIssue` complexity/velocity model, `output_format` and `version` envelope metadata; added fixture-backed capacity parity checks (including label-scoped output), exact label-scope edge semantics, and forecast/capacity total-minute consistency checks. |
@@ -48,6 +48,5 @@ Legend:
 | Bench harness | complete | Criterion benchmark for triage path added. |
 
 ## Open Gaps to 100%
-1. Remaining robot-diff metadata details for exact field parity (forecast/capacity/burndown `output_format`+`version` done).
-2. Deeper TUI interaction parity (richer graph/history detail-pane features).
-3. Large-dataset stress-test fixtures and adversarial edge cases.
+1. Deeper TUI interaction parity (richer graph/history detail-pane features).
+2. Large-dataset stress-test fixtures and adversarial edge cases.

@@ -153,14 +153,99 @@ impl HistoryViewMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InsightsPanel {
+    Bottlenecks,
+    CriticalPath,
+    Influencers,
+    Betweenness,
+    Hubs,
+    Authorities,
+    Cores,
+    CutPoints,
+    Slack,
+    Cycles,
+}
+
+impl InsightsPanel {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Bottlenecks => "Bottlenecks",
+            Self::CriticalPath => "Critical Path",
+            Self::Influencers => "Influencers (PageRank)",
+            Self::Betweenness => "Betweenness",
+            Self::Hubs => "Hubs (HITS)",
+            Self::Authorities => "Authorities (HITS)",
+            Self::Cores => "K-Core Cohesion",
+            Self::CutPoints => "Cut Points",
+            Self::Slack => "Slack (Zero)",
+            Self::Cycles => "Cycles",
+        }
+    }
+
+    fn short_label(self) -> &'static str {
+        match self {
+            Self::Bottlenecks => "bottlenecks",
+            Self::CriticalPath => "crit-path",
+            Self::Influencers => "influencers",
+            Self::Betweenness => "betweenness",
+            Self::Hubs => "hubs",
+            Self::Authorities => "authorities",
+            Self::Cores => "k-core",
+            Self::CutPoints => "cut-pts",
+            Self::Slack => "slack",
+            Self::Cycles => "cycles",
+        }
+    }
+
+    fn next(self) -> Self {
+        match self {
+            Self::Bottlenecks => Self::CriticalPath,
+            Self::CriticalPath => Self::Influencers,
+            Self::Influencers => Self::Betweenness,
+            Self::Betweenness => Self::Hubs,
+            Self::Hubs => Self::Authorities,
+            Self::Authorities => Self::Cores,
+            Self::Cores => Self::CutPoints,
+            Self::CutPoints => Self::Slack,
+            Self::Slack => Self::Cycles,
+            Self::Cycles => Self::Bottlenecks,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            Self::Bottlenecks => Self::Cycles,
+            Self::CriticalPath => Self::Bottlenecks,
+            Self::Influencers => Self::CriticalPath,
+            Self::Betweenness => Self::Influencers,
+            Self::Hubs => Self::Betweenness,
+            Self::Authorities => Self::Hubs,
+            Self::Cores => Self::Authorities,
+            Self::CutPoints => Self::Cores,
+            Self::Slack => Self::CutPoints,
+            Self::Cycles => Self::Slack,
+        }
+    }
+}
+
 const HISTORY_CONFIDENCE_STEPS: [f64; 4] = [0.0, 0.5, 0.75, 0.9];
 
 #[derive(Debug, Clone)]
 struct HistoryGitCache {
     commits: Vec<GitCommitRecord>,
     histories: BTreeMap<String, HistoryBeadCompat>,
-    commit_index: BTreeMap<String, Vec<String>>,
     commit_bead_confidence: BTreeMap<String, Vec<(String, f64)>>,
+}
+
+#[derive(Debug, Clone)]
+struct HistoryTimelineEvent {
+    issue_id: String,
+    issue_title: String,
+    issue_status: String,
+    event_kind: String,
+    event_timestamp: Option<String>,
+    event_details: String,
 }
 
 #[derive(Debug)]
@@ -197,6 +282,7 @@ struct BvrApp {
     focus: FocusPane,
     focus_before_help: FocusPane,
     show_help: bool,
+    help_scroll_offset: usize,
     show_quit_confirm: bool,
     history_confidence_index: usize,
     history_view_mode: HistoryViewMode,
@@ -209,6 +295,7 @@ struct BvrApp {
     board_search_active: bool,
     board_search_query: String,
     board_search_match_cursor: usize,
+    insights_panel: InsightsPanel,
     insights_show_explanations: bool,
     insights_show_calc_proof: bool,
 }
@@ -249,10 +336,31 @@ impl Model for BvrApp {
         header.render(rows[0], frame);
 
         if self.show_help {
-            Paragraph::new(self.help_overlay_text())
+            let full_help = self.help_overlay_text();
+            let help_lines: Vec<&str> = full_help.lines().collect();
+            let visible_height = rows[1].height.saturating_sub(2) as usize; // border
+            let max_offset = help_lines.len().saturating_sub(visible_height);
+            let offset = self.help_scroll_offset.min(max_offset);
+            let visible: String = help_lines
+                .iter()
+                .skip(offset)
+                .take(visible_height)
+                .copied()
+                .collect::<Vec<&str>>()
+                .join("\n");
+            Paragraph::new(visible)
                 .block(Block::bordered().title("Help"))
                 .render(rows[1], frame);
-            Paragraph::new("Press any key to close help.").render(rows[2], frame);
+            let scroll_hint = if help_lines.len() > visible_height {
+                format!(
+                    "? or Esc close | j/k scroll | Ctrl+d/u page | line {}/{}",
+                    offset + 1,
+                    help_lines.len()
+                )
+            } else {
+                "? or Esc to close help".to_string()
+            };
+            Paragraph::new(scroll_hint).render(rows[2], frame);
             return;
         }
 
@@ -328,7 +436,8 @@ impl Model for BvrApp {
             }
             ViewMode::Insights => {
                 format!(
-                    "Insights mode: bottlenecks, critical path pressure, and cycle risk hotspots | explanations={} (e) | calc-proof={} (x)",
+                    "Insights [{}] | s/S panel | e explanations={} | x proof={}",
+                    self.insights_panel.short_label(),
                     if self.insights_show_explanations {
                         "on"
                     } else {
@@ -355,6 +464,11 @@ impl Model for BvrApp {
 }
 
 impl BvrApp {
+    fn board_shortcut_focus(&self) -> bool {
+        matches!(self.mode, ViewMode::Board)
+            && matches!(self.focus, FocusPane::List | FocusPane::Detail)
+    }
+
     fn handle_key(&mut self, code: KeyCode, modifiers: Modifiers) -> Cmd<Msg> {
         if self.show_quit_confirm {
             match code {
@@ -368,17 +482,32 @@ impl BvrApp {
         }
 
         if self.show_help {
-            self.show_help = false;
-            self.focus = self.focus_before_help;
+            match code {
+                KeyCode::Char('?') | KeyCode::Escape => {
+                    self.show_help = false;
+                    self.help_scroll_offset = 0;
+                    self.focus = self.focus_before_help;
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_add(1);
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_sub(1);
+                }
+                KeyCode::Char('d') if modifiers.contains(Modifiers::CTRL) => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_add(10);
+                }
+                KeyCode::Char('u') if modifiers.contains(Modifiers::CTRL) => {
+                    self.help_scroll_offset = self.help_scroll_offset.saturating_sub(10);
+                }
+                _ => {}
+            }
             return Cmd::None;
         }
 
         self.ensure_selected_visible();
 
-        if matches!(self.mode, ViewMode::Board)
-            && self.focus == FocusPane::List
-            && self.board_search_active
-        {
+        if self.board_shortcut_focus() && self.board_search_active {
             match code {
                 KeyCode::Escape => self.cancel_board_search(),
                 KeyCode::Enter => self.finish_board_search(),
@@ -425,12 +554,14 @@ impl BvrApp {
                 self.focus_before_help = self.focus;
             }
             KeyCode::Enter => {
-                if matches!(self.mode, ViewMode::History) {
-                    if matches!(self.history_view_mode, HistoryViewMode::Git)
-                        && let Some(bead_id) = self.selected_history_git_related_bead_id()
-                    {
-                        self.select_issue_by_id(&bead_id);
-                    }
+                if matches!(self.mode, ViewMode::History)
+                    && matches!(self.history_view_mode, HistoryViewMode::Git)
+                    && let Some(bead_id) = self
+                        .selected_history_event()
+                        .map(|event| event.issue_id)
+                        .or_else(|| self.selected_history_git_related_bead_id())
+                {
+                    self.select_issue_by_id(&bead_id);
                 }
                 self.mode = ViewMode::Main;
                 self.focus = FocusPane::Detail;
@@ -462,19 +593,13 @@ impl BvrApp {
                     FocusPane::Detail => FocusPane::List,
                 };
             }
-            KeyCode::Char('h')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('h') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(-1);
             }
-            KeyCode::Char('l')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('l') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(1);
             }
-            KeyCode::Char('/')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('/') if self.board_shortcut_focus() => {
                 self.start_board_search();
             }
             KeyCode::Char('/')
@@ -482,37 +607,25 @@ impl BvrApp {
             {
                 self.start_history_search();
             }
-            KeyCode::Char('n')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('n') if self.board_shortcut_focus() => {
                 self.move_board_search_match_relative(1);
             }
-            KeyCode::Char('N')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('N') if self.board_shortcut_focus() => {
                 self.move_board_search_match_relative(-1);
             }
-            KeyCode::Char('j') | KeyCode::Down
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('j') | KeyCode::Down if self.board_shortcut_focus() => {
                 self.move_board_row_relative(1);
             }
-            KeyCode::Char('k') | KeyCode::Up
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('k') | KeyCode::Up if self.board_shortcut_focus() => {
                 self.move_board_row_relative(-1);
             }
             KeyCode::Char('d')
-                if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Board)
-                    && self.focus == FocusPane::List =>
+                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
             {
                 self.move_board_row_relative(10);
             }
             KeyCode::Char('u')
-                if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Board)
-                    && self.focus == FocusPane::List =>
+                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
             {
                 self.move_board_row_relative(-10);
             }
@@ -534,6 +647,11 @@ impl BvrApp {
                 if matches!(self.mode, ViewMode::Graph) && self.focus == FocusPane::List =>
             {
                 self.move_selection_relative(-1);
+            }
+            KeyCode::Char('h')
+                if matches!(self.mode, ViewMode::Graph) && self.focus == FocusPane::Detail =>
+            {
+                self.focus = FocusPane::List;
             }
             KeyCode::Char('l')
                 if matches!(self.mode, ViewMode::Graph) && self.focus == FocusPane::List =>
@@ -679,14 +797,10 @@ impl BvrApp {
             KeyCode::PageDown if self.focus == FocusPane::List => {
                 self.move_selection_relative(10);
             }
-            KeyCode::Home | KeyCode::Char('0')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Home | KeyCode::Char('0') if self.board_shortcut_focus() => {
                 self.select_edge_in_current_board_lane(false);
             }
-            KeyCode::End | KeyCode::Char('G' | '$')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::End | KeyCode::Char('G' | '$') if self.board_shortcut_focus() => {
                 self.select_edge_in_current_board_lane(true);
             }
             KeyCode::Home if self.focus == FocusPane::List => {
@@ -695,34 +809,22 @@ impl BvrApp {
             KeyCode::End | KeyCode::Char('G') if self.focus == FocusPane::List => {
                 self.select_last_visible();
             }
-            KeyCode::Char('1')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('1') if self.board_shortcut_focus() => {
                 self.select_first_in_board_lane(1);
             }
-            KeyCode::Char('2')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('2') if self.board_shortcut_focus() => {
                 self.select_first_in_board_lane(2);
             }
-            KeyCode::Char('3')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('3') if self.board_shortcut_focus() => {
                 self.select_first_in_board_lane(3);
             }
-            KeyCode::Char('4')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('4') if self.board_shortcut_focus() => {
                 self.select_first_in_board_lane(4);
             }
-            KeyCode::Char('H')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('H') if self.board_shortcut_focus() => {
                 self.select_first_in_non_empty_board_lane();
             }
-            KeyCode::Char('L')
-                if matches!(self.mode, ViewMode::Board) && self.focus == FocusPane::List =>
-            {
+            KeyCode::Char('L') if self.board_shortcut_focus() => {
                 self.select_last_in_non_empty_board_lane();
             }
             KeyCode::Char('s') if matches!(self.mode, ViewMode::Board) => {
@@ -730,6 +832,12 @@ impl BvrApp {
             }
             KeyCode::Char('e') if matches!(self.mode, ViewMode::Board) => {
                 self.toggle_board_show_empty_lanes();
+            }
+            KeyCode::Char('s') if matches!(self.mode, ViewMode::Insights) => {
+                self.insights_panel = self.insights_panel.next();
+            }
+            KeyCode::Char('S') if matches!(self.mode, ViewMode::Insights) => {
+                self.insights_panel = self.insights_panel.prev();
             }
             KeyCode::Char('e') if matches!(self.mode, ViewMode::Insights) => {
                 self.toggle_insights_explanations();
@@ -756,7 +864,10 @@ impl BvrApp {
             }
             KeyCode::Char('g') if matches!(self.mode, ViewMode::History) => {
                 if matches!(self.history_view_mode, HistoryViewMode::Git)
-                    && let Some(bead_id) = self.selected_history_git_related_bead_id()
+                    && let Some(bead_id) = self
+                        .selected_history_event()
+                        .map(|event| event.issue_id)
+                        .or_else(|| self.selected_history_git_related_bead_id())
                 {
                     self.select_issue_by_id(&bead_id);
                 }
@@ -868,7 +979,10 @@ impl BvrApp {
             return;
         }
 
-        let repo_root = self.repo_root.clone().or_else(|| std::env::current_dir().ok());
+        let repo_root = self
+            .repo_root
+            .clone()
+            .or_else(|| std::env::current_dir().ok());
         let Some(repo_root) = repo_root else {
             return;
         };
@@ -887,7 +1001,7 @@ impl BvrApp {
                         status: issue.status.clone(),
                         events: Vec::new(),
                         milestones: HistoryMilestonesCompat::default(),
-                        commits: Vec::new(),
+                        commits: None,
                         cycle_time: None,
                         last_author: String::new(),
                     },
@@ -910,7 +1024,7 @@ impl BvrApp {
 
         let mut commit_bead_confidence = BTreeMap::<String, Vec<(String, f64)>>::new();
         for history in histories.values() {
-            for commit in &history.commits {
+            for commit in history.commits.as_deref().unwrap_or_default() {
                 commit_bead_confidence
                     .entry(commit.sha.clone())
                     .or_default()
@@ -924,7 +1038,6 @@ impl BvrApp {
         self.history_git_cache = Some(HistoryGitCache {
             commits,
             histories,
-            commit_index,
             commit_bead_confidence,
         });
     }
@@ -978,15 +1091,17 @@ impl BvrApp {
                     self.history_git_related_beads_for_commit(&commit.sha)
                         .iter()
                         .any(|bead_id| {
-                            cache
-                                .histories
-                                .get(bead_id)
-                                .is_some_and(|history| {
-                                    history.commits.iter().any(|entry| {
+                            cache.histories.get(bead_id).is_some_and(|history| {
+                                history
+                                    .commits
+                                    .as_deref()
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .any(|entry| {
                                         entry.sha == commit.sha
                                             && entry.confidence >= min_confidence
                                     })
-                                })
+                            })
                         })
                 })
             })
@@ -1065,6 +1180,161 @@ impl BvrApp {
         self.history_related_bead_cursor = 0;
     }
 
+    fn move_history_related_bead_relative(&mut self, delta: isize) {
+        if delta == 0 {
+            return;
+        }
+
+        if self.focus == FocusPane::List {
+            self.move_history_cursor_relative(delta);
+            return;
+        }
+
+        let Some(commit) = self.selected_history_git_commit() else {
+            self.history_related_bead_cursor = 0;
+            return;
+        };
+        let related_len = self.history_git_related_beads_for_commit(&commit.sha).len();
+        if related_len == 0 {
+            self.history_related_bead_cursor = 0;
+            return;
+        }
+
+        let max_slot = related_len.saturating_sub(1);
+        let next_slot = if delta >= 0 {
+            self.history_related_bead_cursor
+                .saturating_add(delta.unsigned_abs())
+                .min(max_slot)
+        } else {
+            self.history_related_bead_cursor
+                .saturating_sub(delta.unsigned_abs())
+        };
+        self.history_related_bead_cursor = next_slot;
+    }
+
+    fn move_history_bead_commit_relative(&mut self, delta: isize) {
+        if delta == 0 {
+            return;
+        }
+
+        if self.focus == FocusPane::List {
+            self.move_selection_relative(delta);
+            return;
+        }
+
+        let Some(issue_id) = self.selected_issue().map(|issue| issue.id.clone()) else {
+            self.history_bead_commit_cursor = 0;
+            return;
+        };
+
+        self.ensure_git_history_loaded();
+
+        let commits_len = self
+            .history_git_cache
+            .as_ref()
+            .and_then(|cache| cache.histories.get(&issue_id))
+            .map_or(0, |history| history.commits.as_ref().map_or(0, Vec::len));
+
+        if commits_len == 0 {
+            self.history_bead_commit_cursor = 0;
+            return;
+        }
+
+        let max_slot = commits_len.saturating_sub(1);
+        let next_slot = if delta >= 0 {
+            self.history_bead_commit_cursor
+                .saturating_add(delta.unsigned_abs())
+                .min(max_slot)
+        } else {
+            self.history_bead_commit_cursor
+                .saturating_sub(delta.unsigned_abs())
+        };
+        self.history_bead_commit_cursor = next_slot;
+    }
+
+    fn history_timeline_events(&self) -> Vec<HistoryTimelineEvent> {
+        let mut events = self
+            .analyzer
+            .history(None, 0)
+            .into_iter()
+            .flat_map(|history| {
+                history
+                    .events
+                    .into_iter()
+                    .map(move |event| HistoryTimelineEvent {
+                        issue_id: history.id.clone(),
+                        issue_title: history.title.clone(),
+                        issue_status: history.status.clone(),
+                        event_kind: event.kind,
+                        event_timestamp: event.timestamp,
+                        event_details: event.details,
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        events.sort_by(|left, right| {
+            cmp_opt_datetime(
+                parse_timestamp(left.event_timestamp.as_deref()),
+                parse_timestamp(right.event_timestamp.as_deref()),
+                true,
+            )
+            .then_with(|| left.issue_id.cmp(&right.issue_id))
+            .then_with(|| left.event_kind.cmp(&right.event_kind))
+        });
+
+        events
+    }
+
+    fn history_timeline_events_filtered(&self) -> Vec<HistoryTimelineEvent> {
+        let query = self.history_search_query.trim().to_ascii_lowercase();
+        if query.is_empty() {
+            return self.history_timeline_events();
+        }
+
+        self.history_timeline_events()
+            .into_iter()
+            .filter(|event| {
+                event.issue_id.to_ascii_lowercase().contains(&query)
+                    || event.issue_title.to_ascii_lowercase().contains(&query)
+                    || event.issue_status.to_ascii_lowercase().contains(&query)
+                    || event.event_kind.to_ascii_lowercase().contains(&query)
+                    || event.event_details.to_ascii_lowercase().contains(&query)
+                    || event
+                        .event_timestamp
+                        .as_deref()
+                        .map(str::to_ascii_lowercase)
+                        .is_some_and(|timestamp| timestamp.contains(&query))
+            })
+            .collect()
+    }
+
+    fn selected_history_event(&self) -> Option<HistoryTimelineEvent> {
+        let events = self.history_timeline_events_filtered();
+        if events.is_empty() {
+            return None;
+        }
+
+        let slot = self
+            .history_event_cursor
+            .min(events.len().saturating_sub(1));
+        events.get(slot).cloned()
+    }
+
+    fn selected_history_bead_commit(&self) -> Option<HistoryCommitCompat> {
+        let issue = self.selected_issue()?;
+        let cache = self.history_git_cache.as_ref()?;
+        let history = cache.histories.get(&issue.id)?;
+        let commits = history.commits.as_ref()?;
+        if commits.is_empty() {
+            return None;
+        }
+
+        let slot = self
+            .history_bead_commit_cursor
+            .min(commits.len().saturating_sub(1));
+        commits.get(slot).cloned()
+    }
+
     fn issue_matches_filter(&self, issue: &Issue) -> bool {
         match self.list_filter {
             ListFilter::All => true,
@@ -1085,13 +1355,22 @@ impl BvrApp {
             .filter_map(|(index, issue)| self.issue_matches_filter(issue).then_some(index))
             .collect::<Vec<_>>();
 
-        if !matches!(self.list_sort, ListSort::Default) {
+        {
             visible.sort_by(|left_index, right_index| {
                 let left_issue = &self.analyzer.issues[*left_index];
                 let right_issue = &self.analyzer.issues[*right_index];
 
                 match self.list_sort {
-                    ListSort::Default => left_issue.id.cmp(&right_issue.id),
+                    ListSort::Default => {
+                        let l_open =
+                            left_issue.status != "closed" && left_issue.status != "rejected";
+                        let r_open =
+                            right_issue.status != "closed" && right_issue.status != "rejected";
+                        r_open
+                            .cmp(&l_open)
+                            .then_with(|| left_issue.priority.cmp(&right_issue.priority))
+                            .then_with(|| left_issue.id.cmp(&right_issue.id))
+                    }
                     ListSort::CreatedAsc => cmp_opt_datetime(
                         parse_timestamp(left_issue.created_at.as_deref()),
                         parse_timestamp(right_issue.created_at.as_deref()),
@@ -1342,7 +1621,6 @@ impl BvrApp {
             && let Some(index) = indices.first().copied()
         {
             self.selected = index;
-            self.focus = FocusPane::List;
         }
     }
 
@@ -1366,7 +1644,6 @@ impl BvrApp {
             && let Some(index) = indices.first().copied()
         {
             self.selected = index;
-            self.focus = FocusPane::List;
         }
     }
 
@@ -1383,12 +1660,14 @@ impl BvrApp {
             && let Some(index) = indices.first().copied()
         {
             self.selected = index;
-            self.focus = FocusPane::List;
         }
     }
 
     fn move_board_lane_relative(&mut self, delta: isize) {
-        if !matches!(self.mode, ViewMode::Board) || self.focus != FocusPane::List || delta == 0 {
+        if !matches!(self.mode, ViewMode::Board)
+            || !matches!(self.focus, FocusPane::List | FocusPane::Detail)
+            || delta == 0
+        {
             return;
         }
 
@@ -1416,7 +1695,6 @@ impl BvrApp {
             {
                 let target_row = current_row.min(indices.len().saturating_sub(1));
                 self.selected = indices[target_row];
-                self.focus = FocusPane::List;
                 return;
             }
             target_lane_slot += delta.signum();
@@ -1424,7 +1702,10 @@ impl BvrApp {
     }
 
     fn move_board_row_relative(&mut self, delta: isize) {
-        if !matches!(self.mode, ViewMode::Board) || self.focus != FocusPane::List || delta == 0 {
+        if !matches!(self.mode, ViewMode::Board)
+            || !matches!(self.focus, FocusPane::List | FocusPane::Detail)
+            || delta == 0
+        {
             return;
         }
 
@@ -1453,11 +1734,12 @@ impl BvrApp {
         };
 
         self.selected = indices[next_row];
-        self.focus = FocusPane::List;
     }
 
     fn start_board_search(&mut self) {
-        if !matches!(self.mode, ViewMode::Board) || self.focus != FocusPane::List {
+        if !matches!(self.mode, ViewMode::Board)
+            || !matches!(self.focus, FocusPane::List | FocusPane::Detail)
+        {
             return;
         }
 
@@ -1509,7 +1791,6 @@ impl BvrApp {
             .board_search_match_cursor
             .min(matches.len().saturating_sub(1));
         self.selected = matches[self.board_search_match_cursor];
-        self.focus = FocusPane::List;
     }
 
     fn move_board_search_match_relative(&mut self, delta: isize) {
@@ -1529,7 +1810,6 @@ impl BvrApp {
 
         self.board_search_match_cursor = next;
         self.selected = matches[next];
-        self.focus = FocusPane::List;
     }
 
     fn select_edge_in_current_board_lane(&mut self, select_last: bool) {
@@ -1554,7 +1834,6 @@ impl BvrApp {
 
         if let Some(index) = candidate {
             self.selected = index;
-            self.focus = FocusPane::List;
         }
     }
 
@@ -1601,7 +1880,8 @@ impl BvrApp {
             "  b/i/g/h          Toggle board/insights/graph/history".to_string(),
             "  Enter            Return to main detail pane".to_string(),
             "  o/c/r/a          Filter open/closed/ready/all".to_string(),
-            "  s                Main: cycle sort | Board: cycle grouping".to_string(),
+            "  s                Main: cycle sort | Board: cycle grouping | Insights: cycle panel"
+                .to_string(),
             "  ?                Toggle help overlay".to_string(),
             "  Esc              Back from mode (or clear filter, then quit confirm in main)"
                 .to_string(),
@@ -1641,7 +1921,17 @@ impl BvrApp {
         if matches!(self.mode, ViewMode::Insights) {
             lines.push(String::new());
             lines.push(format!(
-                "Insights toggles: explanations={} (e) | calc-proof={} (x)",
+                "Insights panel: {} (s/S cycles forward/back)",
+                self.insights_panel.label()
+            ));
+            lines.push(
+                "Panels: bottlenecks -> crit-path -> influencers -> betweenness -> hubs"
+                    .to_string(),
+            );
+            lines
+                .push("        -> authorities -> k-core -> cut-pts -> slack -> cycles".to_string());
+            lines.push(format!(
+                "Toggles: explanations={} (e) | calc-proof={} (x)",
                 if self.insights_show_explanations {
                     "on"
                 } else {
@@ -1694,9 +1984,9 @@ impl BvrApp {
 
     fn board_list_text(&self) -> String {
         let lanes = self.board_lane_indices();
-        let mut lane_rows = Vec::<String>::new();
-        lane_rows.push(format!(
-            "Grouping: {} (s cycles) | Empty lanes: {} (e toggles)",
+        let mut out = Vec::<String>::new();
+        out.push(format!(
+            "Grouping: {} (s cycles) | Empty: {} (e)",
             self.board_grouping.label(),
             if self.board_show_empty_lanes {
                 "shown"
@@ -1705,158 +1995,326 @@ impl BvrApp {
             }
         ));
         if self.board_search_active {
-            lane_rows.push(format!("Search (active): /{}", self.board_search_query));
+            out.push(format!("Search (active): /{}", self.board_search_query));
         } else if !self.board_search_query.is_empty() {
-            lane_rows.push(format!("Search: /{} (n/N cycles)", self.board_search_query));
+            out.push(format!("Search: /{} (n/N cycles)", self.board_search_query));
         }
         if !self.board_search_query.is_empty() {
             let matches = self.board_search_matches();
             if matches.is_empty() {
-                lane_rows.push("Matches: none".to_string());
+                out.push("Matches: none".to_string());
             } else {
                 let position = self
                     .board_search_match_cursor
                     .min(matches.len().saturating_sub(1))
                     + 1;
-                lane_rows.push(format!("Matches: {position}/{}", matches.len()));
+                out.push(format!("Matches: {position}/{}", matches.len()));
             }
         }
-        lane_rows.push(String::new());
-        lane_rows.push("Lane          Count  Sample".to_string());
-        lane_rows.push("----------------------------".to_string());
 
-        for (lane, lane_indices) in lanes {
-            let lane_issues = lane_indices
-                .into_iter()
-                .filter_map(|index| self.analyzer.issues.get(index))
-                .map(|issue| issue.id.clone())
-                .collect::<Vec<_>>();
-            let sample = lane_issues
-                .iter()
-                .take(4)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ");
-            lane_rows.push(format!("{lane:<12} {:>5}  {sample}", lane_issues.len()));
+        // Find which lane the selected issue belongs to
+        let sel_id = self.selected_issue().map(|i| i.id.clone());
+        let sel_index = self.selected;
+
+        out.push(String::new());
+        let total: usize = lanes.iter().map(|(_, v)| v.len()).sum();
+        out.push(format!("Lanes ({}) | {} issues total", lanes.len(), total));
+        out.push(String::new());
+
+        for (lane, lane_indices) in &lanes {
+            let count = lane_indices.len();
+            // Mark current lane
+            let marker = if sel_id.as_ref().is_some_and(|sid| {
+                lane_indices
+                    .iter()
+                    .any(|&i| self.analyzer.issues[i].id == *sid)
+            }) {
+                ">"
+            } else {
+                " "
+            };
+
+            // Lane header with bar
+            let bar_len = count.min(20);
+            let bar: String = std::iter::repeat_n('\u{2588}', bar_len).collect();
+            out.push(format!("{marker} {lane:<12} [{count:>3}] {bar}"));
+
+            // Show card previews for each issue in lane
+            for &idx in lane_indices.iter().take(6) {
+                let issue = &self.analyzer.issues[idx];
+                let sel_mark = if idx == sel_index { "\u{25b6}" } else { " " };
+                let icon = status_icon(&issue.status);
+                out.push(format!(
+                    "    {sel_mark} {icon} {:<10} p{} {}",
+                    issue.id,
+                    issue.priority,
+                    truncate_str(&issue.title, 22)
+                ));
+            }
+            if lane_indices.len() > 6 {
+                out.push(format!("    ... +{} more", lane_indices.len() - 6));
+            }
+            if lane_indices.is_empty() {
+                out.push("    (empty)".to_string());
+            }
+            out.push(String::new());
         }
 
-        lane_rows.push(String::new());
-        lane_rows.push("Selected Queue Order:".to_string());
-        lane_rows.extend(
-            self.main_list_text()
-                .lines()
-                .map(std::string::ToString::to_string),
-        );
-        lane_rows.join("\n")
+        out.join("\n")
     }
 
     fn insights_list_text(&self) -> String {
         let insights = self.analyzer.insights();
-        if insights.bottlenecks.is_empty() {
-            return "No open issues to rank for bottlenecks.".to_string();
-        }
 
         let mut lines = vec![format!(
-            "Top Bottlenecks (score, blocks) | explanations={} (e) | calc-proof={} (x)",
-            if self.insights_show_explanations {
-                "on"
-            } else {
-                "off"
-            },
-            if self.insights_show_calc_proof {
-                "on"
-            } else {
-                "off"
-            }
+            "[{}] s/S cycles panel | e explanations | x calc-proof",
+            self.insights_panel.label()
         )];
+        lines.push(String::new());
+
+        match self.insights_panel {
+            InsightsPanel::Bottlenecks => {
+                if insights.bottlenecks.is_empty() {
+                    lines.push("  (no open issues to rank)".to_string());
+                } else {
+                    lines.extend(insights.bottlenecks.iter().take(15).enumerate().map(
+                        |(index, item)| {
+                            format!(
+                                " {}. {:<12} score={:.3} blocks={}",
+                                index + 1,
+                                item.id,
+                                item.score,
+                                item.blocks_count
+                            )
+                        },
+                    ));
+                }
+            }
+            InsightsPanel::CriticalPath => {
+                if insights.critical_path.is_empty() {
+                    lines.push("  (no critical path detected)".to_string());
+                } else {
+                    lines.extend(
+                        insights
+                            .critical_path
+                            .iter()
+                            .enumerate()
+                            .map(|(index, id)| {
+                                let depth = self
+                                    .analyzer
+                                    .metrics
+                                    .critical_depth
+                                    .get(id)
+                                    .copied()
+                                    .unwrap_or_default();
+                                format!(" {}. {:<12} depth={}", index + 1, id, depth)
+                            }),
+                    );
+                }
+            }
+            InsightsPanel::Influencers => {
+                Self::append_metric_items(&mut lines, &insights.influencers, "influencer");
+            }
+            InsightsPanel::Betweenness => {
+                Self::append_metric_items(&mut lines, &insights.betweenness, "betweenness");
+            }
+            InsightsPanel::Hubs => {
+                Self::append_metric_items(&mut lines, &insights.hubs, "hub-score");
+            }
+            InsightsPanel::Authorities => {
+                Self::append_metric_items(&mut lines, &insights.authorities, "authority");
+            }
+            InsightsPanel::Cores => {
+                if insights.cores.is_empty() {
+                    lines.push("  (no k-core data)".to_string());
+                } else {
+                    lines.extend(insights.cores.iter().take(15).enumerate().map(
+                        |(index, item)| format!(" {}. {:<12} k={}", index + 1, item.id, item.value),
+                    ));
+                }
+            }
+            InsightsPanel::CutPoints => {
+                if insights.articulation_points.is_empty() {
+                    lines.push("  (no cut points -- graph is well-connected)".to_string());
+                } else {
+                    lines.extend(
+                        insights
+                            .articulation_points
+                            .iter()
+                            .enumerate()
+                            .map(|(index, id)| format!(" {}. {}", index + 1, id)),
+                    );
+                }
+            }
+            InsightsPanel::Slack => {
+                if insights.slack.is_empty() {
+                    lines
+                        .push("  (no zero-slack issues -- all have scheduling buffer)".to_string());
+                } else {
+                    lines.extend(
+                        insights
+                            .slack
+                            .iter()
+                            .enumerate()
+                            .map(|(index, id)| format!(" {}. {}", index + 1, id)),
+                    );
+                }
+            }
+            InsightsPanel::Cycles => {
+                if insights.cycles.is_empty() {
+                    lines.push("  No cycles detected".to_string());
+                } else {
+                    lines.extend(
+                        insights.cycles.iter().enumerate().map(|(index, cycle)| {
+                            format!(" {}. {}", index + 1, cycle.join(" -> "))
+                        }),
+                    );
+                }
+            }
+        }
+
+        lines.join("\n")
+    }
+
+    fn append_metric_items(
+        lines: &mut Vec<String>,
+        items: &[crate::analysis::MetricItem],
+        label: &str,
+    ) {
+        if items.is_empty() {
+            lines.push(format!("  (no {label} data)"));
+        } else {
+            lines.extend(items.iter().take(15).enumerate().map(|(index, item)| {
+                let scaled = (item.value * 20.0).clamp(0.0, 20.0);
+                let bar_len = (1_u32..=20_u32)
+                    .take_while(|threshold| scaled >= f64::from(*threshold))
+                    .count();
+                let bar = format!(
+                    "{}{}",
+                    "#".repeat(bar_len),
+                    ".".repeat(20_usize.saturating_sub(bar_len))
+                );
+                format!(" {}. {:<12} [{bar}] {:.4}", index + 1, item.id, item.value)
+            }));
+        }
+    }
+
+    fn graph_node_score(&self, id: &str) -> f64 {
+        let depth = self
+            .analyzer
+            .metrics
+            .critical_depth
+            .get(id)
+            .copied()
+            .unwrap_or_default() as f64;
+        let pagerank = self
+            .analyzer
+            .metrics
+            .pagerank
+            .get(id)
+            .copied()
+            .unwrap_or_default();
+        depth + pagerank
+    }
+
+    fn graph_list_text(&self) -> String {
+        let mut visible = self.visible_issue_indices();
+        if visible.is_empty() {
+            return format!("(no issues match filter: {})", self.list_filter.label());
+        }
+
+        // Sort by critical path score (descending), then by ID for stability.
+        visible.sort_by(|&left_idx, &right_idx| {
+            let left = &self.analyzer.issues[left_idx];
+            let right = &self.analyzer.issues[right_idx];
+            let left_score = self.graph_node_score(&left.id);
+            let right_score = self.graph_node_score(&right.id);
+            right_score
+                .total_cmp(&left_score)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        let total = visible.len();
+        let mut lines = vec![format!(
+            "Nodes ({total}) by critical-path score | h/l nav | Tab focus"
+        )];
+        lines.push(String::new());
+
         lines.extend(
-            insights
-                .bottlenecks
-                .iter()
-                .take(15)
-                .enumerate()
-                .map(|(index, item)| {
+            visible
+                .into_iter()
+                .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
+                .map(|(index, issue)| {
+                    let marker = if index == self.selected { '>' } else { ' ' };
+                    let si = status_icon(&issue.status);
+                    let blocks = self
+                        .analyzer
+                        .metrics
+                        .blocks_count
+                        .get(&issue.id)
+                        .copied()
+                        .unwrap_or_default();
+                    let blocked_by = self
+                        .analyzer
+                        .metrics
+                        .blocked_by_count
+                        .get(&issue.id)
+                        .copied()
+                        .unwrap_or_default();
+                    let pagerank = self
+                        .analyzer
+                        .metrics
+                        .pagerank
+                        .get(&issue.id)
+                        .copied()
+                        .unwrap_or_default();
                     format!(
-                        "{}. {:<12} score={:.3} blocks={}",
-                        index + 1,
-                        item.id,
-                        item.score,
-                        item.blocks_count
+                        "{marker} {si} {:<12} in:{:>2} out:{:>2} pr:{:.3}",
+                        issue.id, blocked_by, blocks, pagerank
                     )
                 }),
         );
         lines.join("\n")
     }
 
-    fn graph_list_text(&self) -> String {
-        let visible = self.visible_issue_indices();
-        if visible.is_empty() {
-            return format!("(no issues match filter: {})", self.list_filter.label());
-        }
-
-        visible
-            .into_iter()
-            .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
-            .map(|(index, issue)| {
-                let marker = if index == self.selected { '>' } else { ' ' };
-                let blocks = self
-                    .analyzer
-                    .metrics
-                    .blocks_count
-                    .get(&issue.id)
-                    .copied()
-                    .unwrap_or_default();
-                let blocked_by = self
-                    .analyzer
-                    .metrics
-                    .blocked_by_count
-                    .get(&issue.id)
-                    .copied()
-                    .unwrap_or_default();
-                let pagerank = self
-                    .analyzer
-                    .metrics
-                    .pagerank
-                    .get(&issue.id)
-                    .copied()
-                    .unwrap_or_default();
-                format!(
-                    "{marker} {:<12} in:{:>2} out:{:>2} pr:{:.3}",
-                    issue.id, blocked_by, blocks, pagerank
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     fn history_list_text(&self) -> String {
         if matches!(self.history_view_mode, HistoryViewMode::Git) {
             let query = self.history_search_query.trim();
-            let events = self.history_timeline_events_filtered();
-            if events.is_empty() {
+            let visible = self.history_git_visible_commit_indices();
+            let cache = self.history_git_cache.as_ref();
+
+            if visible.is_empty() {
                 if query.is_empty() {
-                    return "No timeline events available.".to_string();
+                    return "No git commits correlated with beads.\n\
+                            (ensure repo has commits referencing bead IDs)"
+                        .to_string();
                 }
-                return format!("(no timeline events match history search: /{query})");
+                return format!("(no commits match search: /{query})");
             }
 
             let cursor = self
                 .history_event_cursor
-                .min(events.len().saturating_sub(1));
+                .min(visible.len().saturating_sub(1));
 
+            let total_commits = cache.map_or(0, |c| c.commits.len());
             let mut lines = Vec::<String>::new();
             if query.is_empty() {
                 lines.push(format!(
-                    "Event timeline ({} events) | v toggles to bead list | / search",
-                    events.len()
+                    "Git commits ({}/{} correlated) | v bead list | / search | c confidence",
+                    visible.len(),
+                    total_commits
                 ));
             } else {
-                let all_len = self.history_timeline_events().len();
                 lines.push(format!(
-                    "Event timeline (matches: {}/{all_len}) | v toggles to bead list | / search",
-                    events.len()
+                    "Git commits (matches: {}/{}) | v bead list | / search",
+                    visible.len(),
+                    total_commits
                 ));
             }
+            lines.push(format!(
+                "Min confidence: >= {:.0}%",
+                self.history_min_confidence() * 100.0
+            ));
 
             if self.history_search_active {
                 lines.push(format!("Search (active): /{}", self.history_search_query));
@@ -1868,14 +2326,25 @@ impl BvrApp {
             }
 
             lines.push(String::new());
-            lines.extend(events.iter().enumerate().map(|(index, event)| {
-                let marker = if index == cursor { '>' } else { ' ' };
-                let ts = event.event_timestamp.as_deref().unwrap_or("n/a");
-                format!(
-                    "{marker} {:<19} {:<10} {:<12} {}",
-                    ts, event.event_kind, event.issue_id, event.event_details
-                )
-            }));
+
+            if let Some(cache) = cache {
+                for (display_idx, &commit_idx) in visible.iter().enumerate() {
+                    let marker = if display_idx == cursor { '>' } else { ' ' };
+                    if let Some(commit) = cache.commits.get(commit_idx) {
+                        let related = self.history_git_related_beads_for_commit(&commit.sha);
+                        let beads_str = if related.len() <= 2 {
+                            related.join(",")
+                        } else {
+                            format!("{}+{}", related[..2].join(","), related.len() - 2)
+                        };
+                        let msg = truncate_str(&commit.message, 30);
+                        lines.push(format!(
+                            "{marker} {} {:<8} {:<16} {}",
+                            commit.short_sha, beads_str, msg, commit.timestamp
+                        ));
+                    }
+                }
+            }
             return lines.join("\n");
         }
 
@@ -2008,37 +2477,101 @@ impl BvrApp {
         let Some(issue) = self.selected_issue() else {
             return self.no_filtered_issues_text("board mode");
         };
-        let lane_summary = self
-            .board_lane_indices()
-            .into_iter()
-            .map(|(lane, indices)| format!("{lane}={}", indices.len()))
-            .collect::<Vec<_>>()
-            .join(" ");
 
         let blockers = self.analyzer.graph.blockers(&issue.id);
         let dependents = self.analyzer.graph.dependents(&issue.id);
         let open_blockers = self.analyzer.graph.open_blockers(&issue.id);
+        let icon = status_icon(&issue.status);
+        let ti = type_icon(&issue.issue_type);
 
-        [
-            format!(
-                "Lane Summary [{}]: {lane_summary}",
-                self.board_grouping.label()
-            ),
-            String::new(),
-            format!("Selected: {} ({})", issue.id, issue.title),
-            format!("Current lane: {}", issue.status),
-            format!(
-                "Priority/Assignee: p{} / {}",
-                issue.priority, issue.assignee
-            ),
-            format!("Depends on: {}", join_or_none(&blockers)),
-            format!("Open blockers: {}", join_or_none(&open_blockers)),
-            format!("Unblocks: {}", join_or_none(&dependents)),
-            String::new(),
-            "Next Action: move selected issue to next lane once open blockers are clear."
-                .to_string(),
-        ]
-        .join("\n")
+        // Determine current lane label from grouping
+        let lane_label = match self.board_grouping {
+            BoardGrouping::Status => issue.status.clone(),
+            BoardGrouping::Priority => format!("p{}", issue.priority),
+            BoardGrouping::Type => {
+                if issue.issue_type.trim().is_empty() {
+                    "unknown".to_string()
+                } else {
+                    issue.issue_type.to_lowercase()
+                }
+            }
+        };
+
+        let title_trunc = truncate_str(&issue.title, 34);
+        let id_line = format!(" {} {} {} p{}", icon, ti, issue.id, issue.priority);
+        let box_width = 40;
+        let hrule: String = std::iter::repeat_n('\u{2500}', box_width).collect();
+
+        let mut out = Vec::<String>::new();
+        out.push(format!("\u{250c}{hrule}\u{2510}"));
+        out.push(format!(
+            "\u{2502} {:<w$}\u{2502}",
+            id_line,
+            w = box_width - 1
+        ));
+        out.push(format!(
+            "\u{2502} {:<w$}\u{2502}",
+            title_trunc,
+            w = box_width - 1
+        ));
+        out.push(format!("\u{251c}{hrule}\u{2524}"));
+        out.push(format!(
+            "\u{2502} Lane: {:<w$}\u{2502}",
+            lane_label,
+            w = box_width - 7
+        ));
+        out.push(format!(
+            "\u{2502} Assignee: {:<w$}\u{2502}",
+            issue.assignee,
+            w = box_width - 11
+        ));
+        if !issue.description.is_empty() {
+            let desc_trunc = truncate_str(&issue.description, box_width - 3);
+            out.push(format!(
+                "\u{2502} {:<w$}\u{2502}",
+                desc_trunc,
+                w = box_width - 1
+            ));
+        }
+        out.push(format!("\u{2514}{hrule}\u{2518}"));
+
+        out.push(String::new());
+        // Dependency context
+        if !blockers.is_empty() {
+            out.push(format!("Depends on ({})", blockers.len()));
+            for bid in &blockers {
+                let bstatus = self
+                    .analyzer
+                    .issues
+                    .iter()
+                    .find(|i| i.id == *bid)
+                    .map_or("?", |i| status_icon(&i.status));
+                let is_open = open_blockers.contains(bid);
+                let marker = if is_open { "OPEN" } else { "ok" };
+                out.push(format!("  {bstatus} {bid} [{marker}]"));
+            }
+        }
+        if !dependents.is_empty() {
+            out.push(format!("Unblocks ({})", dependents.len()));
+            for did in &dependents {
+                let dstatus = self
+                    .analyzer
+                    .issues
+                    .iter()
+                    .find(|i| i.id == *did)
+                    .map_or("?", |i| status_icon(&i.status));
+                out.push(format!("  {dstatus} {did}"));
+            }
+        }
+
+        out.push(String::new());
+        if open_blockers.is_empty() {
+            out.push("Ready to advance to next lane.".to_string());
+        } else {
+            out.push(format!("Blocked by {} open issue(s).", open_blockers.len()));
+        }
+
+        out.join("\n")
     }
 
     fn insights_detail_text(&self) -> String {
@@ -2064,6 +2597,41 @@ impl BvrApp {
             .get(&issue.id)
             .copied()
             .unwrap_or_default();
+        let eigenvector = self
+            .analyzer
+            .metrics
+            .eigenvector
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let hubs = self
+            .analyzer
+            .metrics
+            .hubs
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let authorities = self
+            .analyzer
+            .metrics
+            .authorities
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let k_core = self
+            .analyzer
+            .metrics
+            .k_core
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let slack = self
+            .analyzer
+            .metrics
+            .slack
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
         let depth = self
             .analyzer
             .metrics
@@ -2071,20 +2639,38 @@ impl BvrApp {
             .get(&issue.id)
             .copied()
             .unwrap_or_default();
+        let articulation = self
+            .analyzer
+            .metrics
+            .articulation_points
+            .contains(&issue.id);
 
         let mut lines = vec![
             format!(
-                "Insights Summary: bottlenecks={} critical_path={} cycles={} articulation={}",
+                "Insights Summary: bottlenecks={} crit-path={} cycles={} cut-pts={} k-core-max={}",
                 insights.bottlenecks.len(),
                 insights.critical_path.len(),
                 insights.cycles.len(),
-                insights.articulation_points.len()
+                insights.articulation_points.len(),
+                insights.cores.first().map_or(0, |c| c.value)
             ),
             String::new(),
             format!("Focus: {} ({})", issue.id, issue.title),
-            format!("PageRank: {:.4}", pagerank),
-            format!("Betweenness: {:.4}", betweenness),
-            format!("Critical depth: {}", depth),
+            format!("Status: {} | Priority: p{}", issue.status, issue.priority),
+            String::new(),
+            "All Metrics:".to_string(),
+            format!("  PageRank:     {:.4}", pagerank),
+            format!("  Betweenness:  {:.4}", betweenness),
+            format!("  Eigenvector:  {:.4}", eigenvector),
+            format!("  Hub (HITS):   {:.4}", hubs),
+            format!("  Auth (HITS):  {:.4}", authorities),
+            format!("  K-core:       {}", k_core),
+            format!("  Crit depth:   {}", depth),
+            format!("  Slack:        {:.4}", slack),
+            format!(
+                "  Cut point:    {}",
+                if articulation { "YES" } else { "no" }
+            ),
         ];
 
         lines.push(String::new());
@@ -2153,7 +2739,6 @@ impl BvrApp {
             return self.no_filtered_issues_text("graph mode");
         };
         let blockers = self.analyzer.graph.blockers(&issue.id);
-        let open_blockers = self.analyzer.graph.open_blockers(&issue.id);
         let dependents = self.analyzer.graph.dependents(&issue.id);
         let pagerank = self
             .analyzer
@@ -2225,42 +2810,92 @@ impl BvrApp {
             .cloned()
             .collect::<Vec<_>>();
 
-        let mut lines = vec![
-            format!(
-                "Graph Summary: nodes={} edges={} cycles={} actionable={}",
-                self.analyzer.graph.node_count(),
-                self.analyzer.graph.edge_count(),
-                self.analyzer.metrics.cycles.len(),
-                self.analyzer.graph.actionable_ids().len()
-            ),
-            String::new(),
-            format!("Focus: {} ({})", issue.id, issue.title),
-            format!("Status/Priority: {} / p{}", issue.status, issue.priority),
-            format!("Depends on: {}", join_or_none(&blockers)),
-            format!("Open blockers: {}", join_or_none(&open_blockers)),
-            format!("Direct dependents: {}", join_or_none(&dependents)),
-            String::new(),
-            format!("PageRank: {:.4}", pagerank),
-            format!("Betweenness: {:.4}", betweenness),
-            format!("Eigenvector: {:.4}", eigenvector),
-            format!("Hubs/Authorities: {:.4} / {:.4}", hubs, authorities),
-            format!("Critical depth: {}", depth),
-            format!("K-core: {}", k_core),
-            format!("Slack: {:.4}", slack),
-            format!(
-                "Articulation point: {}",
-                if articulation { "yes" } else { "no" }
-            ),
-        ];
+        let si = status_icon(&issue.status);
+        let ti = type_icon(&issue.issue_type);
+
+        let mut lines = vec![format!(
+            "Graph: nodes={} edges={} cycles={} actionable={}",
+            self.analyzer.graph.node_count(),
+            self.analyzer.graph.edge_count(),
+            self.analyzer.metrics.cycles.len(),
+            self.analyzer.graph.actionable_ids().len()
+        )];
+
+        // ASCII ego-node visualization
+        lines.push(String::new());
+        if !blockers.is_empty() {
+            lines.push("  BLOCKED BY:".to_string());
+            for bid in blockers.iter().take(5) {
+                let bsi = self
+                    .analyzer
+                    .issues
+                    .iter()
+                    .find(|i| i.id == *bid)
+                    .map_or("?", |i| status_icon(&i.status));
+                lines.push(format!("    [{bsi}] {bid}"));
+            }
+            if blockers.len() > 5 {
+                lines.push(format!("    +{} more", blockers.len() - 5));
+            }
+            lines.push("        |".to_string());
+            lines.push("        v".to_string());
+        }
+
+        lines.push(format!("  +---[{si} {ti} p{}]---+", issue.priority));
+        lines.push(format!("  | {:<17} |", &issue.id));
+        lines.push(format!("  | {:<17} |", truncate_str(&issue.title, 17)));
+        lines.push(format!(
+            "  | up:{} down:{:<8} |",
+            blockers.len(),
+            dependents.len()
+        ));
+        lines.push("  +-------------------+".to_string());
+
+        if !dependents.is_empty() {
+            lines.push("        |".to_string());
+            lines.push("        v".to_string());
+            lines.push("  BLOCKS (waiting):".to_string());
+            for did in dependents.iter().take(5) {
+                let dsi = self
+                    .analyzer
+                    .issues
+                    .iter()
+                    .find(|i| i.id == *did)
+                    .map_or("?", |i| status_icon(&i.status));
+                lines.push(format!("    [{dsi}] {did}"));
+            }
+            if dependents.len() > 5 {
+                lines.push(format!("    +{} more", dependents.len() - 5));
+            }
+        }
+
+        // Metrics with rank badges
+        lines.push(String::new());
+        lines.push("Metrics:".to_string());
+        let pr_rank = metric_rank(&self.analyzer.metrics.pagerank, &issue.id);
+        let bw_rank = metric_rank(&self.analyzer.metrics.betweenness, &issue.id);
+        let ev_rank = metric_rank(&self.analyzer.metrics.eigenvector, &issue.id);
+        let total = self.analyzer.issues.len();
+        lines.push(format!(
+            "  PR: {pagerank:.4} [{pr_rank}/{total}]  BW: {betweenness:.4} [{bw_rank}/{total}]"
+        ));
+        lines.push(format!(
+            "  EV: {eigenvector:.4} [{ev_rank}/{total}]  Hub/Auth: {hubs:.4}/{authorities:.4}"
+        ));
+        let cut = if articulation { "YES" } else { "no" };
+        lines.push(format!(
+            "  Depth: {depth}  K-core: {k_core}  Slack: {slack:.4}  Cut: {cut}"
+        ));
 
         if cycle_hits.is_empty() {
-            lines.push("Cycle membership: none".to_string());
+            lines.push("  Cycles: none".to_string());
         } else {
-            lines.push("Cycle membership:".to_string());
+            lines.push("  Cycles:".to_string());
             lines.extend(
                 cycle_hits
                     .iter()
-                    .map(|cycle| format!("  - {}", cycle.join(" -> "))),
+                    .take(4)
+                    .map(|cycle| format!("    {}", cycle.join(" -> "))),
             );
         }
 
@@ -2281,54 +2916,77 @@ impl BvrApp {
         }
 
         if matches!(self.history_view_mode, HistoryViewMode::Git) {
-            let query = self.history_search_query.trim();
-            let events = self.history_timeline_events_filtered();
-            if events.is_empty() {
-                if query.is_empty() {
-                    return "No timeline events available.".to_string();
-                }
-                return format!("No timeline events match history search: /{query}");
-            }
+            let visible = self.history_git_visible_commit_indices();
+            let Some(commit) = self.selected_history_git_commit() else {
+                return "No correlated git commits available.".to_string();
+            };
 
             let cursor = self
                 .history_event_cursor
-                .min(events.len().saturating_sub(1));
-            let event = &events[cursor];
+                .min(visible.len().saturating_sub(1));
 
-            let summary = if query.is_empty() {
-                format!(
-                    "History Summary: mode=git events={} selected_event={}/{}",
-                    events.len(),
-                    cursor + 1,
-                    events.len()
-                )
-            } else {
-                let all_len = self.history_timeline_events().len();
-                format!(
-                    "History Summary: mode=git search=/{query} matches={}/{all_len} selected_event={}/{}",
-                    events.len(),
-                    cursor + 1,
-                    events.len()
-                )
-            };
+            let related = self.history_git_related_beads_for_commit(&commit.sha);
 
-            return [
-                summary,
-                String::new(),
+            let mut lines = vec![
                 format!(
-                    "Event: {} ({})",
-                    event.event_kind,
-                    event.event_timestamp.as_deref().unwrap_or("n/a")
+                    "Commit {}/{} | confidence >= {:.0}%",
+                    cursor + 1,
+                    visible.len(),
+                    self.history_min_confidence() * 100.0
                 ),
-                format!("Issue: {} ({})", event.issue_id, event.issue_title),
-                format!("Issue status: {}", event.issue_status),
-                format!("Details: {}", event.event_details),
                 String::new(),
-                "Enter: jump to issue detail in main mode".to_string(),
-                "v: switch back to bead timeline".to_string(),
-                "c: confidence filter applies only in bead mode".to_string(),
-            ]
-            .join("\n");
+                format!("SHA: {}", commit.sha),
+                format!("Date: {}", commit.timestamp),
+                format!("Author: {} <{}>", commit.author, commit.author_email),
+                String::new(),
+                format!("Message: {}", commit.message),
+            ];
+
+            if !commit.files.is_empty() {
+                lines.push(String::new());
+                lines.push(format!("Files changed ({}):", commit.files.len()));
+                for file in commit.files.iter().take(10) {
+                    if file.insertions > 0 || file.deletions > 0 {
+                        lines.push(format!(
+                            "  {} {} (+{}/-{})",
+                            file.action, file.path, file.insertions, file.deletions
+                        ));
+                    } else {
+                        lines.push(format!("  {} {}", file.action, file.path));
+                    }
+                }
+                if commit.files.len() > 10 {
+                    lines.push(format!("  ... +{} more", commit.files.len() - 10));
+                }
+            }
+
+            if !related.is_empty() {
+                lines.push(String::new());
+                lines.push(format!("Correlated beads ({}):", related.len()));
+                for bead_id in &related {
+                    let conf = self
+                        .history_git_cache
+                        .as_ref()
+                        .and_then(|c| c.commit_bead_confidence.get(&commit.sha))
+                        .and_then(|pairs| {
+                            pairs.iter().find(|(id, _)| id == bead_id).map(|(_, c)| *c)
+                        })
+                        .unwrap_or(0.0);
+                    let title = self
+                        .analyzer
+                        .issues
+                        .iter()
+                        .find(|i| i.id == *bead_id)
+                        .map(|i| truncate_str(&i.title, 30))
+                        .unwrap_or_default();
+                    lines.push(format!("  {bead_id} ({:.0}%) {}", conf * 100.0, title));
+                }
+            }
+
+            lines.push(String::new());
+            lines.push("Enter: jump to related bead | J/K: cycle related beads".to_string());
+            lines.push("v: switch to bead timeline | c: cycle confidence".to_string());
+            return lines.join("\n");
         }
 
         let Some(issue) = self.selected_issue() else {
@@ -2381,6 +3039,51 @@ impl BvrApp {
             ));
         }
 
+        // Show milestones from git history correlation if available
+        if let Some(compat_history) = self
+            .history_git_cache
+            .as_ref()
+            .and_then(|cache| cache.histories.get(&issue.id))
+        {
+            let ms = &compat_history.milestones;
+            let has_milestones = ms.created.is_some()
+                || ms.claimed.is_some()
+                || ms.closed.is_some()
+                || ms.reopened.is_some();
+            if has_milestones {
+                lines.push(String::new());
+                lines.push("Milestones:".to_string());
+                if let Some(ref event) = ms.created {
+                    lines.push(format!(
+                        "  Created:  {} by {}",
+                        event.timestamp, event.author
+                    ));
+                }
+                if let Some(ref event) = ms.claimed {
+                    lines.push(format!(
+                        "  Claimed:  {} by {}",
+                        event.timestamp, event.author
+                    ));
+                }
+                if let Some(ref event) = ms.closed {
+                    lines.push(format!(
+                        "  Closed:   {} by {}",
+                        event.timestamp, event.author
+                    ));
+                }
+                if let Some(ref event) = ms.reopened {
+                    lines.push(format!(
+                        "  Reopened: {} by {}",
+                        event.timestamp, event.author
+                    ));
+                }
+            }
+
+            if !compat_history.last_author.is_empty() {
+                lines.push(format!("Last author: {}", compat_history.last_author));
+            }
+        }
+
         lines.push(String::new());
         lines.push("Event Timeline:".to_string());
 
@@ -2397,17 +3100,91 @@ impl BvrApp {
             lines.push("  (history unavailable for selected issue)".to_string());
         }
 
+        if let Some(commit) = self.selected_history_bead_commit() {
+            let total = self
+                .history_git_cache
+                .as_ref()
+                .and_then(|cache| cache.histories.get(&issue.id))
+                .map_or(0, |history| history.commits.as_ref().map_or(0, Vec::len));
+            let slot = self.history_bead_commit_cursor.min(total.saturating_sub(1));
+
+            lines.push(String::new());
+            lines.push(format!(
+                "Correlated Commit ({}/{}):",
+                slot.saturating_add(1),
+                total
+            ));
+            lines.push(format!("  {}  {}", commit.short_sha, commit.timestamp));
+            lines.push(format!("  Message: {}", commit.message));
+            lines.push(format!(
+                "  Author: {} <{}>",
+                commit.author, commit.author_email
+            ));
+            lines.push(format!(
+                "  Method: {} | Confidence: {:.0}%",
+                commit.method,
+                commit.confidence * 100.0
+            ));
+            if !commit.reason.is_empty() {
+                lines.push(format!("  Reason: {}", commit.reason));
+            }
+            if !commit.files.is_empty() {
+                lines.push(format!("  Files: {} changed", commit.files.len()));
+            }
+        }
+
         lines.push(String::new());
-        lines.push(
-            "Git Correlation: use --robot-history for commit-level timeline and method stats."
-                .to_string(),
-        );
+        lines.push("v: switch to git timeline | J/K: cycle commits".to_string());
 
         lines.join("\n")
     }
 }
 
 #[must_use]
+fn truncate_str(value: &str, max_len: usize) -> String {
+    if value.len() <= max_len {
+        value.to_string()
+    } else if max_len >= 3 {
+        format!("{}...", &value[..max_len - 3])
+    } else {
+        value[..max_len].to_string()
+    }
+}
+
+fn metric_rank(metrics: &std::collections::HashMap<String, f64>, target_id: &str) -> usize {
+    let target_value = metrics.get(target_id).copied().unwrap_or_default();
+    metrics
+        .values()
+        .filter(|&&value| value > target_value)
+        .count()
+        + 1
+}
+
+fn status_icon(status: &str) -> &'static str {
+    match status {
+        "open" => "o",
+        "in_progress" => "*",
+        "blocked" => "!",
+        "closed" => "x",
+        "deferred" => "~",
+        "review" => "r",
+        "pinned" => "^",
+        _ => "?",
+    }
+}
+
+fn type_icon(issue_type: &str) -> &'static str {
+    match issue_type {
+        "bug" => "B",
+        "feature" => "F",
+        "task" => "T",
+        "epic" => "E",
+        "question" => "Q",
+        "docs" => "D",
+        _ => "-",
+    }
+}
+
 fn join_or_none(values: &[String]) -> String {
     if values.is_empty() {
         "none".to_string()
@@ -2461,7 +3238,7 @@ fn cmp_opt_datetime(
 pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
     let repo_root = loader::get_beads_dir(None)
         .ok()
-        .and_then(|beads_dir| beads_dir.parent().map(|path| path.to_path_buf()));
+        .and_then(|beads_dir| beads_dir.parent().map(std::path::Path::to_path_buf));
 
     let model = BvrApp {
         analyzer: Analyzer::new(issues),
@@ -2476,6 +3253,7 @@ pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
         focus: FocusPane::List,
         focus_before_help: FocusPane::List,
         show_help: false,
+        help_scroll_offset: 0,
         show_quit_confirm: false,
         history_confidence_index: 0,
         history_view_mode: HistoryViewMode::Bead,
@@ -2488,6 +3266,7 @@ pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
         board_search_active: false,
         board_search_query: String::new(),
         board_search_match_cursor: 0,
+        insights_panel: InsightsPanel::Bottlenecks,
         insights_show_explanations: true,
         insights_show_calc_proof: false,
     };
@@ -2501,7 +3280,8 @@ pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        BoardGrouping, BvrApp, FocusPane, HistoryViewMode, ListFilter, ListSort, Msg, ViewMode,
+        BoardGrouping, BvrApp, FocusPane, HistoryViewMode, InsightsPanel, ListFilter, ListSort,
+        Msg, ViewMode,
     };
     use crate::analysis::Analyzer;
     use crate::model::{Dependency, Issue};
@@ -2691,6 +3471,7 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
@@ -2703,6 +3484,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         }
@@ -2745,8 +3527,8 @@ mod tests {
         let mut app = new_app(ViewMode::Graph, 0);
         app.mode = ViewMode::Graph;
         let text = app.detail_panel_text();
-        assert!(text.contains("Graph Summary"));
-        assert!(text.contains("PageRank"));
+        assert!(text.contains("Graph:"));
+        assert!(text.contains("PR:"));
         assert!(text.contains("Top PageRank"));
     }
 
@@ -2757,8 +3539,8 @@ mod tests {
         let list = app.list_panel_text();
         let detail = app.detail_panel_text();
         assert!(list.contains("Lane"));
-        assert!(detail.contains("Lane Summary"));
-        assert!(detail.contains("Selected: B"));
+        assert!(detail.contains("Lane:"));
+        assert!(detail.contains('B'));
     }
 
     #[test]
@@ -2767,9 +3549,69 @@ mod tests {
         app.mode = ViewMode::Insights;
         let list = app.list_panel_text();
         let detail = app.detail_panel_text();
-        assert!(list.contains("Top Bottlenecks"));
+        assert!(list.contains("[Bottlenecks]"));
         assert!(detail.contains("Insights Summary"));
         assert!(detail.contains("Critical Path Head"));
+    }
+
+    #[test]
+    fn insights_panel_s_cycles_through_all_panels() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.mode = ViewMode::Insights;
+        assert!(matches!(app.insights_panel, InsightsPanel::Bottlenecks));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::CriticalPath));
+        let list = app.list_panel_text();
+        assert!(list.contains("[Critical Path]"));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Influencers));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Betweenness));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Hubs));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Authorities));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Cores));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::CutPoints));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Slack));
+
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Cycles));
+
+        // Full cycle wraps back
+        app.update(key(KeyCode::Char('s')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Bottlenecks));
+
+        // S (shift) goes backwards
+        app.update(key(KeyCode::Char('S')));
+        assert!(matches!(app.insights_panel, InsightsPanel::Cycles));
+    }
+
+    #[test]
+    fn insights_detail_shows_all_metrics_for_focused_issue() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.mode = ViewMode::Insights;
+        let detail = app.detail_panel_text();
+        assert!(detail.contains("PageRank:"));
+        assert!(detail.contains("Betweenness:"));
+        assert!(detail.contains("Eigenvector:"));
+        assert!(detail.contains("Hub (HITS):"));
+        assert!(detail.contains("Auth (HITS):"));
+        assert!(detail.contains("K-core:"));
+        assert!(detail.contains("Crit depth:"));
+        assert!(detail.contains("Slack:"));
+        assert!(detail.contains("Cut point:"));
     }
 
     #[test]
@@ -2805,7 +3647,7 @@ mod tests {
         let text = app.detail_panel_text();
         assert!(text.contains("History Summary"));
         assert!(text.contains("Event Timeline"));
-        assert!(text.contains("Git Correlation"));
+        assert!(text.contains("switch to git timeline"));
         assert!(text.contains("Min confidence filter"));
     }
 
@@ -2814,13 +3656,8 @@ mod tests {
         let app = new_app(ViewMode::Graph, 0);
         let text = app.detail_panel_text();
         let lines = text.lines().collect::<Vec<_>>();
-        assert!(
-            lines
-                .first()
-                .is_some_and(|line| line.starts_with("Graph Summary:"))
-        );
-        assert!(lines.iter().any(|line| line.contains("Focus: A (Root)")));
-        assert!(lines.iter().any(|line| line.contains("Depends on: none")));
+        assert!(lines.first().is_some_and(|line| line.starts_with("Graph:")));
+        assert!(lines.iter().any(|line| line.contains('A')));
         assert!(lines.iter().any(|line| line.contains("Top PageRank:")));
     }
 
@@ -2852,7 +3689,13 @@ mod tests {
         assert!(app.show_help);
         assert_eq!(app.focus, FocusPane::List);
 
+        // 'x' no longer closes help (only ? or Esc does)
         let cmd = app.update(key(KeyCode::Char('x')));
+        assert!(matches!(cmd, Cmd::None));
+        assert!(app.show_help);
+
+        // Esc closes help and restores focus
+        let cmd = app.update(key(KeyCode::Escape));
         assert!(matches!(cmd, Cmd::None));
         assert!(!app.show_help);
         assert_eq!(app.focus, FocusPane::List);
@@ -2976,6 +3819,35 @@ mod tests {
     }
 
     #[test]
+    fn graph_mode_h_from_detail_returns_to_list_focus() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        assert_eq!(app.focus, FocusPane::List);
+
+        // Tab to detail
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        // h from detail should switch back to list focus
+        app.update(key(KeyCode::Char('h')));
+        assert_eq!(app.focus, FocusPane::List);
+        assert!(matches!(app.mode, ViewMode::Graph));
+
+        // h from list should navigate (move selection)
+        app.update(key(KeyCode::Char('l')));
+        assert_eq!(selected_issue_id(&app), "B");
+        app.update(key(KeyCode::Char('h')));
+        assert_eq!(selected_issue_id(&app), "A");
+    }
+
+    #[test]
+    fn graph_mode_list_header_shows_keybinding_hints() {
+        let app = new_app(ViewMode::Graph, 0);
+        let list_text = app.list_panel_text();
+        assert!(list_text.contains("h/l nav"));
+        assert!(list_text.contains("Tab focus"));
+    }
+
+    #[test]
     fn history_confidence_cycles_on_c_key() {
         let mut app = new_app(ViewMode::Main, 0);
         app.update(key(KeyCode::Char('h')));
@@ -2993,7 +3865,8 @@ mod tests {
 
         app.update(key(KeyCode::Char('v')));
         assert!(matches!(app.history_view_mode, HistoryViewMode::Git));
-        assert!(app.list_panel_text().contains("Event timeline"));
+        let git_list = app.list_panel_text();
+        assert!(git_list.contains("Git commits") || git_list.contains("No git commits correlated"));
 
         let first_issue_id = app
             .selected_history_event()
@@ -3020,12 +3893,16 @@ mod tests {
         app.update(key(KeyCode::Char('h')));
         app.update(key(KeyCode::Char('v')));
         assert!(matches!(app.history_view_mode, HistoryViewMode::Git));
+        assert_eq!(app.history_related_bead_cursor, 0);
         assert_eq!(app.history_event_cursor, 0);
 
+        // J/K navigation is safe even with no git history data (test fixtures
+        // have no real git repo, so event/commit lists are empty).
         app.update(key(KeyCode::Char('J')));
-        assert!(app.history_event_cursor >= 1);
-
         app.update(key(KeyCode::Char('K')));
+
+        // Cursors remain at zero since no events exist to navigate.
+        assert_eq!(app.history_related_bead_cursor, 0);
         assert_eq!(app.history_event_cursor, 0);
     }
 
@@ -3172,6 +4049,7 @@ mod tests {
     fn board_mode_number_keys_jump_to_expected_lane_selection() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(lane_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3182,15 +4060,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3216,6 +4099,7 @@ mod tests {
     fn board_grouping_cycles_and_lane_jumps_follow_grouping() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(lane_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3226,15 +4110,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3254,6 +4143,7 @@ mod tests {
     fn board_mode_advanced_navigation_and_empty_lane_toggle_work() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3264,15 +4154,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3307,6 +4202,7 @@ mod tests {
     fn board_mode_home_and_end_stay_within_current_lane() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3317,15 +4213,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3347,6 +4248,7 @@ mod tests {
     fn board_mode_h_l_move_between_lanes_without_entering_history() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3357,15 +4259,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3388,6 +4295,7 @@ mod tests {
     fn board_mode_j_k_stay_within_current_lane() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3398,15 +4306,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3430,6 +4343,7 @@ mod tests {
     fn board_mode_ctrl_d_u_page_within_current_lane() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3440,15 +4354,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3467,6 +4386,7 @@ mod tests {
     fn board_mode_search_query_and_match_cycling_work() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3477,15 +4397,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3519,6 +4444,7 @@ mod tests {
     fn board_mode_search_escape_clears_query_and_blocks_filter_hotkeys() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3529,15 +4455,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3554,6 +4485,72 @@ mod tests {
     }
 
     #[test]
+    fn board_mode_detail_focus_shortcuts_drive_navigation_and_search() {
+        let mut app = BvrApp {
+            analyzer: Analyzer::new(board_nav_issues()),
+            repo_root: None,
+            selected: 0,
+            list_filter: ListFilter::All,
+            list_sort: ListSort::Default,
+            board_grouping: BoardGrouping::Status,
+            board_show_empty_lanes: true,
+            mode: ViewMode::Board,
+            mode_before_history: ViewMode::Main,
+            focus: FocusPane::List,
+            focus_before_help: FocusPane::List,
+            show_help: false,
+            help_scroll_offset: 0,
+            show_quit_confirm: false,
+            history_confidence_index: 0,
+            history_view_mode: HistoryViewMode::Bead,
+            history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
+            history_search_active: false,
+            history_search_query: String::new(),
+            board_search_active: false,
+            board_search_query: String::new(),
+            board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
+            insights_show_explanations: true,
+            insights_show_calc_proof: false,
+        };
+
+        app.select_issue_by_id("OPEN-1");
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(selected_issue_id(&app), "OPEN-2");
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        app.update(key(KeyCode::Char('l')));
+        assert_eq!(selected_issue_id(&app), "IP-1");
+
+        app.update(key(KeyCode::Char('L')));
+        assert_eq!(selected_issue_id(&app), "CLS-1");
+
+        app.update(key(KeyCode::Char('H')));
+        assert_eq!(selected_issue_id(&app), "OPEN-1");
+
+        app.update(key(KeyCode::Char('/')));
+        assert!(app.board_search_active);
+        app.update(key(KeyCode::Char('o')));
+        app.update(key(KeyCode::Char('p')));
+        app.update(key(KeyCode::Char('e')));
+        assert_eq!(app.board_search_query, "ope");
+        assert_eq!(selected_issue_id(&app), "OPEN-1");
+
+        app.update(key(KeyCode::Enter));
+        assert!(!app.board_search_active);
+
+        app.update(key(KeyCode::Char('n')));
+        assert_eq!(selected_issue_id(&app), "OPEN-2");
+        assert_eq!(app.focus, FocusPane::Detail);
+    }
+
+    #[test]
     fn board_mode_g_switches_to_graph_view() {
         let mut app = new_app(ViewMode::Board, 0);
         app.update(key(KeyCode::Char('g')));
@@ -3565,6 +4562,7 @@ mod tests {
     fn board_status_grouping_places_unknown_status_in_other_lane() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(board_with_unknown_status_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3575,15 +4573,20 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
@@ -3605,6 +4608,7 @@ mod tests {
     fn sort_key_cycles_main_order_modes() {
         let mut app = BvrApp {
             analyzer: Analyzer::new(sortable_issues()),
+            repo_root: None,
             selected: 0,
             list_filter: ListFilter::All,
             list_sort: ListSort::Default,
@@ -3615,20 +4619,26 @@ mod tests {
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
+            help_scroll_offset: 0,
             show_quit_confirm: false,
             history_confidence_index: 0,
             history_view_mode: HistoryViewMode::Bead,
             history_event_cursor: 0,
+            history_related_bead_cursor: 0,
+            history_bead_commit_cursor: 0,
+            history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            insights_panel: InsightsPanel::Bottlenecks,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
         };
 
-        assert_eq!(first_rendered_issue_id(&app), "A");
+        // Default: open-first, then priority asc, then id asc → M(p1), A(p2), Z(p3)
+        assert_eq!(first_rendered_issue_id(&app), "M");
         assert_eq!(app.list_sort, ListSort::Default);
 
         app.update(key(KeyCode::Char('s')));
@@ -3649,6 +4659,6 @@ mod tests {
 
         app.update(key(KeyCode::Char('s')));
         assert_eq!(app.list_sort, ListSort::Default);
-        assert_eq!(first_rendered_issue_id(&app), "A");
+        assert_eq!(first_rendered_issue_id(&app), "M");
     }
 }

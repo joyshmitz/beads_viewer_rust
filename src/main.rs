@@ -10,7 +10,8 @@ use std::process::{Command, ExitCode};
 use bvr::analysis::alerts::AlertOptions;
 use bvr::analysis::git_history::{
     HistoryBeadCompat, HistoryEventCompat, HistoryMilestonesCompat, HistoryStatsCompat,
-    correlate_histories_with_git, compute_history_stats, finalize_history_entries, load_git_commits,
+    compute_history_stats, correlate_histories_with_git, finalize_history_entries,
+    load_git_commits,
 };
 use bvr::analysis::suggest::{SuggestOptions, SuggestionType};
 use bvr::analysis::triage::TriageOptions;
@@ -691,7 +692,7 @@ fn build_robot_history_output(
                     status: history.status.clone(),
                     events,
                     milestones: HistoryMilestonesCompat::default(),
-                    commits: Vec::new(),
+                    commits: None,
                     cycle_time: None,
                     last_author: String::new(),
                 },
@@ -719,15 +720,15 @@ fn build_robot_history_output(
 
     if cli.history_min_confidence > 0.0 {
         for history in histories_map.values_mut() {
-            history
-                .commits
-                .retain(|commit| commit.confidence >= cli.history_min_confidence);
+            if let Some(commits) = history.commits.as_mut() {
+                commits.retain(|commit| commit.confidence >= cli.history_min_confidence);
+            }
         }
 
         commit_index.clear();
         method_distribution.clear();
         for (bead_id, history) in &histories_map {
-            for commit in &history.commits {
+            for commit in history.commits.as_deref().unwrap_or_default() {
                 let ids = commit_index.entry(commit.sha.clone()).or_default();
                 if !ids.contains(bead_id) {
                     ids.push(bead_id.clone());
@@ -2268,11 +2269,12 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
 
+    use bvr::analysis::git_history::extract_ids_from_message;
     use tempfile::tempdir;
 
     use super::{
-        extract_ids_from_message, generate_daily_burndown_points, parse_scope_git_header_line,
-        resolve_git_toplevel, resolve_reference_file_path,
+        generate_daily_burndown_points, parse_scope_git_header_line, resolve_git_toplevel,
+        resolve_reference_file_path,
     };
 
     #[test]

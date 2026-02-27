@@ -714,7 +714,11 @@ fn sort_suggestions(suggestions: &mut [Suggestion]) {
         right
             .confidence
             .total_cmp(&left.confidence)
-            .then_with(|| left.suggestion_type.cmp(&right.suggestion_type))
+            .then_with(|| {
+                left.suggestion_type
+                    .as_str()
+                    .cmp(right.suggestion_type.as_str())
+            })
             .then_with(|| left.target_bead.cmp(&right.target_bead))
             .then_with(|| left.related_bead.cmp(&right.related_bead))
     });
@@ -812,4 +816,77 @@ fn parse_timestamp(value: Option<&str>) -> Option<DateTime<Utc>> {
     value
         .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
         .map(|parsed| parsed.with_timezone(&Utc))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_suggestion(
+        suggestion_type: SuggestionType,
+        confidence: f64,
+        target: &str,
+    ) -> Suggestion {
+        Suggestion {
+            suggestion_type,
+            target_bead: target.to_string(),
+            related_bead: None,
+            summary: String::new(),
+            reason: String::new(),
+            confidence,
+            action_command: None,
+            generated_at: String::new(),
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn sort_by_confidence_descending() {
+        let mut suggestions = vec![
+            make_suggestion(SuggestionType::MissingDependency, 0.5, "bd-a"),
+            make_suggestion(SuggestionType::MissingDependency, 0.9, "bd-b"),
+            make_suggestion(SuggestionType::MissingDependency, 0.7, "bd-c"),
+        ];
+        sort_suggestions(&mut suggestions);
+        assert_eq!(suggestions[0].target_bead, "bd-b"); // 0.9
+        assert_eq!(suggestions[1].target_bead, "bd-c"); // 0.7
+        assert_eq!(suggestions[2].target_bead, "bd-a"); // 0.5
+    }
+
+    #[test]
+    fn sort_tiebreak_by_type_alphabetical() {
+        // All same confidence — should sort alphabetically by type string
+        let mut suggestions = vec![
+            make_suggestion(SuggestionType::PotentialDuplicate, 0.8, "bd-a"), // "potential_duplicate"
+            make_suggestion(SuggestionType::CycleWarning, 0.8, "bd-b"),       // "cycle_warning"
+            make_suggestion(SuggestionType::MissingDependency, 0.8, "bd-c"), // "missing_dependency"
+            make_suggestion(SuggestionType::LabelSuggestion, 0.8, "bd-d"),   // "label_suggestion"
+        ];
+        sort_suggestions(&mut suggestions);
+        // Alphabetical: cycle_warning < label_suggestion < missing_dependency < potential_duplicate
+        assert_eq!(suggestions[0].suggestion_type.as_str(), "cycle_warning");
+        assert_eq!(suggestions[1].suggestion_type.as_str(), "label_suggestion");
+        assert_eq!(
+            suggestions[2].suggestion_type.as_str(),
+            "missing_dependency"
+        );
+        assert_eq!(
+            suggestions[3].suggestion_type.as_str(),
+            "potential_duplicate"
+        );
+    }
+
+    #[test]
+    fn sort_tiebreak_by_target_bead() {
+        // Same confidence and type — should sort by target_bead
+        let mut suggestions = vec![
+            make_suggestion(SuggestionType::CycleWarning, 0.8, "bd-z"),
+            make_suggestion(SuggestionType::CycleWarning, 0.8, "bd-a"),
+            make_suggestion(SuggestionType::CycleWarning, 0.8, "bd-m"),
+        ];
+        sort_suggestions(&mut suggestions);
+        assert_eq!(suggestions[0].target_bead, "bd-a");
+        assert_eq!(suggestions[1].target_bead, "bd-m");
+        assert_eq!(suggestions[2].target_bead, "bd-z");
+    }
 }

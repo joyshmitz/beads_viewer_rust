@@ -22,10 +22,14 @@ pub struct GitCommitRecord {
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct HistoryMilestonesCompat {
-    created: Option<HistoryEventCompat>,
-    claimed: Option<HistoryEventCompat>,
-    closed: Option<HistoryEventCompat>,
-    reopened: Option<HistoryEventCompat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<HistoryEventCompat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claimed: Option<HistoryEventCompat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closed: Option<HistoryEventCompat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reopened: Option<HistoryEventCompat>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -46,7 +50,7 @@ pub struct HistoryBeadCompat {
     pub status: String,
     pub events: Vec<HistoryEventCompat>,
     pub milestones: HistoryMilestonesCompat,
-    pub commits: Vec<HistoryCommitCompat>,
+    pub commits: Option<Vec<HistoryCommitCompat>>,
     pub cycle_time: Option<HistoryCycleCompat>,
     pub last_author: String,
 }
@@ -75,8 +79,11 @@ pub struct HistoryFileChangeCompat {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HistoryCycleCompat {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub claim_to_close: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub create_to_close: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub create_to_claim: Option<String>,
 }
 
@@ -264,11 +271,12 @@ pub fn correlate_histories_with_git(
                 continue;
             };
 
-            if history.commits.iter().any(|entry| entry.sha == commit.sha) {
+            let commits = history.commits.get_or_insert_with(Vec::new);
+            if commits.iter().any(|entry| entry.sha == commit.sha) {
                 continue;
             }
 
-            history.commits.push(HistoryCommitCompat {
+            commits.push(HistoryCommitCompat {
                 sha: commit.sha.clone(),
                 short_sha: commit.short_sha.clone(),
                 message: commit.message.clone(),
@@ -296,7 +304,7 @@ pub fn correlate_histories_with_git(
     }
 }
 
-fn extract_ids_from_message(
+pub fn extract_ids_from_message(
     message: &str,
     known_ids: &BTreeMap<String, String>,
 ) -> BTreeSet<String> {
@@ -407,14 +415,15 @@ fn is_closed_like_status(status: &str) -> bool {
 
 pub fn finalize_history_entries(histories_map: &mut BTreeMap<String, HistoryBeadCompat>) {
     for history in histories_map.values_mut() {
-        history.commits.sort_by(|left, right| {
-            compare_timestamps(&left.timestamp, &right.timestamp)
-                .then_with(|| left.sha.cmp(&right.sha))
-        });
+        if let Some(commits) = history.commits.as_mut() {
+            commits.sort_by(|left, right| {
+                compare_timestamps(&left.timestamp, &right.timestamp)
+                    .then_with(|| left.sha.cmp(&right.sha))
+            });
+        }
 
-        if !history.commits.is_empty() {
-            let mut events = history
-                .commits
+        if let Some(commits) = history.commits.as_ref().filter(|c| !c.is_empty()) {
+            let mut events = commits
                 .iter()
                 .enumerate()
                 .map(|(index, commit)| HistoryEventCompat {
@@ -429,9 +438,8 @@ pub fn finalize_history_entries(histories_map: &mut BTreeMap<String, HistoryBead
                 .collect::<Vec<_>>();
 
             if !events.iter().any(|entry| entry.event_type == "created")
-                && !history.commits.is_empty()
+                && let Some(first) = commits.first()
             {
-                let first = &history.commits[0];
                 events.insert(
                     0,
                     HistoryEventCompat {
@@ -448,9 +456,8 @@ pub fn finalize_history_entries(histories_map: &mut BTreeMap<String, HistoryBead
 
             if is_closed_like_status(&history.status.to_ascii_lowercase())
                 && !events.iter().any(|entry| entry.event_type == "closed")
-                && history.commits.last().is_some()
+                && let Some(last) = commits.last()
             {
-                let last = history.commits.last().expect("checked is_some");
                 events.push(HistoryEventCompat {
                     bead_id: history.bead_id.clone(),
                     event_type: "closed".to_string(),
@@ -540,20 +547,26 @@ pub fn finalize_history_entries(histories_map: &mut BTreeMap<String, HistoryBead
 
         history.last_author = history
             .commits
-            .last()
+            .as_ref()
+            .and_then(|c| c.last())
             .map_or_else(String::new, |commit| commit.author.clone());
+
+        // Normalize: empty Vec -> None (serializes as null, matching legacy)
+        if history.commits.as_ref().is_some_and(Vec::is_empty) {
+            history.commits = None;
+        }
     }
 }
 
 fn infer_event_type_from_commit(index: usize, message: &str) -> String {
     let lower = message.to_ascii_lowercase();
-    if lower.contains("reopen") {
+    if has_word_prefix(&lower, "reopen") {
         "reopened".to_string()
-    } else if lower.contains("close") || lower.contains("closed") {
+    } else if has_word_prefix(&lower, "close") || has_word_prefix(&lower, "closed") {
         "closed".to_string()
-    } else if lower.contains("claim")
+    } else if has_word_prefix(&lower, "claim")
         || lower.contains("in_progress")
-        || lower.contains("in progress")
+        || has_word_sequence(&lower, "in progress")
     {
         "claimed".to_string()
     } else if index == 0 {
@@ -561,6 +574,22 @@ fn infer_event_type_from_commit(index: usize, message: &str) -> String {
     } else {
         "modified".to_string()
     }
+}
+
+/// Check if `text` contains `prefix` at a word boundary (start of text or
+/// preceded by a non-alphanumeric character). This avoids false positives like
+/// "disclose" matching "close" or "exclaim" matching "claim".
+fn has_word_prefix(text: &str, prefix: &str) -> bool {
+    text.match_indices(prefix).any(|(start, _)| {
+        start == 0
+            || text.as_bytes()[start - 1].is_ascii_whitespace()
+            || !text.as_bytes()[start - 1].is_ascii_alphanumeric()
+    })
+}
+
+/// Check if `text` contains the exact two-word sequence.
+fn has_word_sequence(text: &str, sequence: &str) -> bool {
+    text.contains(sequence)
 }
 
 fn compare_timestamps(left: &str, right: &str) -> std::cmp::Ordering {
@@ -594,6 +623,180 @@ fn format_duration_compact(duration: chrono::Duration) -> String {
     format!("{days}d {hours}h {minutes}m")
 }
 
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn has_word_prefix_rejects_substring_match() {
+        // "disclose" should NOT match "close"
+        assert!(!has_word_prefix("disclose the issue", "close"));
+        // "exclaim" should NOT match "claim"
+        assert!(!has_word_prefix("exclaim loudly", "claim"));
+        // "reopen" embedded in "unreopened" should not match at word boundary
+        assert!(!has_word_prefix("unreopened", "reopen"));
+    }
+
+    #[test]
+    fn has_word_prefix_accepts_word_boundary() {
+        assert!(has_word_prefix("close the issue", "close"));
+        assert!(has_word_prefix("closed bd-123", "close"));
+        assert!(has_word_prefix("claim this task", "claim"));
+        assert!(has_word_prefix("reopen bd-456", "reopen"));
+        // At start of text
+        assert!(has_word_prefix("close", "close"));
+        // After punctuation
+        assert!(has_word_prefix("[close] bd-789", "close"));
+    }
+
+    #[test]
+    fn infer_event_type_close_vs_disclose() {
+        assert_eq!(infer_event_type_from_commit(1, "close bd-123"), "closed");
+        assert_eq!(infer_event_type_from_commit(1, "Closed bd-123"), "closed");
+        // "disclose" should NOT trigger "closed"
+        assert_eq!(
+            infer_event_type_from_commit(1, "disclose internal details"),
+            "modified"
+        );
+    }
+
+    #[test]
+    fn infer_event_type_claim_vs_exclaim() {
+        assert_eq!(infer_event_type_from_commit(1, "claim bd-abc"), "claimed");
+        assert_eq!(
+            infer_event_type_from_commit(1, "set status to in_progress"),
+            "claimed"
+        );
+        assert_eq!(
+            infer_event_type_from_commit(1, "mark in progress"),
+            "claimed"
+        );
+        // "exclaim" should NOT trigger "claimed"
+        assert_eq!(
+            infer_event_type_from_commit(1, "exclaim about progress"),
+            "modified"
+        );
+    }
+
+    #[test]
+    fn infer_event_type_reopen_vs_embedded() {
+        assert_eq!(infer_event_type_from_commit(1, "reopen bd-xyz"), "reopened");
+        assert_eq!(
+            infer_event_type_from_commit(1, "Reopened the issue"),
+            "reopened"
+        );
+    }
+
+    #[test]
+    fn infer_event_type_index_zero_fallback() {
+        // Index 0 with no keyword match => "created"
+        assert_eq!(infer_event_type_from_commit(0, "initial setup"), "created");
+        // Index >0 with no keyword match => "modified"
+        assert_eq!(infer_event_type_from_commit(1, "update readme"), "modified");
+    }
+
+    #[test]
+    fn empty_commits_serialize_as_null() {
+        let history = HistoryBeadCompat {
+            bead_id: "bd-test".to_string(),
+            title: "Test".to_string(),
+            status: "open".to_string(),
+            events: vec![],
+            milestones: HistoryMilestonesCompat::default(),
+            commits: None,
+            cycle_time: None,
+            last_author: String::new(),
+        };
+        let json = serde_json::to_value(&history).unwrap();
+        assert!(
+            json["commits"].is_null(),
+            "None commits should serialize as null"
+        );
+    }
+
+    #[test]
+    fn some_commits_serialize_as_array() {
+        let history = HistoryBeadCompat {
+            bead_id: "bd-test".to_string(),
+            title: "Test".to_string(),
+            status: "open".to_string(),
+            events: vec![],
+            milestones: HistoryMilestonesCompat::default(),
+            commits: Some(vec![HistoryCommitCompat {
+                sha: "abc123".to_string(),
+                short_sha: "abc".to_string(),
+                message: "test commit".to_string(),
+                author: "tester".to_string(),
+                author_email: "test@example.com".to_string(),
+                timestamp: "2024-01-01T00:00:00Z".to_string(),
+                files: vec![],
+                method: "log".to_string(),
+                confidence: 1.0,
+                reason: "test".to_string(),
+            }]),
+            cycle_time: None,
+            last_author: String::new(),
+        };
+        let json = serde_json::to_value(&history).unwrap();
+        assert!(
+            json["commits"].is_array(),
+            "Some commits should serialize as array"
+        );
+        assert_eq!(json["commits"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn milestones_omit_null_fields() {
+        let milestones = HistoryMilestonesCompat {
+            created: Some(HistoryEventCompat {
+                bead_id: "bd-test".to_string(),
+                event_type: "created".to_string(),
+                timestamp: "2024-01-01T00:00:00Z".to_string(),
+                commit_sha: "abc".to_string(),
+                commit_message: "init".to_string(),
+                author: "tester".to_string(),
+                author_email: "test@example.com".to_string(),
+            }),
+            claimed: None,
+            closed: None,
+            reopened: None,
+        };
+        let json = serde_json::to_value(&milestones).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("created"), "created should be present");
+        assert!(
+            !obj.contains_key("claimed"),
+            "None claimed should be omitted"
+        );
+        assert!(!obj.contains_key("closed"), "None closed should be omitted");
+        assert!(
+            !obj.contains_key("reopened"),
+            "None reopened should be omitted"
+        );
+    }
+
+    #[test]
+    fn cycle_time_omits_null_fields() {
+        let cycle = HistoryCycleCompat {
+            create_to_close: Some("2d 3h 0m".to_string()),
+            claim_to_close: None,
+            create_to_claim: None,
+        };
+        let json = serde_json::to_value(&cycle).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("create_to_close"));
+        assert!(
+            !obj.contains_key("claim_to_close"),
+            "None should be omitted"
+        );
+        assert!(
+            !obj.contains_key("create_to_claim"),
+            "None should be omitted"
+        );
+    }
+}
+
 pub fn compute_history_stats(
     histories_map: &BTreeMap<String, HistoryBeadCompat>,
     commit_index: &BTreeMap<String, Vec<String>>,
@@ -602,7 +805,7 @@ pub fn compute_history_stats(
     let total_beads = histories_map.len();
     let beads_with_commits = histories_map
         .values()
-        .filter(|history| !history.commits.is_empty())
+        .filter(|history| history.commits.as_ref().is_some_and(|c| !c.is_empty()))
         .count();
     let total_commits = commit_index.len();
 
@@ -610,7 +813,7 @@ pub fn compute_history_stats(
     let mut claim_to_close_days = Vec::<f64>::new();
 
     for history in histories_map.values() {
-        for commit in &history.commits {
+        for commit in history.commits.as_deref().unwrap_or_default() {
             if !commit.author.is_empty() {
                 authors.insert(commit.author.clone());
             }

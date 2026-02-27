@@ -414,7 +414,7 @@ mod tests {
             Some(1)
         );
         assert_eq!(
-            insights.critical_path.first().map(|id| id.as_str()),
+            insights.critical_path.first().map(String::as_str),
             Some("bd-3q0")
         );
     }

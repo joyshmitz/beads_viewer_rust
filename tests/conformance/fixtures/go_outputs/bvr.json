@@ -1,11 +1,11 @@
 {
-  "captured_at": "2026-02-18T05:20:47Z",
+  "captured_at": "2026-02-28T03:27:29Z",
   "legacy_root": "/data/projects/beads_viewer_rust/legacy_beads_viewer_code/beads_viewer",
   "beads_file": "/data/projects/beads_viewer_rust/tests/testdata/minimal.jsonl",
   "diff_since": "HEAD~1",
   "triage": {
     "data_hash": "60a8d727931c6bfe",
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "triage": {
       "blockers_to_clear": [
         {
@@ -27,7 +27,7 @@
       },
       "meta": {
         "compute_time_ms": 0,
-        "generated_at": "2026-02-18T00:20:47.55279522-05:00",
+        "generated_at": "2026-02-27T22:27:28.3900326-05:00",
         "issue_count": 2,
         "phase2_ready": true,
         "version": "1.0.0"
@@ -65,6 +65,10 @@
           "weekly": [
             {
               "closed": 0,
+              "week_start": "2026-02-23T00:00:00Z"
+            },
+            {
+              "closed": 0,
               "week_start": "2026-02-16T00:00:00Z"
             },
             {
@@ -90,10 +94,6 @@
             {
               "closed": 0,
               "week_start": "2026-01-05T00:00:00Z"
-            },
-            {
-              "closed": 0,
-              "week_start": "2025-12-29T00:00:00Z"
             }
           ]
         }
@@ -273,7 +273,7 @@
       "PageRankTimeout": 2000000000
     },
     "data_hash": "60a8d727931c6bfe",
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "plan": {
       "summary": {
         "highest_impact": "A",
@@ -323,14 +323,14 @@
         "state": "skipped"
       },
       "KCore": {
-        "ms": 0.023274,
+        "ms": 0.025939,
         "state": "computed"
       },
       "PageRank": {
         "state": "skipped"
       },
       "Slack": {
-        "ms": 0.001102,
+        "ms": 0.001493,
         "state": "computed"
       }
     },
@@ -628,33 +628,41 @@
         "B": 0
       }
     },
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "status": {
       "Articulation": {
         "state": "computed"
       },
       "Betweenness": {
+        "ms": 0.008696,
         "state": "computed"
       },
       "Critical": {
+        "ms": 0.003747,
         "state": "computed"
       },
       "Cycles": {
+        "ms": 0.001854,
         "state": "computed"
       },
       "Eigenvector": {
+        "ms": 0.003247,
         "state": "computed"
       },
       "HITS": {
+        "ms": 0.019226,
         "state": "computed"
       },
       "KCore": {
+        "ms": 0.003687,
         "state": "computed"
       },
       "PageRank": {
+        "ms": 0.054733,
         "state": "computed"
       },
       "Slack": {
+        "ms": 0.001753,
         "state": "computed"
       }
     },
@@ -727,7 +735,7 @@
     "filters": {
       "max_results": 10
     },
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "recommendations": [
       {
         "confidence": 1,
@@ -736,7 +744,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:47Z",
+            "computed_at": "2026-02-28T03:27:28Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -803,7 +811,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:47Z",
+            "computed_at": "2026-02-28T03:27:28Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -910,9 +918,9 @@
         "confidence": 0.15000000000000002,
         "estimated_days": 3,
         "estimated_minutes": 72,
-        "eta_date": "2026-02-21T00:20:47.794892145-05:00",
-        "eta_date_high": "2026-02-23T01:18:23.794892145-05:00",
-        "eta_date_low": "2026-02-18T23:23:11.794892145-05:00",
+        "eta_date": "2026-03-02T22:27:28.645424042-05:00",
+        "eta_date_high": "2026-03-04T23:25:04.645424042-05:00",
+        "eta_date_low": "2026-02-28T21:29:52.645424042-05:00",
         "factors": [
           "estimate: median (60m)",
           "type: task×1.0",
@@ -930,9 +938,9 @@
         "confidence": 0.15000000000000002,
         "estimated_days": 2.75,
         "estimated_minutes": 66,
-        "eta_date": "2026-02-20T18:20:47.794892145-05:00",
-        "eta_date_high": "2026-02-22T15:13:35.794892145-05:00",
-        "eta_date_low": "2026-02-18T21:27:59.794892144-05:00",
+        "eta_date": "2026-03-02T16:27:28.645424042-05:00",
+        "eta_date_high": "2026-03-04T13:20:16.645424042-05:00",
+        "eta_date_low": "2026-02-28T19:34:40.645424041-05:00",
         "factors": [
           "estimate: median (60m)",
           "type: task×1.0",
@@ -946,12 +954,12 @@
         "velocity_minutes_per_day": 12
       }
     ],
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "output_format": "json",
     "summary": {
       "avg_confidence": 0.15000000000000002,
-      "earliest_eta": "2026-02-20T18:20:47.794892145-05:00",
-      "latest_eta": "2026-02-21T00:20:47.794892145-05:00",
+      "earliest_eta": "2026-03-02T16:27:28.645424042-05:00",
+      "latest_eta": "2026-03-02T22:27:28.645424042-05:00",
       "total_days": 0.2875,
       "total_minutes": 138
     },
@@ -970,7 +978,7 @@
     "critical_path_length": 2,
     "data_hash": "60a8d727931c6bfe",
     "estimated_days": 0.2875,
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "open_issue_count": 2,
     "output_format": "json",
     "parallel_minutes": 0,
@@ -986,7 +994,7 @@
     "critical_path_length": 0,
     "data_hash": "60a8d727931c6bfe",
     "estimated_days": 0,
-    "generated_at": "2026-02-18T05:20:47Z",
+    "generated_at": "2026-02-28T03:27:28Z",
     "label": "backend",
     "open_issue_count": 0,
     "output_format": "json",
@@ -1000,7 +1008,7 @@
   "history": {
     "commit_index": {},
     "data_hash": "3cf073ca78fe",
-    "generated_at": "2026-02-18T05:20:47.899380361Z",
+    "generated_at": "2026-02-28T03:27:28.748126382Z",
     "git_range": "limit 20 commits",
     "histories": {
       "A": {
@@ -1013,9 +1021,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "A",
             "commit_message": "seed snapshot",
-            "commit_sha": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+            "commit_sha": "54b8095062f73aae0e29785eb5cbb522de108cb5",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:46-05:00"
+            "timestamp": "2026-02-27T22:27:26-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -1025,9 +1033,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "A",
             "commit_message": "seed snapshot",
-            "commit_sha": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+            "commit_sha": "54b8095062f73aae0e29785eb5cbb522de108cb5",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:46-05:00"
+            "timestamp": "2026-02-27T22:27:26-05:00"
           }
         },
         "status": "open",
@@ -1043,9 +1051,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "B",
             "commit_message": "seed snapshot",
-            "commit_sha": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+            "commit_sha": "54b8095062f73aae0e29785eb5cbb522de108cb5",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:46-05:00"
+            "timestamp": "2026-02-27T22:27:26-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -1055,16 +1063,16 @@
             "author_email": "conformance@example.com",
             "bead_id": "B",
             "commit_message": "seed snapshot",
-            "commit_sha": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+            "commit_sha": "54b8095062f73aae0e29785eb5cbb522de108cb5",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:46-05:00"
+            "timestamp": "2026-02-27T22:27:26-05:00"
           }
         },
         "status": "blocked",
         "title": "Blocked"
       }
     },
-    "latest_commit_sha": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+    "latest_commit_sha": "54b8095062f73aae0e29785eb5cbb522de108cb5",
     "stats": {
       "avg_commits_per_bead": 0,
       "beads_with_commits": 0,
@@ -1077,7 +1085,7 @@
   "diff": {
     "diff": {
       "closed_issues": null,
-      "from_revision": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+      "from_revision": "54b8095062f73aae0e29785eb5cbb522de108cb5",
       "from_timestamp": "0001-01-01T00:00:00Z",
       "metric_deltas": {
         "avg_betweenness": 0,
@@ -1108,11 +1116,126 @@
         "net_issue_change": 0,
         "total_changes": 0
       },
-      "to_timestamp": "2026-02-18T00:20:47.946323174-05:00"
+      "to_timestamp": "2026-02-27T22:27:28.797114053-05:00"
     },
     "from_data_hash": "60a8d727931c6bfe",
-    "generated_at": "2026-02-18T05:20:47Z",
-    "resolved_revision": "4adafd7debf27bfaddf1de7ea2184aba142e4cd8",
+    "generated_at": "2026-02-28T03:27:28Z",
+    "resolved_revision": "54b8095062f73aae0e29785eb5cbb522de108cb5",
     "to_data_hash": "60a8d727931c6bfe"
+  },
+  "burndown": null,
+  "next": {
+    "claim_command": "br update A --status=in_progress",
+    "data_hash": "60a8d727931c6bfe",
+    "generated_at": "2026-02-28T03:27:28Z",
+    "id": "A",
+    "output_format": "json",
+    "reasons": [
+      "🔓 Unblocks 1 item(s): B",
+      "📊 High centrality in dependency graph (PageRank: 100%)",
+      "⚡ Low effort, high impact - good starting point",
+      "✅ Currently unclaimed - available for work",
+      "🚨 High priority (P1) - prioritize this work"
+    ],
+    "score": 0.43651249999999997,
+    "show_command": "br show A",
+    "title": "Root",
+    "unblocks": 1,
+    "version": "v0.14.4"
+  },
+  "graph": {
+    "adjacency": {
+      "edges": [
+        {
+          "from": "B",
+          "to": "A",
+          "type": "blocks"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "A",
+          "pagerank": 0.649122638064138,
+          "priority": 1,
+          "status": "open",
+          "title": "Root"
+        },
+        {
+          "id": "B",
+          "pagerank": 0.35087736193586194,
+          "priority": 2,
+          "status": "blocked",
+          "title": "Blocked"
+        }
+      ]
+    },
+    "data_hash": "60a8d727931c6bfe",
+    "edges": 1,
+    "explanation": {
+      "what": "Dependency graph as JSON adjacency list",
+      "when_to_use": "When you need programmatic access to the graph structure"
+    },
+    "format": "json",
+    "nodes": 2
+  },
+  "graph_dot": "{\"format\":\"dot\",\"graph\":\"digraph G {\\n    rankdir=LR;\\n    node [shape=box, fontname=\\\"Helvetica\\\", fontsize=10];\\n    edge [fontname=\\\"Helvetica\\\", fontsize=8];\\n\\n    \\\"A\\\" [label=\\\"A\\\\nRoot\\\\nP1 open\\\", fillcolor=\\\"#C8E6C9\\\", style=filled, penwidth=2.9];\\n    \\\"B\\\" [label=\\\"B\\\\nBlocked\\\\nP2 blocked\\\", fillcolor=\\\"#FFCDD2\\\", style=filled, penwidth=2.1];\\n\\n    \\\"B\\\" -\\u003e \\\"A\\\" [style=bold, color=\\\"#E53935\\\"];\\n}\\n\",\"nodes\":2,\"edges\":1,\"explanation\":{\"what\":\"Dependency graph in Graphviz DOT format\",\"how_to_render\":\"Save to file.dot, run: dot -Tpng file.dot -o graph.png\",\"when_to_use\":\"When you need a visual overview of dependencies for documentation or debugging\"},\"data_hash\":\"60a8d727931c6bfe\"}\n",
+  "graph_mermaid": "{\"format\":\"mermaid\",\"graph\":\"graph TD\\n    classDef open fill:#50FA7B,stroke:#333,color:#000\\n    classDef inprogress fill:#8BE9FD,stroke:#333,color:#000\\n    classDef blocked fill:#FF5555,stroke:#333,color:#000\\n    classDef closed fill:#6272A4,stroke:#333,color:#fff\\n\\n    A[\\\"A\\u003cbr/\\u003eRoot\\\"]\\n    class A open\\n    B[\\\"B\\u003cbr/\\u003eBlocked\\\"]\\n    class B blocked\\n\\n    B ==\\u003e A\\n\",\"nodes\":2,\"edges\":1,\"explanation\":{\"what\":\"Dependency graph in Mermaid diagram format\",\"how_to_render\":\"Paste into any Markdown renderer that supports Mermaid, or use mermaid.live\",\"when_to_use\":\"When you need an embeddable diagram for documentation or GitHub issues\"},\"data_hash\":\"60a8d727931c6bfe\"}\n",
+  "suggest": {
+    "data_hash": "60a8d727931c6bfe",
+    "filters": {},
+    "generated_at": "2026-02-28T03:27:28Z",
+    "suggestions": {
+      "data_hash": "60a8d727931c6bfe",
+      "generated_at": "2026-02-27T22:27:28.996082075-05:00",
+      "stats": {
+        "actionable_count": 0,
+        "by_confidence": {},
+        "by_type": {},
+        "high_confidence_count": 0,
+        "total": 0
+      },
+      "suggestions": []
+    },
+    "usage_hints": [
+      "jq '.suggestions.suggestions[:5]' - Top 5 suggestions by confidence",
+      "jq '.suggestions.suggestions[] | select(.type==\"potential_duplicate\")' - Filter duplicates",
+      "jq '.suggestions.suggestions[] | select(.confidence \u003e= 0.8)' - High-confidence only",
+      "jq '.suggestions.stats.by_type' - Count by suggestion type",
+      "jq '.suggestions.suggestions[].action_command' - All action commands",
+      "--suggest-type=dependency - Filter to dependency suggestions",
+      "--suggest-confidence=0.7 - Minimum confidence threshold",
+      "--suggest-bead=\u003cid\u003e - Suggestions for specific bead"
+    ]
+  },
+  "alerts": {
+    "alerts": [],
+    "data_hash": "60a8d727931c6bfe",
+    "generated_at": "2026-02-28T03:27:29Z",
+    "output_format": "json",
+    "summary": {
+      "critical": 0,
+      "info": 0,
+      "total": 0,
+      "warning": 0
+    },
+    "usage_hints": [
+      "--severity=warning --alert-type=stale_issue   # stale warnings only",
+      "--alert-type=blocking_cascade                 # high-unblock opportunities",
+      "jq '.alerts | map(.issue_id)'                # list impacted issues"
+    ],
+    "version": "v0.14.4"
+  },
+  "help": null,
+  "sprint_list": null,
+  "sprint_show": null,
+  "metrics": {
+    "memory": {
+      "gc_cycles": 4,
+      "gc_pause_ms": 0.711945,
+      "goroutine_count": 1,
+      "heap_alloc_mb": 13.870857238769531,
+      "heap_objects_k": 9.862,
+      "heap_sys_mb": 22.875
+    }
   }
 }

@@ -26,6 +26,16 @@ type fixture struct {
 	History         map[string]interface{} `json:"history"`
 	Diff            map[string]interface{} `json:"diff"`
 	Burndown        map[string]interface{} `json:"burndown"`
+	Next            map[string]interface{} `json:"next"`
+	Graph           map[string]interface{} `json:"graph"`
+	GraphDot        string                 `json:"graph_dot"`
+	GraphMermaid    string                 `json:"graph_mermaid"`
+	Suggest         map[string]interface{} `json:"suggest"`
+	Alerts          map[string]interface{} `json:"alerts"`
+	Help            map[string]interface{} `json:"help"`
+	SprintList      map[string]interface{} `json:"sprint_list"`
+	SprintShow      map[string]interface{} `json:"sprint_show"`
+	Metrics         map[string]interface{} `json:"metrics"`
 }
 
 func main() {
@@ -87,20 +97,58 @@ func main() {
 	legacyBin := filepath.Join(tempDir, "bv-legacy")
 	run(legacyRoot, "go", "build", "-o", legacyBin, "./cmd/bv")
 
+	fmt.Fprintf(os.Stderr, "[harness] capturing robot commands from legacy binary\n")
+	fmt.Fprintf(os.Stderr, "[harness] beads-file: %s\n", beadsFile)
+	fmt.Fprintf(os.Stderr, "[harness] sprints-file: %s\n", sprintsFile)
+
 	triage := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-triage")
+	logCapture("triage", triage)
 	plan := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-plan")
+	logCapture("plan", plan)
 	insights := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-insights")
+	logCapture("insights", insights)
 	priority := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-priority", "--robot-max-results", "10")
+	logCapture("priority", priority)
 	forecast := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-forecast", "all", "--forecast-agents", "2")
+	logCapture("forecast", forecast)
 	capacity := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-capacity", "--agents", "3")
+	logCapture("capacity", capacity)
 	capacityByLabel := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-capacity", "--capacity-label", "backend", "--agents", "1")
+	logCapture("capacity_by_label", capacityByLabel)
 	history := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-history", "--history-limit", "20")
+	logCapture("history", history)
 	diff := runLegacyJSON(legacyBin, repoDir, beadsDir, "--robot-diff", "--diff-since", "HEAD~1")
+	logCapture("diff", diff)
+
+	next := runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-next")
+	logCapture("next", next)
+	graph := runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-graph")
+	logCapture("graph", graph)
+	graphDot := runLegacyText(legacyBin, repoDir, beadsDir, "--robot-graph", "--graph-format", "dot")
+	fmt.Fprintf(os.Stderr, "[harness] captured graph_dot (%d bytes)\n", len(graphDot))
+	graphMermaid := runLegacyText(legacyBin, repoDir, beadsDir, "--robot-graph", "--graph-format", "mermaid")
+	fmt.Fprintf(os.Stderr, "[harness] captured graph_mermaid (%d bytes)\n", len(graphMermaid))
+	suggest := runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-suggest")
+	logCapture("suggest", suggest)
+	alerts := runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-alerts")
+	logCapture("alerts", alerts)
+	help := runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-help")
+	logCapture("help", help)
 
 	var burndown map[string]interface{}
+	var sprintList map[string]interface{}
+	var sprintShow map[string]interface{}
 	if sprintsFile != "" {
 		burndown = runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-burndown", "sprint-1")
+		logCapture("burndown", burndown)
+		sprintList = runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-sprint-list")
+		logCapture("sprint_list", sprintList)
+		sprintShow = runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-sprint-show", "sprint-1")
+		logCapture("sprint_show", sprintShow)
 	}
+
+	metrics := runLegacyJSONOptional(legacyBin, repoDir, beadsDir, "--robot-metrics")
+	logCapture("metrics", metrics)
 
 	fx := fixture{
 		CapturedAt:      time.Now().UTC().Format(time.RFC3339),
@@ -117,11 +165,30 @@ func main() {
 		History:         history,
 		Diff:            diff,
 		Burndown:        burndown,
+		Next:            next,
+		Graph:           graph,
+		GraphDot:        graphDot,
+		GraphMermaid:    graphMermaid,
+		Suggest:         suggest,
+		Alerts:          alerts,
+		Help:            help,
+		SprintList:      sprintList,
+		SprintShow:      sprintShow,
+		Metrics:         metrics,
 	}
 
 	encoded, err := json.MarshalIndent(fx, "", "  ")
 	must(err)
 	must(os.WriteFile(outputPath, encoded, 0o644))
+}
+
+func logCapture(name string, payload map[string]interface{}) {
+	if payload == nil {
+		fmt.Fprintf(os.Stderr, "[harness] captured %s: nil (command failed or unsupported)\n", name)
+		return
+	}
+	encoded, _ := json.Marshal(payload)
+	fmt.Fprintf(os.Stderr, "[harness] captured %s: %d bytes, %d top-level keys\n", name, len(encoded), len(payload))
 }
 
 func runLegacyJSON(binaryPath string, repoDir string, beadsDir string, args ...string) map[string]interface{} {
@@ -149,6 +216,24 @@ func runLegacyJSON(binaryPath string, repoDir string, beadsDir string, args ...s
 	}
 
 	return payload
+}
+
+func runLegacyText(binaryPath string, repoDir string, beadsDir string, args ...string) string {
+	cmd := exec.Command(binaryPath, args...)
+	cmd.Dir = repoDir
+	cmd.Env = append(os.Environ(), "BV_ROBOT=1", "BEADS_DIR="+beadsDir)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: text command failed: %v\nargs=%v\nstderr=%s\n", err, args, stderr.String())
+		return ""
+	}
+
+	return stdout.String()
 }
 
 func runLegacyJSONOptional(binaryPath string, repoDir string, beadsDir string, args ...string) map[string]interface{} {

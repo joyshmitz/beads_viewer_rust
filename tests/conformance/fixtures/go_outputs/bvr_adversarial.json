@@ -1,11 +1,11 @@
 {
-  "captured_at": "2026-02-18T05:20:51Z",
+  "captured_at": "2026-02-28T03:41:47Z",
   "legacy_root": "/data/projects/beads_viewer_rust/legacy_beads_viewer_code/beads_viewer",
   "beads_file": "/data/projects/beads_viewer_rust/tests/testdata/adversarial_parity.jsonl",
   "diff_since": "HEAD~1",
   "triage": {
     "data_hash": "82d68356fe1cc926",
-    "generated_at": "2026-02-18T05:20:50Z",
+    "generated_at": "2026-02-28T03:41:45Z",
     "triage": {
       "blockers_to_clear": [
         {
@@ -72,7 +72,7 @@
       },
       "meta": {
         "compute_time_ms": 0,
-        "generated_at": "2026-02-18T00:20:50.87873452-05:00",
+        "generated_at": "2026-02-27T22:41:45.958126639-05:00",
         "issue_count": 10,
         "phase2_ready": true,
         "version": "1.0.0"
@@ -117,6 +117,10 @@
           "weekly": [
             {
               "closed": 0,
+              "week_start": "2026-02-23T00:00:00Z"
+            },
+            {
+              "closed": 0,
               "week_start": "2026-02-16T00:00:00Z"
             },
             {
@@ -142,10 +146,6 @@
             {
               "closed": 0,
               "week_start": "2026-01-05T00:00:00Z"
-            },
-            {
-              "closed": 0,
-              "week_start": "2025-12-29T00:00:00Z"
             }
           ]
         }
@@ -160,12 +160,12 @@
             "id": "ADV-104",
             "reasons": [
               "🔓 Unblocks 1 item(s): ADV-107",
-              "🕐 No activity in 767 days - may need review",
+              "🕐 No activity in 777 days - may need review",
               "⚡ Low effort, high impact - good starting point",
               "✅ Currently unclaimed - available for work",
               "🚨 High priority (P1) - prioritize this work"
             ],
-            "score": 0.3559102104001791,
+            "score": 0.355908888049137,
             "title": "Flaky test suite reopened",
             "unblocks": 1
           },
@@ -173,21 +173,21 @@
             "id": "ADV-100",
             "reasons": [
               "🔓 Unblocks 1 item(s): ADV-109",
-              "🕐 No activity in 769 days - may need review",
+              "🕐 No activity in 779 days - may need review",
               "🚧 In progress - already being worked",
               "🚨 High priority (P0) - prioritize this work"
             ],
-            "score": 0.3150234471325275,
+            "score": 0.315022338169175,
             "title": "Core orchestration rewrite",
             "unblocks": 1
           },
           {
             "id": "ADV-105",
             "reasons": [
-              "🕐 No activity in 767 days - may need review",
+              "🕐 No activity in 777 days - may need review",
               "✅ Currently unclaimed - available for work"
             ],
-            "score": 0.17827366678176415,
+            "score": 0.17827250068161787,
             "title": "API label normalization",
             "unblocks": 0
           }
@@ -255,12 +255,12 @@
             "pagerank_norm": 1,
             "priority_boost": 0.07500000000000001,
             "priority_boost_norm": 0.75,
-            "risk": 0.018123589585708727,
+            "risk": 0.018122029399120703,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.18123589585708727,
+            "risk_norm": 0.181220293991207,
             "risk_signals": {
-              "activity_churn": 0.004119652856957523,
-              "composite_risk": 0.18123589585708727,
+              "activity_churn": 0.004067646637356591,
+              "composite_risk": 0.181220293991207,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -272,7 +272,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 240m",
             "time_to_impact_norm": 0.15,
             "urgency": 0.05,
-            "urgency_explanation": "aging (777 days)",
+            "urgency_explanation": "aging (787 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-103",
@@ -285,12 +285,12 @@
             "🔓 Unblocks 1 item(s): ADV-102",
             "🔀 Critical path bottleneck (betweenness: 100%)",
             "📊 High centrality in dependency graph (PageRank: 100%)",
-            "🕐 No activity in 768 days - may need review",
+            "🕐 No activity in 778 days - may need review",
             "✅ Currently unclaimed - available for work",
             "⏳ Blocked by ADV-101 - complete that first",
             "🚨 High priority (P1) - prioritize this work"
           ],
-          "score": 0.5606865127099961,
+          "score": 0.5606854205793845,
           "status": "blocked",
           "title": "Cycle gamma",
           "type": "task",
@@ -312,12 +312,12 @@
             "pagerank_norm": 1,
             "priority_boost": 0.07500000000000001,
             "priority_boost_norm": 0.75,
-            "risk": 0.006123582956556642,
+            "risk": 0.006122022936279729,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.06123582956556641,
+            "risk_norm": 0.06122022936279728,
             "risk_signals": {
-              "activity_churn": 0.004119431885221389,
-              "composite_risk": 0.06123582956556641,
+              "activity_churn": 0.004067431209324283,
+              "composite_risk": 0.06122022936279728,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -329,7 +329,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 180m",
             "time_to_impact_norm": 0.1875,
             "urgency": 0.05,
-            "urgency_explanation": "aging (777 days)",
+            "urgency_explanation": "aging (787 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-102",
@@ -342,12 +342,12 @@
             "🔓 Unblocks 1 item(s): ADV-101",
             "🔀 Critical path bottleneck (betweenness: 100%)",
             "📊 High centrality in dependency graph (PageRank: 100%)",
-            "🕐 No activity in 768 days - may need review",
+            "🕐 No activity in 778 days - may need review",
             "✅ Currently unclaimed - available for work",
             "⏳ Blocked by ADV-103 - complete that first",
             "🚨 High priority (P1) - prioritize this work"
           ],
-          "score": 0.5549115080695898,
+          "score": 0.5549104160553959,
           "status": "open",
           "title": "Cycle beta",
           "type": "task",
@@ -369,12 +369,12 @@
             "pagerank_norm": 1,
             "priority_boost": 0.07500000000000001,
             "priority_boost_norm": 0.75,
-            "risk": 0.006123576328115675,
+            "risk": 0.006122016474123284,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.06123576328115674,
+            "risk_norm": 0.06122016474123284,
             "risk_signals": {
-              "activity_churn": 0.004119210937189142,
-              "composite_risk": 0.06123576328115674,
+              "activity_churn": 0.004067215804109483,
+              "composite_risk": 0.06122016474123284,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -386,7 +386,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 180m",
             "time_to_impact_norm": 0.1875,
             "urgency": 0.05,
-            "urgency_explanation": "aging (777 days)",
+            "urgency_explanation": "aging (787 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-101",
@@ -399,12 +399,12 @@
             "🔓 Unblocks 1 item(s): ADV-103",
             "🔀 Critical path bottleneck (betweenness: 100%)",
             "📊 High centrality in dependency graph (PageRank: 100%)",
-            "🕐 No activity in 768 days - may need review",
+            "🕐 No activity in 778 days - may need review",
             "✅ Currently unclaimed - available for work",
             "⏳ Blocked by ADV-102 - complete that first",
             "🚨 High priority (P1) - prioritize this work"
           ],
-          "score": 0.5549115034296811,
+          "score": 0.5549104115318864,
           "status": "open",
           "title": "Cycle alpha",
           "type": "task",
@@ -423,12 +423,12 @@
             "pagerank_norm": 0.27750311722943477,
             "priority_boost": 0.07500000000000001,
             "priority_boost_norm": 0.75,
-            "risk": 0.006123091150911459,
+            "risk": 0.006121535443803203,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.06123091150911459,
+            "risk_norm": 0.061215354438032034,
             "risk_signals": {
-              "activity_churn": 0.004103038363715299,
-              "composite_risk": 0.06123091150911459,
+              "activity_churn": 0.004051181460106786,
+              "composite_risk": 0.061215354438032034,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -440,7 +440,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 300m",
             "time_to_impact_norm": 0.11249999999999999,
             "urgency": 0.05,
-            "urgency_explanation": "aging (776 days)",
+            "urgency_explanation": "aging (786 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-104",
@@ -451,12 +451,12 @@
           "priority": 1,
           "reasons": [
             "🔓 Unblocks 1 item(s): ADV-107",
-            "🕐 No activity in 767 days - may need review",
+            "🕐 No activity in 777 days - may need review",
             "⚡ Low effort, high impact - good starting point",
             "✅ Currently unclaimed - available for work",
             "🚨 High priority (P1) - prioritize this work"
           ],
-          "score": 0.3559102104001791,
+          "score": 0.355908888049137,
           "status": "open",
           "title": "Flaky test suite reopened",
           "type": "bug",
@@ -475,12 +475,12 @@
             "pagerank_norm": 0.27750311722943477,
             "priority_boost": 0.1,
             "priority_boost_norm": 1,
-            "risk": 0.016125667255992165,
+            "risk": 0.016124083022631575,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.16125667255992163,
+            "risk_norm": 0.16124083022631575,
             "risk_signals": {
-              "activity_churn": 0.004188908533071971,
-              "composite_risk": 0.16125667255992163,
+              "activity_churn": 0.0041361007543857615,
+              "composite_risk": 0.16124083022631575,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -492,7 +492,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 720m",
             "time_to_impact_norm": 0,
             "urgency": 0.05,
-            "urgency_explanation": "aging (778 days)",
+            "urgency_explanation": "aging (788 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-100",
@@ -503,11 +503,11 @@
           "priority": 0,
           "reasons": [
             "🔓 Unblocks 1 item(s): ADV-109",
-            "🕐 No activity in 769 days - may need review",
+            "🕐 No activity in 779 days - may need review",
             "🚧 In progress - already being worked",
             "🚨 High priority (P0) - prioritize this work"
           ],
-          "score": 0.3150234471325275,
+          "score": 0.315022338169175,
           "status": "in_progress",
           "title": "Core orchestration rewrite",
           "type": "feature",
@@ -529,12 +529,12 @@
             "pagerank_norm": 0.150001442001704,
             "priority_boost": 0.1,
             "priority_boost_norm": 1,
-            "risk": 0.018093687672124156,
+            "risk": 0.01809250056408323,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.18093687672124156,
+            "risk_norm": 0.18092500564083228,
             "risk_signals": {
-              "activity_churn": 0.003122922404138475,
-              "composite_risk": 0.18093687672124156,
+              "activity_churn": 0.0030833521361075264,
+              "composite_risk": 0.18092500564083228,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -546,7 +546,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 210m",
             "time_to_impact_norm": 0.16874999999999998,
             "urgency": 0.05,
-            "urgency_explanation": "aging (774 days)",
+            "urgency_explanation": "aging (784 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-107",
@@ -556,12 +556,12 @@
           ],
           "priority": 0,
           "reasons": [
-            "🕐 No activity in 767 days - may need review",
+            "🕐 No activity in 777 days - may need review",
             "✅ Currently unclaimed - available for work",
             "⏳ Blocked by ADV-104 - complete that first",
             "🚨 High priority (P0) - prioritize this work"
           ],
-          "score": 0.21437520392999923,
+          "score": 0.2143742542435665,
           "status": "blocked",
           "title": "Release gate depends on reopened tests",
           "type": "task"
@@ -577,12 +577,12 @@
             "pagerank_norm": 0.150001442001704,
             "priority_boost": 0.05,
             "priority_boost_norm": 0.5,
-            "risk": 0.0061084083852300415,
+            "risk": 0.00610703650270501,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.061084083852300415,
+            "risk_norm": 0.0610703650270501,
             "risk_signals": {
-              "activity_churn": 0.003613612841001387,
-              "composite_risk": 0.061084083852300415,
+              "activity_churn": 0.0035678834235003476,
+              "composite_risk": 0.0610703650270501,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -594,7 +594,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 150m",
             "time_to_impact_norm": 0.20625,
             "urgency": 0.05,
-            "urgency_explanation": "aging (775 days)",
+            "urgency_explanation": "aging (785 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-105",
@@ -605,10 +605,10 @@
           ],
           "priority": 2,
           "reasons": [
-            "🕐 No activity in 767 days - may need review",
+            "🕐 No activity in 777 days - may need review",
             "✅ Currently unclaimed - available for work"
           ],
-          "score": 0.17827366678176415,
+          "score": 0.17827250068161787,
           "status": "open",
           "title": "API label normalization",
           "type": "task"
@@ -627,12 +627,12 @@
             "pagerank_norm": 0.150001442001704,
             "priority_boost": 0.07500000000000001,
             "priority_boost_norm": 0.75,
-            "risk": 0.01606413181366633,
+            "risk": 0.01606331712637146,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.1606413181366633,
+            "risk_norm": 0.1606331712637146,
             "risk_signals": {
-              "activity_churn": 0.002137727122210865,
-              "composite_risk": 0.1606413181366633,
+              "activity_churn": 0.0021105708790485765,
+              "composite_risk": 0.1606331712637146,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -644,7 +644,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 360m",
             "time_to_impact_norm": 0.075,
             "urgency": 0.05,
-            "urgency_explanation": "aging (772 days)",
+            "urgency_explanation": "aging (782 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-109",
@@ -654,12 +654,12 @@
           ],
           "priority": 1,
           "reasons": [
-            "🕐 No activity in 767 days - may need review",
+            "🕐 No activity in 777 days - may need review",
             "🚧 In progress - already being worked",
             "⏳ Blocked by ADV-100 - complete that first",
             "🚨 High priority (P1) - prioritize this work"
           ],
-          "score": 0.16209511433782883,
+          "score": 0.16209454405672244,
           "status": "in_progress",
           "title": "Telemetry backfill",
           "type": "feature"
@@ -675,12 +675,12 @@
             "pagerank_norm": 0.150001442001704,
             "priority_boost": 0.025,
             "priority_boost_norm": 0.25,
-            "risk": 0.0060789288642914795,
+            "risk": 0.006077927486144866,
             "risk_explanation": "Low risk - stable dependency structure",
-            "risk_norm": 0.060789288642914795,
+            "risk_norm": 0.06077927486144866,
             "risk_signals": {
-              "activity_churn": 0.0026309621430493247,
-              "composite_risk": 0.060789288642914795,
+              "activity_churn": 0.002597582871495522,
+              "composite_risk": 0.06077927486144866,
               "cross_repo_risk": 0,
               "explanation": "Low risk - stable dependency structure",
               "fan_variance": 0,
@@ -692,7 +692,7 @@
             "time_to_impact_explanation": "Leaf node, explicit estimate 90m",
             "time_to_impact_norm": 0.24375,
             "urgency": 0.05,
-            "urgency_explanation": "aging (773 days)",
+            "urgency_explanation": "aging (783 days)",
             "urgency_norm": 0.5
           },
           "id": "ADV-108",
@@ -701,10 +701,10 @@
           ],
           "priority": 3,
           "reasons": [
-            "🕐 No activity in 767 days - may need review",
+            "🕐 No activity in 777 days - may need review",
             "✅ Currently unclaimed - available for work"
           ],
-          "score": 0.1601861091889664,
+          "score": 0.16018525801754174,
           "status": "open",
           "title": "UI validation edge case",
           "type": "bug"
@@ -751,7 +751,7 @@
       "PageRankTimeout": 2000000000
     },
     "data_hash": "82d68356fe1cc926",
-    "generated_at": "2026-02-18T05:20:50Z",
+    "generated_at": "2026-02-28T03:41:46Z",
     "plan": {
       "summary": {
         "highest_impact": "ADV-100",
@@ -842,14 +842,14 @@
         "state": "skipped"
       },
       "KCore": {
-        "ms": 0.029194,
+        "ms": 0.043251,
         "state": "computed"
       },
       "PageRank": {
         "state": "skipped"
       },
       "Slack": {
-        "ms": 0.000071,
+        "ms": 0.00007,
         "state": "computed"
       }
     },
@@ -1433,41 +1433,41 @@
       },
       "slack": null
     },
-    "generated_at": "2026-02-18T05:20:50Z",
+    "generated_at": "2026-02-28T03:41:46Z",
     "status": {
       "Articulation": {
         "state": "computed"
       },
       "Betweenness": {
-        "ms": 0.016231,
+        "ms": 0.023494,
         "state": "computed"
       },
       "Critical": {
-        "ms": 0.004769,
+        "ms": 0.00497,
         "state": "computed"
       },
       "Cycles": {
-        "ms": 0.017884,
+        "ms": 0.019707,
         "state": "computed"
       },
       "Eigenvector": {
-        "ms": 0.005801,
+        "ms": 0.006282,
         "state": "computed"
       },
       "HITS": {
-        "ms": 0.017473,
+        "ms": 0.019136,
         "state": "computed"
       },
       "KCore": {
-        "ms": 0.0055,
+        "ms": 0.013215,
         "state": "computed"
       },
       "PageRank": {
-        "ms": 0.048541,
+        "ms": 0.064411,
         "state": "computed"
       },
       "Slack": {
-        "ms": 0.00005,
+        "ms": 0.00007,
         "state": "computed"
       }
     },
@@ -1604,7 +1604,7 @@
     "filters": {
       "max_results": 10
     },
-    "generated_at": "2026-02-18T05:20:51Z",
+    "generated_at": "2026-02-28T03:41:46Z",
     "recommendations": [
       {
         "confidence": 1,
@@ -1613,7 +1613,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -1651,7 +1651,7 @@
             ]
           }
         },
-        "impact_score": 0.7581235895854392,
+        "impact_score": 0.7581220293983542,
         "issue_id": "ADV-103",
         "reasoning": [
           "High centrality in dependency graph",
@@ -1680,7 +1680,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -1718,7 +1718,7 @@
             ]
           }
         },
-        "impact_score": 0.7498735829562871,
+        "impact_score": 0.7498720229355134,
         "issue_id": "ADV-102",
         "reasoning": [
           "High centrality in dependency graph",
@@ -1747,7 +1747,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -1785,7 +1785,7 @@
             ]
           }
         },
-        "impact_score": 0.7498735763278462,
+        "impact_score": 0.749872016473357,
         "issue_id": "ADV-101",
         "reasoning": [
           "High centrality in dependency graph",
@@ -1814,7 +1814,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -1852,12 +1852,12 @@
             ]
           }
         },
-        "impact_score": 0.40717635304619404,
+        "impact_score": 0.40717476881232884,
         "issue_id": "ADV-100",
         "reasoning": [
           "Blocks 1 other item",
           "Stale for 30+ days",
-          "aging (778 days)"
+          "aging (788 days)"
         ],
         "suggested_priority": 2,
         "title": "Core orchestration rewrite",
@@ -1881,7 +1881,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -1919,12 +1919,12 @@
             ]
           }
         },
-        "impact_score": 0.38342377694111823,
+        "impact_score": 0.3834222212335145,
         "issue_id": "ADV-104",
         "reasoning": [
           "Blocks 1 other item",
           "Stale for 30+ days",
-          "aging (776 days)"
+          "aging (786 days)"
         ],
         "suggested_priority": 2,
         "title": "Flaky test suite reopened",
@@ -1948,7 +1948,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -1982,11 +1982,11 @@
             "transitive_unblocks": 0
           }
         },
-        "impact_score": 0.26796900491229386,
+        "impact_score": 0.26796781780387485,
         "issue_id": "ADV-107",
         "reasoning": [
           "Stale for 30+ days",
-          "aging (774 days)",
+          "aging (784 days)",
           "Zero slack on critical chain"
         ],
         "suggested_priority": 3,
@@ -2007,7 +2007,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -2041,11 +2041,11 @@
             "transitive_unblocks": 0
           }
         },
-        "impact_score": 0.2315644490539004,
+        "impact_score": 0.23156363436634608,
         "issue_id": "ADV-109",
         "reasoning": [
           "Stale for 30+ days",
-          "aging (772 days)",
+          "aging (782 days)",
           "Zero slack on critical chain"
         ],
         "suggested_priority": 3,
@@ -2066,7 +2066,7 @@
         "explanation": {
           "status": {
             "capped": false,
-            "computed_at": "2026-02-18T05:20:51Z",
+            "computed_at": "2026-02-28T03:41:46Z",
             "data_hash": "",
             "deterministic": true,
             "phase2_ready": true
@@ -2100,11 +2100,11 @@
             "transitive_unblocks": 0
           }
         },
-        "impact_score": 0.2097337256253678,
+        "impact_score": 0.2097323537424058,
         "issue_id": "ADV-105",
         "reasoning": [
           "Stale for 30+ days",
-          "aging (775 days)",
+          "aging (785 days)",
           "Zero slack on critical chain"
         ],
         "suggested_priority": 3,
@@ -2173,9 +2173,9 @@
         "confidence": 0.45,
         "estimated_days": 12.35897435897436,
         "estimated_minutes": 964,
-        "eta_date": "2026-03-02T08:57:46.492890297-05:00",
-        "eta_date_high": "2026-03-07T19:28:25.262121067-05:00",
-        "eta_date_low": "2026-02-24T22:27:07.723659528-05:00",
+        "eta_date": "2026-03-12T08:18:42.151818376-04:00",
+        "eta_date_high": "2026-03-17T18:49:20.921049146-04:00",
+        "eta_date_low": "2026-03-06T20:48:03.382587607-05:00",
         "factors": [
           "estimate: explicit (720m)",
           "type: feature×1.3",
@@ -2193,9 +2193,9 @@
         "confidence": 0.45,
         "estimated_days": 2.3461538461538463,
         "estimated_minutes": 183,
-        "eta_date": "2026-02-20T08:39:18.800582605-05:00",
-        "eta_date_high": "2026-02-21T09:25:50.185197989-05:00",
-        "eta_date_low": "2026-02-19T07:52:47.41596722-05:00",
+        "eta_date": "2026-03-02T07:00:14.459510684-05:00",
+        "eta_date_high": "2026-03-03T07:46:45.844126068-05:00",
+        "eta_date_low": "2026-03-01T06:13:43.074895299-05:00",
         "factors": [
           "estimate: explicit (180m)",
           "type: task×1.0",
@@ -2213,9 +2213,9 @@
         "confidence": 0.45,
         "estimated_days": 2.3461538461538463,
         "estimated_minutes": 183,
-        "eta_date": "2026-02-20T08:39:18.800582605-05:00",
-        "eta_date_high": "2026-02-21T09:25:50.185197989-05:00",
-        "eta_date_low": "2026-02-19T07:52:47.41596722-05:00",
+        "eta_date": "2026-03-02T07:00:14.459510684-05:00",
+        "eta_date_high": "2026-03-03T07:46:45.844126068-05:00",
+        "eta_date_low": "2026-03-01T06:13:43.074895299-05:00",
         "factors": [
           "estimate: explicit (180m)",
           "type: task×1.0",
@@ -2233,9 +2233,9 @@
         "confidence": 0.45,
         "estimated_days": 3.128205128205128,
         "estimated_minutes": 244,
-        "eta_date": "2026-02-21T03:25:28.031351836-05:00",
-        "eta_date_high": "2026-02-22T12:27:29.877505682-05:00",
-        "eta_date_low": "2026-02-19T18:23:26.185197989-05:00",
+        "eta_date": "2026-03-03T01:46:23.690279915-05:00",
+        "eta_date_high": "2026-03-04T10:48:25.536433761-05:00",
+        "eta_date_low": "2026-03-01T16:44:21.844126068-05:00",
         "factors": [
           "estimate: explicit (240m)",
           "type: task×1.0",
@@ -2253,9 +2253,9 @@
         "confidence": 0.45,
         "estimated_days": 3.923076923076923,
         "estimated_minutes": 306,
-        "eta_date": "2026-02-21T22:30:04.954428759-05:00",
-        "eta_date_high": "2026-02-23T15:55:44.646736451-05:00",
-        "eta_date_low": "2026-02-20T05:04:25.262121066-05:00",
+        "eta_date": "2026-03-03T20:51:00.613356838-05:00",
+        "eta_date_high": "2026-03-05T14:16:40.30566453-05:00",
+        "eta_date_low": "2026-03-02T03:25:20.921049145-05:00",
         "factors": [
           "estimate: explicit (300m)",
           "type: bug×1.0",
@@ -2273,9 +2273,9 @@
         "confidence": 0.45,
         "estimated_days": 1.9615384615384615,
         "estimated_minutes": 153,
-        "eta_date": "2026-02-19T23:25:28.031351836-05:00",
-        "eta_date_high": "2026-02-20T20:08:17.877505682-05:00",
-        "eta_date_low": "2026-02-19T02:42:38.185197989-05:00",
+        "eta_date": "2026-03-01T21:46:23.690279915-05:00",
+        "eta_date_high": "2026-03-02T18:29:13.536433761-05:00",
+        "eta_date_low": "2026-03-01T01:03:33.844126068-05:00",
         "factors": [
           "estimate: explicit (150m)",
           "type: task×1.0",
@@ -2293,9 +2293,9 @@
         "confidence": 0.45,
         "estimated_days": 2.7564102564102564,
         "estimated_minutes": 215,
-        "eta_date": "2026-02-20T18:30:04.954428759-05:00",
-        "eta_date_high": "2026-02-21T23:36:32.646736451-05:00",
-        "eta_date_low": "2026-02-19T13:23:37.262121066-05:00",
+        "eta_date": "2026-03-02T16:51:00.613356838-05:00",
+        "eta_date_high": "2026-03-03T21:57:28.30566453-05:00",
+        "eta_date_low": "2026-03-01T11:44:32.921049145-05:00",
         "factors": [
           "estimate: explicit (210m)",
           "type: task×1.0",
@@ -2313,9 +2313,9 @@
         "confidence": 0.45,
         "estimated_days": 1.1794871794871795,
         "estimated_minutes": 92,
-        "eta_date": "2026-02-19T04:39:18.800582605-05:00",
-        "eta_date_high": "2026-02-19T17:06:38.185197989-05:00",
-        "eta_date_low": "2026-02-18T16:11:59.41596722-05:00",
+        "eta_date": "2026-03-01T03:00:14.459510684-05:00",
+        "eta_date_high": "2026-03-01T15:27:33.844126068-05:00",
+        "eta_date_low": "2026-02-28T14:32:55.074895299-05:00",
         "factors": [
           "estimate: explicit (90m)",
           "type: bug×1.0",
@@ -2333,9 +2333,9 @@
         "confidence": 0.45,
         "estimated_days": 6.128205128205129,
         "estimated_minutes": 478,
-        "eta_date": "2026-02-24T03:25:28.031351836-05:00",
-        "eta_date_high": "2026-02-26T20:08:17.877505682-05:00",
-        "eta_date_low": "2026-02-21T10:42:38.185197989-05:00",
+        "eta_date": "2026-03-06T01:46:23.690279915-05:00",
+        "eta_date_high": "2026-03-08T19:29:13.536433761-04:00",
+        "eta_date_low": "2026-03-03T09:03:33.844126068-05:00",
         "factors": [
           "estimate: explicit (360m)",
           "type: feature×1.3",
@@ -2349,12 +2349,12 @@
         "velocity_minutes_per_day": 39
       }
     ],
-    "generated_at": "2026-02-18T05:20:51Z",
+    "generated_at": "2026-02-28T03:41:46Z",
     "output_format": "json",
     "summary": {
       "avg_confidence": 0.45000000000000007,
-      "earliest_eta": "2026-02-19T04:39:18.800582605-05:00",
-      "latest_eta": "2026-03-02T08:57:46.492890297-05:00",
+      "earliest_eta": "2026-03-01T03:00:14.459510684-05:00",
+      "latest_eta": "2026-03-12T08:18:42.151818376-04:00",
       "total_days": 5.870833333333334,
       "total_minutes": 2818
     },
@@ -2375,7 +2375,7 @@
     "critical_path_length": 2,
     "data_hash": "82d68356fe1cc926",
     "estimated_days": 3.9583333333333335,
-    "generated_at": "2026-02-18T05:20:51Z",
+    "generated_at": "2026-02-28T03:41:46Z",
     "open_issue_count": 9,
     "output_format": "json",
     "parallel_minutes": 1376,
@@ -2399,7 +2399,7 @@
     "critical_path_length": 2,
     "data_hash": "82d68356fe1cc926",
     "estimated_days": 3.3229166666666665,
-    "generated_at": "2026-02-18T05:20:51Z",
+    "generated_at": "2026-02-28T03:41:46Z",
     "label": "backend",
     "open_issue_count": 3,
     "output_format": "json",
@@ -2413,7 +2413,7 @@
   "history": {
     "commit_index": {},
     "data_hash": "c07f594ed0b9",
-    "generated_at": "2026-02-18T05:20:51.199528329Z",
+    "generated_at": "2026-02-28T03:41:46.915944941Z",
     "git_range": "limit 20 commits",
     "histories": {
       "ADV-100": {
@@ -2426,9 +2426,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-100",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2438,9 +2438,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-100",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "in_progress",
@@ -2456,9 +2456,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-101",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2468,9 +2468,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-101",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "open",
@@ -2486,9 +2486,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-102",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2498,9 +2498,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-102",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "open",
@@ -2516,9 +2516,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-103",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2528,9 +2528,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-103",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "blocked",
@@ -2546,9 +2546,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-104",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2558,9 +2558,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-104",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "open",
@@ -2576,9 +2576,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-105",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2588,9 +2588,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-105",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "open",
@@ -2606,9 +2606,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-106",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2618,9 +2618,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-106",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "closed",
@@ -2636,9 +2636,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-107",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2648,9 +2648,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-107",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "blocked",
@@ -2666,9 +2666,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-108",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2678,9 +2678,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-108",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "open",
@@ -2696,9 +2696,9 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-109",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         ],
         "last_author": "Conformance Bot",
@@ -2708,16 +2708,16 @@
             "author_email": "conformance@example.com",
             "bead_id": "ADV-109",
             "commit_message": "update snapshot",
-            "commit_sha": "db22250c71a1a5304fcdee57197098596b384dcc",
+            "commit_sha": "6cdcdfb079338d531e1fd607f9855a83c9b56508",
             "event_type": "created",
-            "timestamp": "2026-02-18T00:20:49-05:00"
+            "timestamp": "2026-02-27T22:41:44-05:00"
           }
         },
         "status": "in_progress",
         "title": "Telemetry backfill"
       }
     },
-    "latest_commit_sha": "61d49d182e0db6d334691c5774c146c2b34c8657",
+    "latest_commit_sha": "6448045c5d18159613f948865531d1251ac0aa8c",
     "stats": {
       "avg_commits_per_bead": 0,
       "beads_with_commits": 0,
@@ -2730,7 +2730,7 @@
   "diff": {
     "diff": {
       "closed_issues": null,
-      "from_revision": "61d49d182e0db6d334691c5774c146c2b34c8657",
+      "from_revision": "6448045c5d18159613f948865531d1251ac0aa8c",
       "from_timestamp": "0001-01-01T00:00:00Z",
       "metric_deltas": {
         "avg_betweenness": 1,
@@ -3007,11 +3007,380 @@
         "net_issue_change": 8,
         "total_changes": 12
       },
-      "to_timestamp": "2026-02-18T00:20:51.240018004-05:00"
+      "to_timestamp": "2026-02-27T22:41:47.01149314-05:00"
     },
     "from_data_hash": "60a8d727931c6bfe",
-    "generated_at": "2026-02-18T05:20:51Z",
-    "resolved_revision": "61d49d182e0db6d334691c5774c146c2b34c8657",
+    "generated_at": "2026-02-28T03:41:47Z",
+    "resolved_revision": "6448045c5d18159613f948865531d1251ac0aa8c",
     "to_data_hash": "82d68356fe1cc926"
+  },
+  "burndown": null,
+  "next": {
+    "claim_command": "br update ADV-104 --status=in_progress",
+    "data_hash": "82d68356fe1cc926",
+    "generated_at": "2026-02-28T03:41:47Z",
+    "id": "ADV-104",
+    "output_format": "json",
+    "reasons": [
+      "🔓 Unblocks 1 item(s): ADV-107",
+      "🕐 No activity in 777 days - may need review",
+      "⚡ Low effort, high impact - good starting point",
+      "✅ Currently unclaimed - available for work",
+      "🚨 High priority (P1) - prioritize this work"
+    ],
+    "score": 0.35590888804747783,
+    "show_command": "br show ADV-104",
+    "title": "Flaky test suite reopened",
+    "unblocks": 1,
+    "version": "v0.14.4"
+  },
+  "graph": {
+    "adjacency": {
+      "edges": [
+        {
+          "from": "ADV-101",
+          "to": "ADV-102",
+          "type": "blocks"
+        },
+        {
+          "from": "ADV-102",
+          "to": "ADV-103",
+          "type": "blocks"
+        },
+        {
+          "from": "ADV-103",
+          "to": "ADV-101",
+          "type": "blocks"
+        },
+        {
+          "from": "ADV-107",
+          "to": "ADV-104",
+          "type": "blocks"
+        },
+        {
+          "from": "ADV-108",
+          "to": "ADV-105",
+          "type": "related"
+        },
+        {
+          "from": "ADV-109",
+          "to": "ADV-100",
+          "type": "blocks"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "ADV-100",
+          "labels": [
+            "core",
+            "backend"
+          ],
+          "pagerank": 0.06446045309941353,
+          "priority": 0,
+          "status": "in_progress",
+          "title": "Core orchestration rewrite"
+        },
+        {
+          "id": "ADV-101",
+          "labels": [
+            "cycle",
+            "graph"
+          ],
+          "pagerank": 0.23228731173538042,
+          "priority": 1,
+          "status": "open",
+          "title": "Cycle alpha"
+        },
+        {
+          "id": "ADV-102",
+          "labels": [
+            "cycle",
+            "graph"
+          ],
+          "pagerank": 0.23228731173538042,
+          "priority": 1,
+          "status": "open",
+          "title": "Cycle beta"
+        },
+        {
+          "id": "ADV-103",
+          "labels": [
+            "cycle",
+            "graph"
+          ],
+          "pagerank": 0.23228731173538042,
+          "priority": 1,
+          "status": "blocked",
+          "title": "Cycle gamma"
+        },
+        {
+          "id": "ADV-104",
+          "labels": [
+            "qa",
+            "reopened"
+          ],
+          "pagerank": 0.06446045309941353,
+          "priority": 1,
+          "status": "open",
+          "title": "Flaky test suite reopened"
+        },
+        {
+          "id": "ADV-105",
+          "labels": [
+            "API",
+            "api",
+            "backend"
+          ],
+          "pagerank": 0.034843431719006404,
+          "priority": 2,
+          "status": "open",
+          "title": "API label normalization"
+        },
+        {
+          "id": "ADV-106",
+          "labels": [
+            "maintenance"
+          ],
+          "pagerank": 0.034843431719006404,
+          "priority": 2,
+          "status": "closed",
+          "title": "Old migration cleanup"
+        },
+        {
+          "id": "ADV-107",
+          "labels": [
+            "release",
+            "qa"
+          ],
+          "pagerank": 0.034843431719006404,
+          "priority": 0,
+          "status": "blocked",
+          "title": "Release gate depends on reopened tests"
+        },
+        {
+          "id": "ADV-108",
+          "labels": [
+            "frontend"
+          ],
+          "pagerank": 0.034843431719006404,
+          "priority": 3,
+          "status": "open",
+          "title": "UI validation edge case"
+        },
+        {
+          "id": "ADV-109",
+          "labels": [
+            "analytics",
+            "backend"
+          ],
+          "pagerank": 0.034843431719006404,
+          "priority": 1,
+          "status": "in_progress",
+          "title": "Telemetry backfill"
+        }
+      ]
+    },
+    "data_hash": "82d68356fe1cc926",
+    "edges": 6,
+    "explanation": {
+      "what": "Dependency graph as JSON adjacency list",
+      "when_to_use": "When you need programmatic access to the graph structure"
+    },
+    "format": "json",
+    "nodes": 10
+  },
+  "graph_dot": "{\"format\":\"dot\",\"graph\":\"digraph G {\\n    rankdir=LR;\\n    node [shape=box, fontname=\\\"Helvetica\\\", fontsize=10];\\n    edge [fontname=\\\"Helvetica\\\", fontsize=8];\\n\\n    \\\"ADV-100\\\" [label=\\\"ADV-100\\\\nCore orchestration rewrite\\\\nP0 in_progress\\\", fillcolor=\\\"#BBDEFB\\\", style=filled, penwidth=1.2];\\n    \\\"ADV-101\\\" [label=\\\"ADV-101\\\\nCycle alpha\\\\nP1 open\\\", fillcolor=\\\"#C8E6C9\\\", style=filled, penwidth=1.7];\\n    \\\"ADV-102\\\" [label=\\\"ADV-102\\\\nCycle beta\\\\nP1 open\\\", fillcolor=\\\"#C8E6C9\\\", style=filled, penwidth=1.7];\\n    \\\"ADV-103\\\" [label=\\\"ADV-103\\\\nCycle gamma\\\\nP1 blocked\\\", fillcolor=\\\"#FFCDD2\\\", style=filled, penwidth=1.7];\\n    \\\"ADV-104\\\" [label=\\\"ADV-104\\\\nFlaky test suite reopened\\\\nP1 open\\\", fillcolor=\\\"#C8E6C9\\\", style=filled, penwidth=1.2];\\n    \\\"ADV-105\\\" [label=\\\"ADV-105\\\\nAPI label normalization\\\\nP2 open\\\", fillcolor=\\\"#C8E6C9\\\", style=filled, penwidth=1.1];\\n    \\\"ADV-106\\\" [label=\\\"ADV-106\\\\nOld migration cleanup\\\\nP2 closed\\\", fillcolor=\\\"#CFD8DC\\\", style=filled, penwidth=1.1];\\n    \\\"ADV-107\\\" [label=\\\"ADV-107\\\\nRelease gate depends on reo...\\\\nP0 blocked\\\", fillcolor=\\\"#FFCDD2\\\", style=filled, penwidth=1.1];\\n    \\\"ADV-108\\\" [label=\\\"ADV-108\\\\nUI validation edge case\\\\nP3 open\\\", fillcolor=\\\"#C8E6C9\\\", style=filled, penwidth=1.1];\\n    \\\"ADV-109\\\" [label=\\\"ADV-109\\\\nTelemetry backfill\\\\nP1 in_progress\\\", fillcolor=\\\"#BBDEFB\\\", style=filled, penwidth=1.1];\\n\\n    \\\"ADV-101\\\" -\\u003e \\\"ADV-102\\\" [style=bold, color=\\\"#E53935\\\"];\\n    \\\"ADV-102\\\" -\\u003e \\\"ADV-103\\\" [style=bold, color=\\\"#E53935\\\"];\\n    \\\"ADV-103\\\" -\\u003e \\\"ADV-101\\\" [style=bold, color=\\\"#E53935\\\"];\\n    \\\"ADV-107\\\" -\\u003e \\\"ADV-104\\\" [style=bold, color=\\\"#E53935\\\"];\\n    \\\"ADV-108\\\" -\\u003e \\\"ADV-105\\\" [style=dashed, color=\\\"#999999\\\"];\\n    \\\"ADV-109\\\" -\\u003e \\\"ADV-100\\\" [style=bold, color=\\\"#E53935\\\"];\\n}\\n\",\"nodes\":10,\"edges\":6,\"explanation\":{\"what\":\"Dependency graph in Graphviz DOT format\",\"how_to_render\":\"Save to file.dot, run: dot -Tpng file.dot -o graph.png\",\"when_to_use\":\"When you need a visual overview of dependencies for documentation or debugging\"},\"data_hash\":\"82d68356fe1cc926\"}\n",
+  "graph_mermaid": "{\"format\":\"mermaid\",\"graph\":\"graph TD\\n    classDef open fill:#50FA7B,stroke:#333,color:#000\\n    classDef inprogress fill:#8BE9FD,stroke:#333,color:#000\\n    classDef blocked fill:#FF5555,stroke:#333,color:#000\\n    classDef closed fill:#6272A4,stroke:#333,color:#fff\\n\\n    ADV-100[\\\"ADV-100\\u003cbr/\\u003eCore orchestration rewrite\\\"]\\n    class ADV-100 inprogress\\n    ADV-101[\\\"ADV-101\\u003cbr/\\u003eCycle alpha\\\"]\\n    class ADV-101 open\\n    ADV-102[\\\"ADV-102\\u003cbr/\\u003eCycle beta\\\"]\\n    class ADV-102 open\\n    ADV-103[\\\"ADV-103\\u003cbr/\\u003eCycle gamma\\\"]\\n    class ADV-103 blocked\\n    ADV-104[\\\"ADV-104\\u003cbr/\\u003eFlaky test suite reopened\\\"]\\n    class ADV-104 open\\n    ADV-105[\\\"ADV-105\\u003cbr/\\u003eAPI label normalization\\\"]\\n    class ADV-105 open\\n    ADV-106[\\\"ADV-106\\u003cbr/\\u003eOld migration cleanup\\\"]\\n    class ADV-106 closed\\n    ADV-107[\\\"ADV-107\\u003cbr/\\u003eRelease gate depends on reopened tests\\\"]\\n    class ADV-107 blocked\\n    ADV-108[\\\"ADV-108\\u003cbr/\\u003eUI validation edge case\\\"]\\n    class ADV-108 open\\n    ADV-109[\\\"ADV-109\\u003cbr/\\u003eTelemetry backfill\\\"]\\n    class ADV-109 inprogress\\n\\n    ADV-101 ==\\u003e ADV-102\\n    ADV-102 ==\\u003e ADV-103\\n    ADV-103 ==\\u003e ADV-101\\n    ADV-107 ==\\u003e ADV-104\\n    ADV-108 -.-\\u003e ADV-105\\n    ADV-109 ==\\u003e ADV-100\\n\",\"nodes\":10,\"edges\":6,\"explanation\":{\"what\":\"Dependency graph in Mermaid diagram format\",\"how_to_render\":\"Paste into any Markdown renderer that supports Mermaid, or use mermaid.live\",\"when_to_use\":\"When you need an embeddable diagram for documentation or GitHub issues\"},\"data_hash\":\"82d68356fe1cc926\"}\n",
+  "suggest": {
+    "data_hash": "82d68356fe1cc926",
+    "filters": {},
+    "generated_at": "2026-02-28T03:41:47Z",
+    "suggestions": {
+      "data_hash": "82d68356fe1cc926",
+      "generated_at": "2026-02-27T22:41:47.299390432-05:00",
+      "stats": {
+        "actionable_count": 1,
+        "by_confidence": {
+          "high": 1
+        },
+        "by_type": {
+          "cycle_warning": 1
+        },
+        "high_confidence_count": 1,
+        "total": 1
+      },
+      "suggestions": [
+        {
+          "action_command": "br dep remove ADV-102 ADV-101",
+          "confidence": 0.9,
+          "generated_at": "2026-02-27T22:41:47.299382327-05:00",
+          "metadata": {
+            "cycle_length": 3,
+            "cycle_path": [
+              "ADV-101",
+              "ADV-103",
+              "ADV-102"
+            ]
+          },
+          "reason": "Cycle path: ADV-101 → ADV-103 → ADV-102 → ADV-101",
+          "related_bead": "ADV-103",
+          "summary": "Dependency cycle of 3 issues",
+          "target_bead": "ADV-101",
+          "type": "cycle_warning"
+        }
+      ]
+    },
+    "usage_hints": [
+      "jq '.suggestions.suggestions[:5]' - Top 5 suggestions by confidence",
+      "jq '.suggestions.suggestions[] | select(.type==\"potential_duplicate\")' - Filter duplicates",
+      "jq '.suggestions.suggestions[] | select(.confidence \u003e= 0.8)' - High-confidence only",
+      "jq '.suggestions.stats.by_type' - Count by suggestion type",
+      "jq '.suggestions.suggestions[].action_command' - All action commands",
+      "--suggest-type=dependency - Filter to dependency suggestions",
+      "--suggest-confidence=0.7 - Minimum confidence threshold",
+      "--suggest-bead=\u003cid\u003e - Suggestions for specific bead"
+    ]
+  },
+  "alerts": {
+    "alerts": [
+      {
+        "current_value": 1,
+        "delta": 1,
+        "details": [
+          "ADV-101 → ADV-103 → ADV-102 → ADV-101"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355702212Z",
+        "message": "1 new cycle(s) detected",
+        "severity": "critical",
+        "type": "new_cycle"
+      },
+      {
+        "details": [
+          "status=in_progress",
+          "last_update=2024-01-10T12:30:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-100",
+        "message": "Issue ADV-100 inactive for 780 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=open",
+          "last_update=2024-01-11T09:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-101",
+        "message": "Issue ADV-101 inactive for 779 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=open",
+          "last_update=2024-01-11T10:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-102",
+        "message": "Issue ADV-102 inactive for 779 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=blocked",
+          "last_update=2024-01-11T11:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-103",
+        "message": "Issue ADV-103 inactive for 779 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=open",
+          "last_update=2024-01-12T08:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-104",
+        "message": "Issue ADV-104 inactive for 778 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=open",
+          "last_update=2024-01-12T09:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-105",
+        "message": "Issue ADV-105 inactive for 778 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=blocked",
+          "last_update=2024-01-12T10:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-107",
+        "message": "Issue ADV-107 inactive for 778 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=open",
+          "last_update=2024-01-12T11:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-108",
+        "message": "Issue ADV-108 inactive for 778 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      },
+      {
+        "details": [
+          "status=in_progress",
+          "last_update=2024-01-12T12:00:00Z"
+        ],
+        "detected_at": "2026-02-28T03:41:47.355707893Z",
+        "issue_id": "ADV-109",
+        "message": "Issue ADV-109 inactive for 778 days",
+        "severity": "critical",
+        "type": "stale_issue"
+      }
+    ],
+    "data_hash": "82d68356fe1cc926",
+    "generated_at": "2026-02-28T03:41:47Z",
+    "output_format": "json",
+    "summary": {
+      "critical": 10,
+      "info": 0,
+      "total": 10,
+      "warning": 0
+    },
+    "usage_hints": [
+      "--severity=warning --alert-type=stale_issue   # stale warnings only",
+      "--alert-type=blocking_cascade                 # high-unblock opportunities",
+      "jq '.alerts | map(.issue_id)'                # list impacted issues"
+    ],
+    "version": "v0.14.4"
+  },
+  "help": null,
+  "sprint_list": null,
+  "sprint_show": null,
+  "metrics": {
+    "memory": {
+      "gc_cycles": 5,
+      "gc_pause_ms": 0.925233,
+      "goroutine_count": 1,
+      "heap_alloc_mb": 13.903602600097656,
+      "heap_objects_k": 10.048,
+      "heap_sys_mb": 22.25
+    }
   }
 }

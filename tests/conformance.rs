@@ -1,9 +1,11 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
 use assert_cmd::Command;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
+use tempfile::tempdir;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -46,6 +48,16 @@ fn run_bvr_json_from_path(flags: &[&str], beads_path: &std::path::Path) -> Value
 }
 
 fn run_bvr_json_in_dir(flags: &[&str], dir: &std::path::Path) -> Value {
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let mut command = Command::new(bvr_bin);
+    command.current_dir(dir);
+    command.args(flags);
+
+    let output = command.assert().success().get_output().stdout.clone();
+    serde_json::from_slice(&output).expect("valid JSON output")
+}
+
+fn run_bvr_json_in_dir_owned(flags: &[String], dir: &std::path::Path) -> Value {
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
     let mut command = Command::new(bvr_bin);
     command.current_dir(dir);
@@ -1705,10 +1717,494 @@ fn stress_deep_chain_appears_in_graph_depth() {
     assert_eq!(edges, 19);
 }
 
+#[test]
+fn workspace_robot_triage_namespaces_colliding_ids() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    let workspace_dir = root.join(".bv");
+    let api_beads = root.join("services/api/.beads");
+    let web_beads = root.join("apps/web/.beads");
+    fs::create_dir_all(&workspace_dir).expect("create .bv");
+    fs::create_dir_all(&api_beads).expect("create api .beads");
+    fs::create_dir_all(&web_beads).expect("create web .beads");
+
+    let workspace_config = workspace_dir.join("workspace.yaml");
+    fs::write(
+        &workspace_config,
+        "repos:\n  - name: api\n    path: services/api\n    prefix: api-\n  - name: web\n    path: apps/web\n    prefix: web-\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        api_beads.join("issues.jsonl"),
+        "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write api issues");
+    fs::write(
+        web_beads.join("issues.jsonl"),
+        "{\"id\":\"AUTH-1\",\"title\":\"Web Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write web issues");
+
+    let flags = vec![
+        "--robot-triage".to_string(),
+        "--workspace".to_string(),
+        workspace_config.to_string_lossy().to_string(),
+    ];
+    let output = run_bvr_json_in_dir_owned(&flags, root);
+
+    assert_eq!(output["triage"]["quick_ref"]["total_open"], 2);
+    let recommendation_ids = output["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations")
+        .iter()
+        .filter_map(|value| value["id"].as_str().map(ToOwned::to_owned))
+        .collect::<BTreeSet<_>>();
+    assert!(recommendation_ids.contains("api-AUTH-1"));
+    assert!(recommendation_ids.contains("web-AUTH-1"));
+}
+
+#[test]
+fn workspace_repo_filter_supports_prefix_and_source_repo_matching() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    let workspace_dir = root.join(".bv");
+    let backend_beads = root.join("services/backend/.beads");
+    let frontend_beads = root.join("apps/frontend/.beads");
+    fs::create_dir_all(&workspace_dir).expect("create .bv");
+    fs::create_dir_all(&backend_beads).expect("create backend .beads");
+    fs::create_dir_all(&frontend_beads).expect("create frontend .beads");
+
+    let workspace_config = workspace_dir.join("workspace.yaml");
+    fs::write(
+        &workspace_config,
+        "repos:\n  - name: backend\n    path: services/backend\n    prefix: be-\n  - name: frontend\n    path: apps/frontend\n    prefix: fe-\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        backend_beads.join("issues.jsonl"),
+        "{\"id\":\"AUTH-1\",\"title\":\"Backend Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write backend issues");
+    fs::write(
+        frontend_beads.join("issues.jsonl"),
+        "{\"id\":\"UI-1\",\"title\":\"Frontend UI\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write frontend issues");
+
+    let filtered_by_prefix = run_bvr_json_in_dir_owned(
+        &[
+            "--robot-triage".to_string(),
+            "--workspace".to_string(),
+            workspace_config.to_string_lossy().to_string(),
+            "--repo".to_string(),
+            "be".to_string(),
+        ],
+        root,
+    );
+    assert_eq!(filtered_by_prefix["triage"]["quick_ref"]["total_open"], 1);
+    assert_eq!(
+        filtered_by_prefix["triage"]["recommendations"][0]["id"],
+        "be-AUTH-1"
+    );
+
+    let filtered_by_source_repo = run_bvr_json_in_dir_owned(
+        &[
+            "--robot-triage".to_string(),
+            "--workspace".to_string(),
+            workspace_config.to_string_lossy().to_string(),
+            "--repo".to_string(),
+            "front".to_string(),
+        ],
+        root,
+    );
+    assert_eq!(
+        filtered_by_source_repo["triage"]["quick_ref"]["total_open"],
+        1
+    );
+    assert_eq!(
+        filtered_by_source_repo["triage"]["recommendations"][0]["id"],
+        "fe-UI-1"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Parity ledger: verify FEATURE_PARITY.md documents all bvr CLI flags
 // and that every implemented flag appears in the ledger.
 // ---------------------------------------------------------------------------
+
+// ── Extended fixture conformance tests (bd-33w.6.1) ─────────────────
+
+#[test]
+fn robot_next_conforms_to_fixture_core_fields() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr.json");
+    let actual = run_bvr_json(&["--robot-next"], "tests/testdata/minimal.jsonl");
+
+    let expected = &fixture["next"];
+
+    // next should return a single recommendation with these core fields
+    assert_eq!(actual["id"], expected["id"]);
+    assert!(!actual["title"].as_str().unwrap_or("").is_empty());
+    assert!(actual["score"].as_f64().is_some());
+
+    // data_hash should be present
+    assert!(actual["data_hash"].as_str().is_some());
+}
+
+#[test]
+fn robot_graph_json_conforms_to_fixture_core_fields() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr.json");
+    let actual = run_bvr_json(&["--robot-graph"], "tests/testdata/minimal.jsonl");
+
+    let expected = &fixture["graph"];
+
+    // Rust uses `nodes` as count and `adjacency.nodes` as array
+    let actual_node_count = actual["nodes"].as_u64().expect("nodes count");
+    let expected_nodes = expected["adjacency"]["nodes"]
+        .as_array()
+        .expect("fixture adjacency nodes");
+
+    assert_eq!(
+        usize::try_from(actual_node_count).unwrap(),
+        expected_nodes.len()
+    );
+
+    // Format field
+    assert_eq!(actual["format"].as_str(), Some("json"));
+}
+
+#[test]
+fn robot_graph_adversarial_conforms_to_fixture_node_count() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_adversarial.json");
+    let actual = run_bvr_json(
+        &["--robot-graph"],
+        "tests/testdata/adversarial_parity.jsonl",
+    );
+
+    let expected = &fixture["graph"];
+
+    let actual_node_count = actual["nodes"].as_u64().expect("nodes count");
+    let expected_nodes = expected["adjacency"]["nodes"]
+        .as_array()
+        .expect("fixture adjacency nodes");
+
+    assert_eq!(
+        usize::try_from(actual_node_count).unwrap(),
+        expected_nodes.len()
+    );
+}
+
+#[test]
+fn robot_suggest_conforms_to_fixture_core_structure() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_extended.json");
+    let actual = run_bvr_json(
+        &["--robot-suggest"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+
+    // Both should have a suggestions section and data_hash
+    assert!(actual["suggestions"].is_object() || actual["suggestions"].is_array());
+    assert!(actual["data_hash"].as_str().is_some());
+
+    let expected = &fixture["suggest"];
+    assert!(expected["data_hash"].as_str().is_some());
+}
+
+#[test]
+fn robot_alerts_conforms_to_fixture_core_fields() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_extended.json");
+    let actual = run_bvr_json(
+        &["--robot-alerts"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+
+    let expected = &fixture["alerts"];
+
+    // Both should have alerts array
+    let actual_alerts = actual["alerts"].as_array().expect("alerts array");
+    let expected_alerts = expected["alerts"].as_array().expect("fixture alerts array");
+
+    // Alert count should match
+    assert_eq!(actual_alerts.len(), expected_alerts.len());
+
+    // Each alert should have severity and message fields
+    for alert in actual_alerts {
+        assert!(
+            alert["severity"].as_str().is_some(),
+            "alert missing severity"
+        );
+        assert!(alert["message"].as_str().is_some(), "alert missing message");
+    }
+}
+
+#[test]
+fn robot_sprint_list_conforms_to_fixture_core_fields() {
+    let root = repo_root();
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_extended.json");
+    let expected = &fixture["sprint_list"];
+
+    // Set up temp dir with beads + sprints
+    let tmp = tempdir().expect("tempdir");
+    let repo_dir = tmp.path();
+    let beads_dir = repo_dir.join(".beads");
+    fs::create_dir_all(&beads_dir).expect("mkdir");
+
+    let beads_data = fs::read_to_string(root.join("tests/testdata/synthetic_complex.jsonl"))
+        .expect("read beads");
+    fs::write(beads_dir.join("beads.jsonl"), beads_data).expect("write beads");
+
+    let sprints_data = fs::read_to_string(root.join("tests/testdata/sprints_synthetic.jsonl"))
+        .expect("read sprints");
+    fs::write(beads_dir.join("sprints.jsonl"), sprints_data).expect("write sprints");
+
+    let actual = run_bvr_json_in_dir(&["--robot-sprint-list"], repo_dir);
+
+    // Sprint count should match
+    assert_eq!(
+        actual["sprint_count"].as_u64(),
+        expected["sprint_count"].as_u64()
+    );
+
+    // Both should have output_format
+    assert_eq!(actual["output_format"].as_str(), Some("json"));
+
+    // Sprints array should have same number of entries
+    let actual_sprints = actual["sprints"].as_array().expect("sprints array");
+    let expected_sprints = expected["sprints"]
+        .as_array()
+        .expect("fixture sprints array");
+    assert_eq!(actual_sprints.len(), expected_sprints.len());
+}
+
+#[test]
+fn robot_sprint_show_conforms_to_fixture_core_fields() {
+    let root = repo_root();
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_extended.json");
+    let expected = &fixture["sprint_show"];
+
+    let tmp = tempdir().expect("tempdir");
+    let repo_dir = tmp.path();
+    let beads_dir = repo_dir.join(".beads");
+    fs::create_dir_all(&beads_dir).expect("mkdir");
+
+    let beads_data = fs::read_to_string(root.join("tests/testdata/synthetic_complex.jsonl"))
+        .expect("read beads");
+    fs::write(beads_dir.join("beads.jsonl"), beads_data).expect("write beads");
+
+    let sprints_data = fs::read_to_string(root.join("tests/testdata/sprints_synthetic.jsonl"))
+        .expect("read sprints");
+    fs::write(beads_dir.join("sprints.jsonl"), sprints_data).expect("write sprints");
+
+    let actual = run_bvr_json_in_dir(&["--robot-sprint-show", "sprint-1"], repo_dir);
+
+    // Sprint object should have matching ID
+    let actual_sprint = &actual["sprint"];
+    let expected_sprint = &expected["sprint"];
+    assert_eq!(actual_sprint["id"], expected_sprint["id"]);
+
+    // output_format envelope
+    assert_eq!(actual["output_format"].as_str(), Some("json"));
+}
+
+#[test]
+fn robot_metrics_produces_valid_output() {
+    let actual = run_bvr_json(&["--robot-metrics"], "tests/testdata/minimal.jsonl");
+
+    // Metrics should have memory section with rss_mb
+    assert!(
+        actual["memory"].is_object(),
+        "metrics missing memory section"
+    );
+    assert!(
+        actual["memory"]["rss_mb"].as_f64().is_some(),
+        "metrics missing rss_mb"
+    );
+
+    // Envelope fields
+    assert_eq!(actual["output_format"].as_str(), Some("json"));
+    assert!(actual["version"].as_str().is_some());
+}
+
+#[test]
+fn robot_next_adversarial_returns_top_recommendation() {
+    let actual = run_bvr_json(&["--robot-next"], "tests/testdata/adversarial_parity.jsonl");
+
+    // Should always return a single recommendation
+    assert!(actual["id"].as_str().is_some(), "next missing id");
+    assert!(actual["score"].as_f64().is_some(), "next missing score");
+    assert!(
+        actual["reasons"].as_array().is_some(),
+        "next missing reasons"
+    );
+}
+
+// ── Coverage gap remediation (bd-33w.6.2) ────────────────────────────
+
+#[test]
+fn robot_priority_core_fields_match_legacy_fixture() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_extended.json");
+    let actual = run_bvr_json(
+        &["--robot-priority", "--robot-max-results", "10"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+
+    let expected = &fixture["priority"];
+
+    // Both should produce recommendations
+    let actual_recs = actual["recommendations"]
+        .as_array()
+        .expect("recommendations array");
+    let expected_recs = expected["recommendations"]
+        .as_array()
+        .expect("fixture recommendations array");
+
+    // Recommendation counts should match
+    assert_eq!(actual_recs.len(), expected_recs.len());
+
+    // First recommendation ID should match
+    if !actual_recs.is_empty() {
+        assert_eq!(actual_recs[0]["id"], expected_recs[0]["id"]);
+    }
+
+    // data_hash should be present
+    assert!(actual["data_hash"].as_str().is_some());
+}
+
+#[test]
+fn robot_priority_adversarial_handles_cycles_and_edge_cases() {
+    let actual = run_bvr_json(
+        &["--robot-priority", "--robot-max-results", "10"],
+        "tests/testdata/adversarial_parity.jsonl",
+    );
+
+    // Priority should still produce recommendations even with cycles
+    let recs = actual["recommendations"]
+        .as_array()
+        .expect("recommendations array");
+    assert!(
+        !recs.is_empty(),
+        "priority should produce recommendations despite cycles"
+    );
+
+    // Each rec should have required fields
+    for rec in recs {
+        assert!(rec["id"].as_str().is_some(), "rec missing id");
+        assert!(
+            rec["impact_score"].as_f64().is_some(),
+            "rec missing impact_score"
+        );
+    }
+}
+
+#[test]
+fn robot_insights_core_fields_match_legacy_fixture() {
+    let fixture = load_fixture("tests/conformance/fixtures/go_outputs/bvr_extended.json");
+    let actual = run_bvr_json(
+        &["--robot-insights"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+
+    let expected = &fixture["insights"];
+
+    // Both should have Bottlenecks array
+    let actual_bottlenecks = actual["Bottlenecks"].as_array().expect("Bottlenecks array");
+    let expected_bottlenecks = expected["Bottlenecks"]
+        .as_array()
+        .expect("fixture Bottlenecks array");
+    assert_eq!(actual_bottlenecks.len(), expected_bottlenecks.len());
+
+    // data_hash should match
+    assert_eq!(actual["data_hash"], expected["data_hash"]);
+}
+
+#[test]
+fn robot_insights_adversarial_detects_cycles() {
+    let actual = run_bvr_json(
+        &["--robot-insights"],
+        "tests/testdata/adversarial_parity.jsonl",
+    );
+
+    // Adversarial fixture has cycles
+    let cycles = actual["Cycles"].as_array().expect("Cycles array");
+    assert!(
+        !cycles.is_empty(),
+        "insights should detect cycles in adversarial data"
+    );
+}
+
+#[test]
+fn robot_sprint_list_adversarial_empty_sprints_returns_zero() {
+    // Test with no sprints file available (no .beads dir with sprints)
+    let actual = run_bvr_json(&["--robot-sprint-list"], "tests/testdata/minimal.jsonl");
+
+    assert_eq!(actual["sprint_count"].as_u64(), Some(0));
+    assert_eq!(
+        actual["sprints"].as_array().expect("sprints array").len(),
+        0
+    );
+    assert_eq!(actual["output_format"].as_str(), Some("json"));
+}
+
+#[test]
+fn robot_metrics_adversarial_with_large_fixture() {
+    let actual = run_bvr_json(
+        &["--robot-metrics"],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+
+    // Metrics should still work with large data
+    assert!(
+        actual["memory"].is_object(),
+        "metrics missing memory section"
+    );
+    assert!(
+        actual["memory"]["rss_mb"].as_f64().is_some(),
+        "metrics missing rss_mb"
+    );
+    assert_eq!(actual["output_format"].as_str(), Some("json"));
+}
+
+#[test]
+fn robot_graph_dot_format_contains_expected_markers() {
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/adversarial_parity.jsonl");
+
+    let mut command = Command::new(bvr_bin);
+    command.args(["--robot-graph", "--graph-format", "dot", "--beads-file"]);
+    command.arg(&beads_path);
+
+    let output = command.assert().success().get_output().stdout.clone();
+    let dot_text = String::from_utf8(output).expect("valid UTF-8");
+
+    assert!(
+        dot_text.contains("digraph"),
+        "DOT output should contain 'digraph'"
+    );
+    assert!(dot_text.contains("->"), "DOT output should contain edges");
+}
+
+#[test]
+fn robot_graph_mermaid_format_contains_expected_markers() {
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/adversarial_parity.jsonl");
+
+    let mut command = Command::new(bvr_bin);
+    command.args(["--robot-graph", "--graph-format", "mermaid", "--beads-file"]);
+    command.arg(&beads_path);
+
+    let output = command.assert().success().get_output().stdout.clone();
+    let mermaid_text = String::from_utf8(output).expect("valid UTF-8");
+
+    assert!(
+        mermaid_text.contains("graph"),
+        "Mermaid output should contain 'graph'"
+    );
+    assert!(
+        mermaid_text.contains("-->"),
+        "Mermaid output should contain edges"
+    );
+}
 
 #[test]
 fn parity_ledger_documents_all_implemented_bvr_flags() {
@@ -1757,8 +2253,19 @@ fn parity_ledger_documents_all_implemented_bvr_flags() {
         "--label",
         "--robot-triage-by-label",
         "--robot-triage-by-track",
+        "--workspace",
+        "--repo",
         "--format",
         "--beads-file",
+        "--robot-docs",
+        "--robot-schema",
+        "--schema-command",
+        "--stats",
+        "--robot-sprint-list",
+        "--robot-sprint-show",
+        "--robot-metrics",
+        "--as-of",
+        "--force-full-analysis",
     ];
 
     let mut missing = Vec::new();

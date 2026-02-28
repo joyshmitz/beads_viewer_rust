@@ -34,6 +34,18 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_help: bool,
 
+    #[arg(long)]
+    pub robot_docs: Option<String>,
+
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_schema: bool,
+
+    #[arg(long)]
+    pub schema_command: Option<String>,
+
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub stats: bool,
+
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_next: bool,
 
@@ -151,6 +163,12 @@ pub struct Cli {
     #[arg(long)]
     pub label: Option<String>,
 
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+
+    #[arg(short = 'r', long)]
+    pub repo: Option<String>,
+
     #[arg(long, hide = true)]
     pub beads_file: Option<PathBuf>,
 
@@ -178,5 +196,7 @@ impl Cli {
             || self.robot_forecast.is_some()
             || self.robot_capacity
             || self.bead_history.is_some()
+            || self.robot_docs.is_some()
+            || self.robot_schema
     }
 }

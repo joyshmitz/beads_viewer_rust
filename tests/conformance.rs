@@ -1713,8 +1713,7 @@ fn stress_deep_chain_appears_in_graph_depth() {
 #[test]
 fn parity_ledger_documents_all_implemented_bvr_flags() {
     let root = repo_root();
-    let parity_md =
-        fs::read_to_string(root.join("FEATURE_PARITY.md")).expect("FEATURE_PARITY.md");
+    let parity_md = fs::read_to_string(root.join("FEATURE_PARITY.md")).expect("FEATURE_PARITY.md");
 
     // Every flag that bvr currently exposes should appear somewhere in the ledger.
     let implemented_flags = [

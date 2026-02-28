@@ -18,7 +18,10 @@ use bvr::analysis::triage::TriageOptions;
 use bvr::analysis::{Analyzer, Insights, MetricStatus};
 use bvr::cli::{Cli, GraphFormat};
 use bvr::loader;
-use bvr::robot::{compute_data_hash, default_field_descriptions, emit, envelope};
+use bvr::robot::{
+    compute_data_hash, default_field_descriptions, emit_with_stats, envelope, generate_robot_docs,
+    generate_robot_schemas,
+};
 use chrono::{DateTime, Duration, Local, Utc};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
@@ -38,6 +41,51 @@ fn main() -> ExitCode {
 
     if cli.version {
         print_version();
+        return ExitCode::SUCCESS;
+    }
+
+    // --robot-schema and --robot-docs don't need issues loaded
+    if cli.robot_schema {
+        let schemas = generate_robot_schemas();
+
+        if let Some(cmd) = cli.schema_command.as_deref() {
+            if let Some(schema) = schemas.commands.get(cmd) {
+                let single = serde_json::json!({
+                    "schema_version": schemas.schema_version,
+                    "generated_at": schemas.generated_at,
+                    "command": cmd,
+                    "schema": schema,
+                });
+                if let Err(error) = emit_with_stats(cli.format, &single, cli.stats) {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(1);
+                }
+                return ExitCode::SUCCESS;
+            }
+            eprintln!("Unknown command: {cmd}");
+            eprintln!("Available commands:");
+            for name in schemas.commands.keys() {
+                eprintln!("  {name}");
+            }
+            return ExitCode::from(1);
+        }
+
+        if let Err(error) = emit_with_stats(cli.format, &schemas, cli.stats) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    if let Some(topic) = cli.robot_docs.as_deref() {
+        let docs = generate_robot_docs(topic);
+        if let Err(error) = emit_with_stats(cli.format, &docs, cli.stats) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+        if docs.get("error").is_some() {
+            return ExitCode::from(2);
+        }
         return ExitCode::SUCCESS;
     }
 
@@ -93,7 +141,7 @@ fn main() -> ExitCode {
                 }
             };
 
-            if let Err(error) = emit(cli.format, &result) {
+            if let Err(error) = emit_with_stats(cli.format, &result, cli.stats) {
                 eprintln!("error: {error}");
                 return ExitCode::from(1);
             }
@@ -112,7 +160,7 @@ fn main() -> ExitCode {
             ],
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -139,7 +187,7 @@ fn main() -> ExitCode {
             ],
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -160,7 +208,7 @@ fn main() -> ExitCode {
             ],
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -206,7 +254,7 @@ fn main() -> ExitCode {
             ],
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -233,7 +281,7 @@ fn main() -> ExitCode {
                 .filter(|value| !value.is_empty()),
         });
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -258,7 +306,7 @@ fn main() -> ExitCode {
         };
         let output = analyzer.suggest(&options);
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -268,7 +316,7 @@ fn main() -> ExitCode {
 
     if cli.robot_graph {
         let output = build_robot_graph_output(&issues, &analyzer, &cli);
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -309,7 +357,7 @@ fn main() -> ExitCode {
             diff,
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -326,7 +374,7 @@ fn main() -> ExitCode {
             }
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -343,7 +391,7 @@ fn main() -> ExitCode {
             }
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -354,7 +402,7 @@ fn main() -> ExitCode {
     if cli.robot_capacity {
         let output = build_robot_capacity_output(&issues, &cli);
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -463,7 +511,7 @@ fn main() -> ExitCode {
             version: format!("v{}", env!("CARGO_PKG_VERSION")),
         };
 
-        if let Err(error) = emit(cli.format, &output) {
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
@@ -2015,8 +2063,15 @@ fn print_robot_help() {
         "  --robot-forecast <id|all> ETA forecast (--forecast-label, --forecast-sprint, --forecast-agents)"
     );
     println!(
+        "  --robot-docs <topic>      Machine-readable docs (guide|commands|examples|env|exit-codes|all)"
+    );
+    println!(
+        "  --robot-schema            JSON Schema definitions for all commands (--schema-command <cmd>)"
+    );
+    println!(
         "  --format json|toon        Structured output format (toon compatibility mode for now)"
     );
+    println!("  --stats                   Show format token estimates on stderr");
 }
 
 #[derive(Debug, Serialize)]

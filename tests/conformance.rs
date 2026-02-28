@@ -1545,3 +1545,231 @@ fn robot_burndown_core_fields_match_legacy_fixture() {
     assert!(actual["generated_at"].as_str().is_some());
     assert!(actual["data_hash"].as_str().is_some());
 }
+
+// ---------------------------------------------------------------------------
+// Stress-test fixture: stress_complex_89.jsonl (89 issues)
+// Diamond deps, fan-out hub, cycles, mixed closed/open, deep chain,
+// independent islands, overlapping cycles.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn stress_triage_counts_and_top_recommendation() {
+    let actual = run_bvr_json(
+        &["--robot-triage"],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+    let qr = &actual["triage"]["quick_ref"];
+
+    // 9 issues are closed; 80 remain open/blocked
+    assert_eq!(qr["total_open"], 80);
+    // 24 actionable (not blocked or in a cycle)
+    assert_eq!(qr["total_actionable"], 24);
+    // Hub epic ST-011 should be #1 recommendation (unblocks 14)
+    let top = &qr["top_picks"][0];
+    assert_eq!(top["id"], "ST-011");
+    assert_eq!(top["unblocks"], 14);
+
+    let recs = actual["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations");
+    assert_eq!(recs.len(), 10);
+
+    let blockers = actual["triage"]["blockers_to_clear"]
+        .as_array()
+        .expect("blockers");
+    assert!(blockers.len() >= 10);
+}
+
+#[test]
+fn stress_insights_detects_both_cycle_components() {
+    let actual = run_bvr_json(
+        &["--robot-insights"],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+    let cycles = actual["insights"]["cycles"]
+        .as_array()
+        .expect("cycles array");
+    // Two independent cycle components: (026,027,028) and (084,085,086,087,088,089)
+    assert_eq!(cycles.len(), 2);
+
+    // Collect all cycle member IDs
+    let mut members: Vec<String> = cycles
+        .iter()
+        .flat_map(|c| c.as_array().unwrap())
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    members.sort();
+    members.dedup();
+    // 9 distinct cycle members total
+    assert_eq!(members.len(), 9);
+    assert!(members.contains(&"ST-026".to_string()));
+    assert!(members.contains(&"ST-086".to_string()));
+
+    let bottlenecks = actual["insights"]["bottlenecks"]
+        .as_array()
+        .expect("bottlenecks");
+    assert!(bottlenecks.len() >= 10);
+}
+
+#[test]
+fn stress_graph_reports_expected_node_and_edge_counts() {
+    let graph = run_bvr_json(
+        &["--robot-graph", "--graph-format", "json"],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+    assert_eq!(graph["nodes"], 89);
+    assert_eq!(graph["edges"], 65);
+}
+
+#[test]
+fn stress_plan_covers_all_actionable_tracks() {
+    let actual = run_bvr_json(&["--robot-plan"], "tests/testdata/stress_complex_89.jsonl");
+    let tracks = actual["plan"]["tracks"].as_array().expect("tracks array");
+    // Each actionable issue gets its own track
+    assert_eq!(tracks.len(), 24);
+
+    let summary = &actual["plan"]["summary"];
+    assert_eq!(summary["track_count"], 24);
+    assert_eq!(summary["actionable_count"], 24);
+}
+
+#[test]
+fn stress_suggest_cycle_yields_warnings_for_both_cycles() {
+    let actual = run_bvr_json(
+        &["--robot-suggest", "--suggest-type", "cycle"],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+    let suggestions = actual["suggestions"]["suggestions"]
+        .as_array()
+        .expect("cycle suggestions");
+    assert!(!suggestions.is_empty());
+    assert!(suggestions.iter().all(|s| s["type"] == "cycle_warning"));
+    // Cycle paths are in metadata.cycle_path and reason fields
+    let all_reason: String = suggestions
+        .iter()
+        .filter_map(|s| s["reason"].as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        all_reason.contains("ST-026") || all_reason.contains("ST-028"),
+        "expected 3-node cycle in reasons"
+    );
+    assert!(
+        all_reason.contains("ST-084") || all_reason.contains("ST-086"),
+        "expected 6-node overlapping cycle in reasons"
+    );
+}
+
+#[test]
+fn stress_graph_with_root_filter_limits_subgraph() {
+    // graph-root traverses upstream (dependency chain), so start from a
+    // leaf that has upstream deps. ST-010 is the diamond terminus.
+    let graph = run_bvr_json(
+        &[
+            "--robot-graph",
+            "--graph-format",
+            "json",
+            "--graph-root",
+            "ST-010",
+            "--graph-depth",
+            "3",
+        ],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+    let nodes = graph["nodes"].as_u64().unwrap();
+    assert!(
+        nodes >= 3,
+        "expected at least 3 nodes from ST-010, got {nodes}"
+    );
+    assert!(nodes < 89, "root filter should reduce from full 89");
+}
+
+#[test]
+fn stress_deep_chain_appears_in_graph_depth() {
+    // graph-root traverses upstream, so use a leaf node in the deep chain.
+    // ST-068 is the last in the chain (ST-049..ST-068 = 20 issues).
+    let graph = run_bvr_json(
+        &[
+            "--robot-graph",
+            "--graph-format",
+            "json",
+            "--graph-root",
+            "ST-068",
+        ],
+        "tests/testdata/stress_complex_89.jsonl",
+    );
+    let nodes = graph["nodes"].as_u64().unwrap();
+    // Full chain traversal from leaf to root: 20 issues
+    assert_eq!(nodes, 20);
+    let edges = graph["edges"].as_u64().unwrap();
+    assert_eq!(edges, 19);
+}
+
+// ---------------------------------------------------------------------------
+// Parity ledger: verify FEATURE_PARITY.md documents all bvr CLI flags
+// and that every implemented flag appears in the ledger.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parity_ledger_documents_all_implemented_bvr_flags() {
+    let root = repo_root();
+    let parity_md =
+        fs::read_to_string(root.join("FEATURE_PARITY.md")).expect("FEATURE_PARITY.md");
+
+    // Every flag that bvr currently exposes should appear somewhere in the ledger.
+    let implemented_flags = [
+        "--robot-help",
+        "--robot-next",
+        "--robot-triage",
+        "--robot-plan",
+        "--robot-insights",
+        "--robot-priority",
+        "--robot-diff",
+        "--diff-since",
+        "--robot-suggest",
+        "--suggest-type",
+        "--suggest-confidence",
+        "--suggest-bead",
+        "--robot-alerts",
+        "--alert-type",
+        "--alert-label",
+        "--severity",
+        "--robot-forecast",
+        "--forecast-label",
+        "--forecast-sprint",
+        "--forecast-agents",
+        "--robot-capacity",
+        "--agents",
+        "--capacity-label",
+        "--robot-burndown",
+        "--robot-history",
+        "--bead-history",
+        "--history-limit",
+        "--history-since",
+        "--min-confidence",
+        "--robot-graph",
+        "--graph-format",
+        "--graph-root",
+        "--graph-depth",
+        "--robot-max-results",
+        "--robot-min-confidence",
+        "--robot-by-label",
+        "--robot-by-assignee",
+        "--label",
+        "--robot-triage-by-label",
+        "--robot-triage-by-track",
+        "--format",
+        "--beads-file",
+    ];
+
+    let mut missing = Vec::new();
+    for flag in &implemented_flags {
+        if !parity_md.contains(&format!("`{flag}`")) {
+            missing.push(*flag);
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "FEATURE_PARITY.md is missing documentation for these bvr flags: {missing:?}"
+    );
+}

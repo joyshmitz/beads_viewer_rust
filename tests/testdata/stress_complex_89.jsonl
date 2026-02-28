@@ -1,0 +1,89 @@
+{"id":"ST-001","title":"Diamond apex","status":"open","priority":1,"issue_type":"epic"}
+{"id":"ST-002","title":"Diamond left branch","status":"open","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-001","type":"blocks"}]}
+{"id":"ST-003","title":"Diamond right branch","status":"open","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-001","type":"blocks"}]}
+{"id":"ST-004","title":"Diamond merge left","status":"blocked","priority":3,"issue_type":"task","dependencies":[{"depends_on_id":"ST-002","type":"blocks"},{"depends_on_id":"ST-003","type":"blocks"}]}
+{"id":"ST-005","title":"Diamond merge right","status":"blocked","priority":3,"issue_type":"task","dependencies":[{"depends_on_id":"ST-002","type":"blocks"},{"depends_on_id":"ST-003","type":"blocks"}]}
+{"id":"ST-006","title":"Diamond funnel","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-004","type":"blocks"},{"depends_on_id":"ST-005","type":"blocks"}]}
+{"id":"ST-007","title":"Diamond post-merge A","status":"blocked","priority":3,"issue_type":"task","dependencies":[{"depends_on_id":"ST-006","type":"blocks"}]}
+{"id":"ST-008","title":"Diamond post-merge B","status":"blocked","priority":3,"issue_type":"task","dependencies":[{"depends_on_id":"ST-006","type":"blocks"}]}
+{"id":"ST-009","title":"Diamond final merge","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-007","type":"blocks"},{"depends_on_id":"ST-008","type":"blocks"}]}
+{"id":"ST-010","title":"Diamond terminus","status":"blocked","priority":1,"issue_type":"task","dependencies":[{"depends_on_id":"ST-009","type":"blocks"}]}
+{"id":"ST-011","title":"Hub epic","status":"open","priority":1,"issue_type":"epic"}
+{"id":"ST-012","title":"Hub spoke 1","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-013","title":"Hub spoke 2","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-014","title":"Hub spoke 3","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-015","title":"Hub spoke 4","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-016","title":"Hub spoke 5","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-017","title":"Hub spoke 6","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-018","title":"Hub spoke 7","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-019","title":"Hub spoke 8","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-020","title":"Hub spoke 9","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-021","title":"Hub spoke 10","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-022","title":"Hub spoke 11","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-023","title":"Hub spoke 12","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-024","title":"Hub spoke 13","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-025","title":"Hub spoke 14","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-011","type":"blocks"}]}
+{"id":"ST-026","title":"Cycle node A","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-028","type":"blocks"}]}
+{"id":"ST-027","title":"Cycle node B","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-026","type":"blocks"}]}
+{"id":"ST-028","title":"Cycle node C","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-027","type":"blocks"}]}
+{"id":"ST-029","title":"Mixed item 1","status":"open","priority":1,"issue_type":"story"}
+{"id":"ST-030","title":"Mixed item 2","status":"blocked","priority":2,"issue_type":"task"}
+{"id":"ST-031","title":"Mixed item 3","status":"closed","priority":1,"issue_type":"story"}
+{"id":"ST-032","title":"Mixed item 4","status":"open","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-029","type":"blocks"}]}
+{"id":"ST-033","title":"Mixed item 5","status":"closed","priority":2,"issue_type":"story"}
+{"id":"ST-034","title":"Mixed item 6","status":"closed","priority":4,"issue_type":"story"}
+{"id":"ST-035","title":"Mixed item 7","status":"blocked","priority":1,"issue_type":"task"}
+{"id":"ST-036","title":"Mixed item 8","status":"open","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-030","type":"blocks"}]}
+{"id":"ST-037","title":"Mixed item 9","status":"open","priority":3,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-030","type":"blocks"}]}
+{"id":"ST-038","title":"Mixed item 10","status":"closed","priority":4,"issue_type":"story","dependencies":[{"depends_on_id":"ST-029","type":"blocks"}]}
+{"id":"ST-039","title":"Mixed item 11","status":"open","priority":4,"issue_type":"task"}
+{"id":"ST-040","title":"Mixed item 12","status":"closed","priority":3,"issue_type":"story","dependencies":[{"depends_on_id":"ST-039","type":"blocks"}]}
+{"id":"ST-041","title":"Mixed item 13","status":"closed","priority":1,"issue_type":"story"}
+{"id":"ST-042","title":"Mixed item 14","status":"closed","priority":1,"issue_type":"task"}
+{"id":"ST-043","title":"Mixed item 15","status":"open","priority":3,"issue_type":"task","dependencies":[{"depends_on_id":"ST-036","type":"blocks"}]}
+{"id":"ST-044","title":"Mixed item 16","status":"blocked","priority":3,"issue_type":"story","dependencies":[{"depends_on_id":"ST-039","type":"blocks"}]}
+{"id":"ST-045","title":"Mixed item 17","status":"open","priority":2,"issue_type":"story"}
+{"id":"ST-046","title":"Mixed item 18","status":"closed","priority":3,"issue_type":"story","dependencies":[{"depends_on_id":"ST-041","type":"blocks"}]}
+{"id":"ST-047","title":"Mixed item 19","status":"closed","priority":1,"issue_type":"task","dependencies":[{"depends_on_id":"ST-039","type":"blocks"}]}
+{"id":"ST-048","title":"Mixed item 20","status":"open","priority":4,"issue_type":"bug"}
+{"id":"ST-049","title":"Deep chain root","status":"open","priority":1,"issue_type":"task"}
+{"id":"ST-050","title":"Deep chain link 2","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-049","type":"blocks"}]}
+{"id":"ST-051","title":"Deep chain link 3","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-050","type":"blocks"}]}
+{"id":"ST-052","title":"Deep chain link 4","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-051","type":"blocks"}]}
+{"id":"ST-053","title":"Deep chain link 5","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-052","type":"blocks"}]}
+{"id":"ST-054","title":"Deep chain link 6","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-053","type":"blocks"}]}
+{"id":"ST-055","title":"Deep chain link 7","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-054","type":"blocks"}]}
+{"id":"ST-056","title":"Deep chain link 8","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-055","type":"blocks"}]}
+{"id":"ST-057","title":"Deep chain link 9","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-056","type":"blocks"}]}
+{"id":"ST-058","title":"Deep chain link 10","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-057","type":"blocks"}]}
+{"id":"ST-059","title":"Deep chain link 11","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-058","type":"blocks"}]}
+{"id":"ST-060","title":"Deep chain link 12","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-059","type":"blocks"}]}
+{"id":"ST-061","title":"Deep chain link 13","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-060","type":"blocks"}]}
+{"id":"ST-062","title":"Deep chain link 14","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-061","type":"blocks"}]}
+{"id":"ST-063","title":"Deep chain link 15","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-062","type":"blocks"}]}
+{"id":"ST-064","title":"Deep chain link 16","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-063","type":"blocks"}]}
+{"id":"ST-065","title":"Deep chain link 17","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-064","type":"blocks"}]}
+{"id":"ST-066","title":"Deep chain link 18","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-065","type":"blocks"}]}
+{"id":"ST-067","title":"Deep chain link 19","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-066","type":"blocks"}]}
+{"id":"ST-068","title":"Deep chain link 20","status":"blocked","priority":2,"issue_type":"task","dependencies":[{"depends_on_id":"ST-067","type":"blocks"}]}
+{"id":"ST-069","title":"Independent item 1","status":"open","priority":1,"issue_type":"bug"}
+{"id":"ST-070","title":"Independent item 2","status":"open","priority":3,"issue_type":"bug"}
+{"id":"ST-071","title":"Independent item 3","status":"open","priority":4,"issue_type":"epic"}
+{"id":"ST-072","title":"Independent item 4","status":"open","priority":4,"issue_type":"bug"}
+{"id":"ST-073","title":"Independent item 5","status":"open","priority":3,"issue_type":"bug"}
+{"id":"ST-074","title":"Independent item 6","status":"open","priority":2,"issue_type":"story"}
+{"id":"ST-075","title":"Independent item 7","status":"open","priority":4,"issue_type":"epic"}
+{"id":"ST-076","title":"Independent item 8","status":"open","priority":3,"issue_type":"bug"}
+{"id":"ST-077","title":"Independent item 9","status":"open","priority":2,"issue_type":"epic"}
+{"id":"ST-078","title":"Independent item 10","status":"open","priority":1,"issue_type":"task"}
+{"id":"ST-079","title":"Independent item 11","status":"open","priority":1,"issue_type":"bug"}
+{"id":"ST-080","title":"Independent item 12","status":"open","priority":2,"issue_type":"epic"}
+{"id":"ST-081","title":"Independent item 13","status":"open","priority":1,"issue_type":"epic"}
+{"id":"ST-082","title":"Independent item 14","status":"open","priority":4,"issue_type":"epic"}
+{"id":"ST-083","title":"Independent item 15","status":"open","priority":3,"issue_type":"task"}
+{"id":"ST-084","title":"Overlap cycle X-1","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-086","type":"blocks"}]}
+{"id":"ST-085","title":"Overlap cycle X-2","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-084","type":"blocks"}]}
+{"id":"ST-086","title":"Overlap shared node","status":"blocked","priority":1,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-085","type":"blocks"},{"depends_on_id":"ST-089","type":"blocks"}]}
+{"id":"ST-087","title":"Overlap cycle Y-1","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-086","type":"blocks"}]}
+{"id":"ST-088","title":"Overlap cycle Y-2","status":"blocked","priority":3,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-087","type":"blocks"}]}
+{"id":"ST-089","title":"Overlap cycle Y-3","status":"blocked","priority":2,"issue_type":"bug","dependencies":[{"depends_on_id":"ST-088","type":"blocks"}]}

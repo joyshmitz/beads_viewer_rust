@@ -3282,23 +3282,71 @@ impl BvrApp {
             }
         }
 
-        // Metrics with rank badges
+        // Metrics panel with mini-bars and rank badges (Go parity)
         lines.push(String::new());
-        lines.push("Metrics:".to_string());
+        lines.push("GRAPH METRICS".to_string());
+        lines.push("Importance:".to_string());
+        let total = self.analyzer.issues.len();
         let pr_rank = metric_rank(&self.analyzer.metrics.pagerank, &issue.id);
         let bw_rank = metric_rank(&self.analyzer.metrics.betweenness, &issue.id);
         let ev_rank = metric_rank(&self.analyzer.metrics.eigenvector, &issue.id);
-        let total = self.analyzer.issues.len();
+        let hub_rank = metric_rank(&self.analyzer.metrics.hubs, &issue.id);
+        let auth_rank = metric_rank(&self.analyzer.metrics.authorities, &issue.id);
+        let pr_max = max_metric_value(&self.analyzer.metrics.pagerank);
+        let bw_max = max_metric_value(&self.analyzer.metrics.betweenness);
+        let ev_max = max_metric_value(&self.analyzer.metrics.eigenvector);
+        let hub_max = max_metric_value(&self.analyzer.metrics.hubs);
+        let auth_max = max_metric_value(&self.analyzer.metrics.authorities);
         lines.push(format!(
-            "  PR: {pagerank:.4} [{pr_rank}/{total}]  BW: {betweenness:.4} [{bw_rank}/{total}]"
+            "  Critical Path  {:>8}  {}  #{}",
+            depth,
+            mini_bar(depth as f64, self.analyzer.graph.node_count() as f64),
+            pr_rank
         ));
         lines.push(format!(
-            "  EV: {eigenvector:.4} [{ev_rank}/{total}]  Hub/Auth: {hubs:.4}/{authorities:.4}"
+            "  PageRank       {:>8.4}  {}  #{}",
+            pagerank,
+            mini_bar(pagerank, pr_max),
+            pr_rank
+        ));
+        lines.push(format!(
+            "  Eigenvector    {:>8.4}  {}  #{}",
+            eigenvector,
+            mini_bar(eigenvector, ev_max),
+            ev_rank
+        ));
+        lines.push("Flow & Connectivity:".to_string());
+        lines.push(format!(
+            "  Betweenness    {:>8.4}  {}  #{}",
+            betweenness,
+            mini_bar(betweenness, bw_max),
+            bw_rank
+        ));
+        lines.push(format!(
+            "  Hub Score      {:>8.4}  {}  #{}",
+            hubs,
+            mini_bar(hubs, hub_max),
+            hub_rank
+        ));
+        lines.push(format!(
+            "  Authority      {:>8.4}  {}  #{}",
+            authorities,
+            mini_bar(authorities, auth_max),
+            auth_rank
+        ));
+        lines.push("Connections:".to_string());
+        lines.push(format!(
+            "  In-Degree      {:>8}  {}",
+            blockers.len(),
+            mini_bar(blockers.len() as f64, total as f64)
+        ));
+        lines.push(format!(
+            "  Out-Degree     {:>8}  {}",
+            dependents.len(),
+            mini_bar(dependents.len() as f64, total as f64)
         ));
         let cut = if articulation { "YES" } else { "no" };
-        lines.push(format!(
-            "  Depth: {depth}  K-core: {k_core}  Slack: {slack:.4}  Cut: {cut}"
-        ));
+        lines.push(format!("  K-core: {k_core}  Slack: {slack:.4}  Cut: {cut}"));
 
         if cycle_hits.is_empty() {
             lines.push("  Cycles: none".to_string());
@@ -3340,6 +3388,8 @@ impl BvrApp {
 
             let related = self.history_git_related_beads_for_commit(&commit.sha);
 
+            let commit_icon = commit_type_icon(&commit.message);
+            let initials = author_initials(&commit.author);
             let mut lines = vec![
                 format!(
                     "Commit {}/{} | confidence >= {:.0}%",
@@ -3348,34 +3398,44 @@ impl BvrApp {
                     self.history_min_confidence() * 100.0
                 ),
                 String::new(),
-                format!("SHA: {}", commit.sha),
-                format!("Date: {}", commit.timestamp),
-                format!("Author: {} <{}>", commit.author, commit.author_email),
-                String::new(),
-                format!("Message: {}", commit.message),
+                "COMMIT DETAILS:".to_string(),
+                format!("  SHA: {}", commit.sha),
+                format!("  [{initials}] {} <{}>", commit.author, commit.author_email),
+                format!("  Date: {}", commit.timestamp),
+                format!("  {commit_icon} {}", commit.message),
             ];
 
             if !commit.files.is_empty() {
-                lines.push(String::new());
-                lines.push(format!("Files changed ({}):", commit.files.len()));
-                for file in commit.files.iter().take(10) {
+                let total_ins: i64 = commit.files.iter().map(|f| f.insertions).sum();
+                let total_del: i64 = commit.files.iter().map(|f| f.deletions).sum();
+                lines.push(format!(
+                    "  Files: {} changed +{total_ins}/-{total_del}",
+                    commit.files.len()
+                ));
+                for file in commit.files.iter().take(5) {
+                    let action_icon = match file.action.as_str() {
+                        "A" => "+",
+                        "D" => "-",
+                        "R" | "R100" => ">",
+                        _ => "~",
+                    };
                     if file.insertions > 0 || file.deletions > 0 {
                         lines.push(format!(
-                            "  {} {} (+{}/-{})",
-                            file.action, file.path, file.insertions, file.deletions
+                            "    {action_icon} {} +{}/-{}",
+                            file.path, file.insertions, file.deletions
                         ));
                     } else {
-                        lines.push(format!("  {} {}", file.action, file.path));
+                        lines.push(format!("    {action_icon} {}", file.path));
                     }
                 }
-                if commit.files.len() > 10 {
-                    lines.push(format!("  ... +{} more", commit.files.len() - 10));
+                if commit.files.len() > 5 {
+                    lines.push(format!("    +{} more files...", commit.files.len() - 5));
                 }
             }
 
             if !related.is_empty() {
                 lines.push(String::new());
-                lines.push(format!("Correlated beads ({}):", related.len()));
+                lines.push("RELATED BEADS:".to_string());
                 for bead_id in &related {
                     let conf = self
                         .history_git_cache
@@ -3385,6 +3445,12 @@ impl BvrApp {
                             pairs.iter().find(|(id, _)| id == bead_id).map(|(_, c)| *c)
                         })
                         .unwrap_or(0.0);
+                    let issue_status = self
+                        .analyzer
+                        .issues
+                        .iter()
+                        .find(|i| i.id == *bead_id)
+                        .map_or("?", |i| status_icon(&i.status));
                     let title = self
                         .analyzer
                         .issues
@@ -3392,7 +3458,11 @@ impl BvrApp {
                         .find(|i| i.id == *bead_id)
                         .map(|i| truncate_str(&i.title, 30))
                         .unwrap_or_default();
-                    lines.push(format!("  {bead_id} ({:.0}%) {}", conf * 100.0, title));
+                    lines.push(format!(
+                        "  [{issue_status}] {bead_id} ({:.0}%) {}",
+                        conf * 100.0,
+                        title
+                    ));
                 }
             }
 
@@ -3498,16 +3568,26 @@ impl BvrApp {
         }
 
         lines.push(String::new());
-        lines.push("Event Timeline:".to_string());
+        lines.push("LIFECYCLE:".to_string());
 
         if let Some(history) = selected_history {
             if history.events.is_empty() {
                 lines.push("  (no events)".to_string());
             } else {
-                lines.extend(history.events.into_iter().map(|event| {
+                let event_count = history.events.len();
+                for (idx, event) in history.events.into_iter().enumerate() {
                     let ts = event.timestamp.unwrap_or_else(|| "n/a".to_string());
-                    format!("  {ts}  {:<10} {}", event.kind, event.details)
-                }));
+                    let icon = lifecycle_icon(&event.kind);
+                    let connector = if idx + 1 < event_count {
+                        "\u{2502}"
+                    } else {
+                        "\u{2514}"
+                    };
+                    lines.push(format!(
+                        "  {connector} {icon} {:<10} {ts}  {}",
+                        event.kind, event.details
+                    ));
+                }
             }
         } else {
             lines.push("  (history unavailable for selected issue)".to_string());
@@ -3523,26 +3603,55 @@ impl BvrApp {
 
             lines.push(String::new());
             lines.push(format!(
-                "Correlated Commit ({}/{}):",
+                "COMMIT DETAILS ({}/{}):",
                 slot.saturating_add(1),
                 total
             ));
-            lines.push(format!("  {}  {}", commit.short_sha, commit.timestamp));
-            lines.push(format!("  Message: {}", commit.message));
+            let commit_icon = commit_type_icon(&commit.message);
             lines.push(format!(
-                "  Author: {} <{}>",
+                "  {commit_icon} {}  {}",
+                commit.short_sha, commit.timestamp
+            ));
+            let initials = author_initials(&commit.author);
+            lines.push(format!(
+                "  [{initials}] {} <{}>",
                 commit.author, commit.author_email
             ));
+            lines.push(format!("  {}", commit.message));
             lines.push(format!(
-                "  Method: {} | Confidence: {:.0}%",
-                commit.method,
-                commit.confidence * 100.0
+                "  {:.0}% confidence ({})",
+                commit.confidence * 100.0,
+                commit.method
             ));
             if !commit.reason.is_empty() {
                 lines.push(format!("  Reason: {}", commit.reason));
             }
             if !commit.files.is_empty() {
-                lines.push(format!("  Files: {} changed", commit.files.len()));
+                let total_ins: i64 = commit.files.iter().map(|f| f.insertions).sum();
+                let total_del: i64 = commit.files.iter().map(|f| f.deletions).sum();
+                lines.push(format!(
+                    "  {} file(s) +{total_ins}/-{total_del}",
+                    commit.files.len()
+                ));
+                for file in commit.files.iter().take(5) {
+                    let action_icon = match file.action.as_str() {
+                        "A" => "+",
+                        "D" => "-",
+                        "R" | "R100" => ">",
+                        _ => "~",
+                    };
+                    if file.insertions > 0 || file.deletions > 0 {
+                        lines.push(format!(
+                            "    {action_icon} {} +{}/-{}",
+                            file.path, file.insertions, file.deletions
+                        ));
+                    } else {
+                        lines.push(format!("    {action_icon} {}", file.path));
+                    }
+                }
+                if commit.files.len() > 5 {
+                    lines.push(format!("    +{} more files...", commit.files.len() - 5));
+                }
             }
         }
 
@@ -3573,6 +3682,24 @@ fn metric_rank(metrics: &std::collections::HashMap<String, f64>, target_id: &str
         + 1
 }
 
+fn max_metric_value(metrics: &std::collections::HashMap<String, f64>) -> f64 {
+    metrics.values().copied().fold(0.0_f64, f64::max).max(1e-9)
+}
+
+fn mini_bar(value: f64, max: f64) -> String {
+    let width: usize = 6;
+    let ratio = if max > 0.0 { value / max } else { 0.0 };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let filled = ratio
+        .mul_add(width as f64, 0.0)
+        .round()
+        .clamp(0.0, width as f64) as usize;
+    let empty = width - filled;
+    std::iter::repeat_n('\u{2588}', filled)
+        .chain(std::iter::repeat_n('\u{2591}', empty))
+        .collect()
+}
+
 fn status_icon(status: &str) -> &'static str {
     match status {
         "open" => "o",
@@ -3596,6 +3723,56 @@ fn type_icon(issue_type: &str) -> &'static str {
         "docs" => "D",
         _ => "-",
     }
+}
+
+fn lifecycle_icon(kind: &str) -> &'static str {
+    match kind.to_ascii_lowercase().as_str() {
+        "created" => "+",
+        "claimed" | "assigned" => "@",
+        "closed" => "x",
+        "reopened" => "~",
+        "modified" | "updated" => ".",
+        _ => "-",
+    }
+}
+
+fn commit_type_icon(message: &str) -> &'static str {
+    let lower = message.to_ascii_lowercase();
+    if lower.starts_with("feat") {
+        "F"
+    } else if lower.starts_with("fix") {
+        "B"
+    } else if lower.starts_with("docs") {
+        "D"
+    } else if lower.starts_with("refactor") {
+        "R"
+    } else if lower.starts_with("test") {
+        "T"
+    } else if lower.starts_with("chore") {
+        "C"
+    } else if lower.starts_with("perf") {
+        "P"
+    } else if lower.starts_with("ci") {
+        "I"
+    } else if lower.starts_with("build") {
+        "K"
+    } else if lower.starts_with("style") {
+        "S"
+    } else if lower.starts_with("merge") || lower.starts_with("Merge") {
+        "M"
+    } else if lower.starts_with("revert") {
+        "<"
+    } else {
+        "*"
+    }
+}
+
+fn author_initials(name: &str) -> String {
+    name.split_whitespace()
+        .filter_map(|word| word.chars().next())
+        .take(2)
+        .flat_map(char::to_uppercase)
+        .collect::<String>()
 }
 
 fn join_or_none(values: &[String]) -> String {
@@ -3955,7 +4132,10 @@ mod tests {
         app.mode = ViewMode::Graph;
         let text = app.detail_panel_text();
         assert!(text.contains("Graph:"));
-        assert!(text.contains("PR:"));
+        assert!(text.contains("PageRank"));
+        assert!(text.contains("GRAPH METRICS"));
+        assert!(text.contains("Importance:"));
+        assert!(text.contains("Betweenness"));
         assert!(text.contains("Top PageRank"));
     }
 
@@ -4073,7 +4253,7 @@ mod tests {
         app.mode = ViewMode::History;
         let text = app.detail_panel_text();
         assert!(text.contains("History Summary"));
-        assert!(text.contains("Event Timeline"));
+        assert!(text.contains("LIFECYCLE:"));
         assert!(text.contains("switch to git timeline"));
         assert!(text.contains("Min confidence filter"));
     }
@@ -4104,7 +4284,7 @@ mod tests {
                 .iter()
                 .any(|line| line.contains("Create->Close cycle time:"))
         );
-        assert!(lines.iter().any(|line| line.contains("Event Timeline:")));
+        assert!(lines.iter().any(|line| line.contains("LIFECYCLE:")));
     }
 
     #[test]

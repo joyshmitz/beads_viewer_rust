@@ -805,3 +805,177 @@ pub fn print_format_stats(json_output: &str) {
     );
     eprintln!("  (TOON format not yet implemented; will show savings when available)");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --robot-docs tests
+
+    #[test]
+    fn robot_docs_guide_has_required_fields() {
+        let docs = generate_robot_docs("guide");
+        assert!(docs["generated_at"].is_string());
+        assert_eq!(docs["output_format"], "json");
+        assert_eq!(docs["topic"], "guide");
+        assert!(docs["guide"]["description"].is_string());
+        assert!(docs["guide"]["quickstart"].is_array());
+        assert!(docs["guide"]["data_source"].is_string());
+        assert!(docs["guide"]["output_modes"].is_object());
+    }
+
+    #[test]
+    fn robot_docs_commands_lists_all_robot_commands() {
+        let docs = generate_robot_docs("commands");
+        let commands = docs["commands"].as_object().unwrap();
+        assert!(
+            commands.len() >= 15,
+            "expected 15+ commands, got {}",
+            commands.len()
+        );
+        assert!(commands.contains_key("robot-triage"));
+        assert!(commands.contains_key("robot-next"));
+        assert!(commands.contains_key("robot-schema"));
+        assert!(commands.contains_key("robot-docs"));
+    }
+
+    #[test]
+    fn robot_docs_examples_is_array() {
+        let docs = generate_robot_docs("examples");
+        assert!(docs["examples"].is_array());
+        let examples = docs["examples"].as_array().unwrap();
+        assert!(!examples.is_empty());
+        assert!(examples[0]["description"].is_string());
+        assert!(examples[0]["command"].is_string());
+    }
+
+    #[test]
+    fn robot_docs_env_vars_present() {
+        let docs = generate_robot_docs("env");
+        let env = docs["environment_variables"].as_object().unwrap();
+        assert!(env.contains_key("BV_OUTPUT_FORMAT"));
+        assert!(env.contains_key("TOON_STATS"));
+    }
+
+    #[test]
+    fn robot_docs_exit_codes_present() {
+        let docs = generate_robot_docs("exit-codes");
+        let codes = docs["exit_codes"].as_object().unwrap();
+        assert!(codes.contains_key("0"));
+        assert!(codes.contains_key("1"));
+        assert!(codes.contains_key("2"));
+    }
+
+    #[test]
+    fn robot_docs_all_includes_every_section() {
+        let docs = generate_robot_docs("all");
+        assert!(docs["guide"].is_object());
+        assert!(docs["commands"].is_object());
+        assert!(docs["examples"].is_array());
+        assert!(docs["environment_variables"].is_object());
+        assert!(docs["exit_codes"].is_object());
+    }
+
+    #[test]
+    fn robot_docs_invalid_topic_returns_error() {
+        let docs = generate_robot_docs("nonsense");
+        assert!(docs["error"].is_string());
+        assert!(docs["available_topics"].is_array());
+        let topics = docs["available_topics"].as_array().unwrap();
+        assert!(topics.contains(&serde_json::json!("all")));
+    }
+
+    #[test]
+    fn robot_docs_version_matches_cargo() {
+        let docs = generate_robot_docs("guide");
+        assert_eq!(docs["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    // --robot-schema tests
+
+    #[test]
+    fn robot_schema_has_required_top_level_fields() {
+        let schemas = generate_robot_schemas();
+        assert_eq!(schemas.schema_version, "1.0.0");
+        assert!(!schemas.generated_at.is_empty());
+        assert!(schemas.envelope.is_object());
+        assert!(!schemas.commands.is_empty());
+    }
+
+    #[test]
+    fn robot_schema_envelope_has_core_properties() {
+        let schemas = generate_robot_schemas();
+        let props = schemas.envelope["properties"].as_object().unwrap();
+        assert!(props.contains_key("generated_at"));
+        assert!(props.contains_key("data_hash"));
+        assert!(props.contains_key("output_format"));
+        assert!(props.contains_key("version"));
+    }
+
+    #[test]
+    fn robot_schema_covers_all_implemented_commands() {
+        let schemas = generate_robot_schemas();
+        let expected = [
+            "robot-triage",
+            "robot-next",
+            "robot-plan",
+            "robot-insights",
+            "robot-priority",
+            "robot-graph",
+            "robot-diff",
+            "robot-alerts",
+            "robot-suggest",
+            "robot-burndown",
+            "robot-forecast",
+            "robot-history",
+            "robot-capacity",
+        ];
+        for cmd in &expected {
+            assert!(
+                schemas.commands.contains_key(*cmd),
+                "missing schema for {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn robot_schema_triage_has_defs() {
+        let schemas = generate_robot_schemas();
+        let triage = &schemas.commands["robot-triage"];
+        assert!(triage["$defs"].is_object());
+        assert!(triage["$defs"]["recommendation"].is_object());
+    }
+
+    #[test]
+    fn robot_schema_each_command_has_type_object() {
+        let schemas = generate_robot_schemas();
+        for (name, schema) in &schemas.commands {
+            assert_eq!(
+                schema["type"], "object",
+                "schema for {name} should be type: object"
+            );
+        }
+    }
+
+    // estimate_tokens tests
+
+    #[test]
+    fn estimate_tokens_empty_is_zero() {
+        assert_eq!(estimate_tokens(""), 0);
+        assert_eq!(estimate_tokens("   "), 0);
+    }
+
+    #[test]
+    fn estimate_tokens_short_string() {
+        assert_eq!(estimate_tokens("abcd"), 1);
+        assert_eq!(estimate_tokens("abcde"), 2);
+    }
+
+    #[test]
+    fn estimate_tokens_matches_go_heuristic() {
+        // Go: (len(trimmed) + 3) / 4
+        let s = "hello world test string";
+        let expected = s.len().div_ceil(4);
+        assert_eq!(estimate_tokens(s), expected);
+    }
+}

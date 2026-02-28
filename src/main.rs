@@ -89,13 +89,17 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let issues = match load_issues(&cli) {
+    let mut issues = match load_issues(&cli) {
         Ok(issues) => issues,
         Err(error) => {
             eprintln!("error: {error}");
             return ExitCode::from(1);
         }
     };
+
+    if let Some(repo_filter) = cli.repo.as_deref() {
+        issues = filter_by_repo(issues, repo_filter);
+    }
 
     let analyzer = Analyzer::new(issues.clone());
 
@@ -519,6 +523,80 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    if cli.robot_sprint_list || cli.robot_sprint_show.is_some() {
+        let sprints = match bvr::loader::load_sprints(cli.repo_path.as_deref()) {
+            Ok(sprints) => sprints,
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+        };
+
+        if let Some(sprint_id) = cli.robot_sprint_show.as_deref() {
+            if let Some(sprint) = sprints.iter().find(|s| s.id == sprint_id) {
+                let output = RobotSprintShowOutput {
+                    generated_at: envelope(&issues).generated_at,
+                    data_hash: compute_data_hash(&issues),
+                    output_format: "json".to_owned(),
+                    version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                    sprint: sprint.clone(),
+                };
+                if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+                    eprintln!("error: {error}");
+                    return ExitCode::from(1);
+                }
+            } else {
+                eprintln!("Sprint not found: {sprint_id}");
+                return ExitCode::from(1);
+            }
+        } else {
+            let output = RobotSprintListOutput {
+                generated_at: envelope(&issues).generated_at,
+                data_hash: compute_data_hash(&issues),
+                output_format: "json".to_owned(),
+                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                sprint_count: sprints.len(),
+                sprints,
+            };
+            if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+        }
+
+        return ExitCode::SUCCESS;
+    }
+
+    if cli.robot_metrics {
+        let output = RobotMetricsOutput {
+            generated_at: envelope(&issues).generated_at,
+            data_hash: compute_data_hash(&issues),
+            output_format: "json".to_owned(),
+            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            timing: Vec::new(),
+            cache: Vec::new(),
+            memory: MetricsMemory::current(),
+        };
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    if let Some(export_path) = cli.export_md.as_deref() {
+        if let Err(error) = bvr::export_md::export_markdown_with_hooks(
+            &issues,
+            export_path,
+            cli.no_hooks,
+            cli.repo_path.as_deref(),
+        ) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+        return ExitCode::SUCCESS;
+    }
+
     match bvr::tui::run_tui(issues) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -529,11 +607,65 @@ fn main() -> ExitCode {
 }
 
 fn load_issues(cli: &Cli) -> bvr::Result<Vec<bvr::model::Issue>> {
+    if let Some(ref_name) = &cli.as_of {
+        return load_issues_at_revision(cli, ref_name);
+    }
+
     if let Some(path) = &cli.beads_file {
         return loader::load_issues_from_file(path);
     }
 
+    if let Some(path) = &cli.workspace {
+        return loader::load_workspace_issues(&resolve_workspace_config_path(path));
+    }
+
     loader::load_issues(cli.repo_path.as_deref())
+}
+
+fn load_issues_at_revision(cli: &Cli, revision: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
+    let repo_root = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+
+    // Try common beads file paths at the given revision
+    let candidates = [".beads/issues.jsonl", ".beads/beads.jsonl"];
+
+    for path in &candidates {
+        let git_ref = format!("{revision}:{path}");
+        let output = Command::new("git")
+            .args(["show", &git_ref])
+            .current_dir(&repo_root)
+            .output();
+
+        match output {
+            Ok(out) if out.status.success() => {
+                let content = String::from_utf8_lossy(&out.stdout);
+                let mut issues = Vec::new();
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    match serde_json::from_str::<bvr::model::Issue>(trimmed) {
+                        Ok(issue) => issues.push(issue),
+                        Err(error) => {
+                            tracing::warn!("skipping malformed issue line at {revision}: {error}");
+                        }
+                    }
+                }
+                eprintln!(
+                    "Loaded {} issues from {} (as-of: {revision})",
+                    issues.len(),
+                    path
+                );
+                return Ok(issues);
+            }
+            _ => {}
+        }
+    }
+
+    Err(bvr::BvrError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("Could not load issues at revision: {revision}"),
+    )))
 }
 
 fn parse_suggest_type(raw: Option<&str>) -> bvr::Result<Option<SuggestionType>> {
@@ -870,6 +1002,59 @@ fn resolve_reference_file_path(reference: &str, repo_path: Option<&Path>) -> Opt
     }
 
     None
+}
+
+fn resolve_workspace_config_path(path: &Path) -> PathBuf {
+    if path.is_dir() {
+        return path.join(loader::WORKSPACE_CONFIG_PATH);
+    }
+
+    path.to_path_buf()
+}
+
+fn filter_by_repo(issues: Vec<bvr::model::Issue>, repo_filter: &str) -> Vec<bvr::model::Issue> {
+    let filter = repo_filter.trim().to_ascii_lowercase();
+    if filter.is_empty() {
+        return issues;
+    }
+
+    let needs_flexible_match =
+        !filter.ends_with('-') && !filter.ends_with(':') && !filter.ends_with('_');
+    let with_dash = format!("{filter}-");
+    let with_colon = format!("{filter}:");
+    let with_underscore = format!("{filter}_");
+
+    issues
+        .into_iter()
+        .filter(|issue| {
+            let id = issue.id.to_ascii_lowercase();
+            if id.starts_with(&filter) {
+                return true;
+            }
+            if needs_flexible_match
+                && (id.starts_with(&with_dash)
+                    || id.starts_with(&with_colon)
+                    || id.starts_with(&with_underscore))
+            {
+                return true;
+            }
+
+            let source_repo = issue.source_repo.trim();
+            if source_repo.is_empty() || source_repo == "." {
+                return false;
+            }
+
+            let source_repo = source_repo.to_ascii_lowercase();
+            if source_repo.starts_with(&filter) {
+                return true;
+            }
+
+            needs_flexible_match
+                && (source_repo.starts_with(&with_dash)
+                    || source_repo.starts_with(&with_colon)
+                    || source_repo.starts_with(&with_underscore))
+        })
+        .collect()
 }
 
 fn build_robot_burndown_output(
@@ -2071,6 +2256,13 @@ fn print_robot_help() {
     println!(
         "  --format json|toon        Structured output format (toon compatibility mode for now)"
     );
+    println!("  --robot-sprint-list       List all sprints as JSON");
+    println!("  --robot-sprint-show <id>  Show specific sprint details");
+    println!("  --robot-metrics           Performance metrics (timing, cache, memory)");
+    println!("  --export-md <file>        Export issues to a Markdown report");
+    println!("  --no-hooks                Skip hook execution for export workflows");
+    println!("  --as-of <ref>             View state at point in time (commit, tag, date)");
+    println!("  --force-full-analysis     Compute all metrics regardless of graph size");
     println!("  --stats                   Show format token estimates on stderr");
 }
 
@@ -2331,6 +2523,72 @@ struct RobotForecastSummary {
     latest_eta: String,
 }
 
+#[derive(Debug, Serialize)]
+struct RobotSprintListOutput {
+    generated_at: String,
+    data_hash: String,
+    output_format: String,
+    version: String,
+    sprint_count: usize,
+    sprints: Vec<bvr::model::Sprint>,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotSprintShowOutput {
+    generated_at: String,
+    data_hash: String,
+    output_format: String,
+    version: String,
+    sprint: bvr::model::Sprint,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotMetricsOutput {
+    generated_at: String,
+    data_hash: String,
+    output_format: String,
+    version: String,
+    timing: Vec<MetricsTiming>,
+    cache: Vec<MetricsCache>,
+    memory: MetricsMemory,
+}
+
+#[derive(Debug, Serialize)]
+struct MetricsTiming {
+    name: String,
+    count: u64,
+    total_ms: f64,
+    avg_ms: f64,
+    max_ms: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct MetricsCache {
+    name: String,
+    hits: u64,
+    misses: u64,
+    total: u64,
+    hit_rate: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct MetricsMemory {
+    rss_mb: f64,
+}
+
+impl MetricsMemory {
+    fn current() -> Self {
+        // Basic RSS estimation from /proc/self/statm (Linux)
+        let rss_mb = std::fs::read_to_string("/proc/self/statm")
+            .ok()
+            .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+            .map_or(0.0, |pages| {
+                f64::from(u32::try_from(pages).unwrap_or(u32::MAX)) * 4096.0 / (1024.0 * 1024.0)
+            });
+        Self { rss_mb }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -2340,8 +2598,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        generate_daily_burndown_points, parse_scope_git_header_line, resolve_git_toplevel,
-        resolve_reference_file_path,
+        filter_by_repo, generate_daily_burndown_points, parse_scope_git_header_line,
+        resolve_git_toplevel, resolve_reference_file_path, resolve_workspace_config_path,
     };
 
     #[test]
@@ -2438,5 +2696,42 @@ mod tests {
         let last = points.last().expect("last burndown point");
         assert_eq!(last.completed, 1);
         assert_eq!(last.remaining, 0);
+    }
+
+    #[test]
+    fn resolve_workspace_config_path_appends_default_file_for_directories() {
+        let dir = tempdir().expect("tempdir");
+        let resolved = resolve_workspace_config_path(dir.path());
+        assert!(resolved.ends_with(".bv/workspace.yaml"));
+    }
+
+    #[test]
+    fn filter_by_repo_matches_id_and_source_repo_case_insensitively() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "api-AUTH-1".to_string(),
+                source_repo: "api".to_string(),
+                title: "API issue".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "WEB-UI-1".to_string(),
+                source_repo: "frontend/web".to_string(),
+                title: "Web issue".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        let filtered_by_prefix = filter_by_repo(issues.clone(), "api");
+        assert_eq!(filtered_by_prefix.len(), 1);
+        assert_eq!(filtered_by_prefix[0].id, "api-AUTH-1");
+
+        let filtered_by_source_repo = filter_by_repo(issues, "front");
+        assert_eq!(filtered_by_source_repo.len(), 1);
+        assert_eq!(filtered_by_source_repo[0].id, "WEB-UI-1");
     }
 }

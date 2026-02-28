@@ -13,6 +13,7 @@
 pub mod analysis;
 pub mod cli;
 pub mod error;
+pub mod export_md;
 pub mod loader;
 pub mod model;
 pub mod robot;

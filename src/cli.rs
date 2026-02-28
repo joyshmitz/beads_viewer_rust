@@ -169,6 +169,27 @@ pub struct Cli {
     #[arg(short = 'r', long)]
     pub repo: Option<String>,
 
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_sprint_list: bool,
+
+    #[arg(long)]
+    pub robot_sprint_show: Option<String>,
+
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_metrics: bool,
+
+    #[arg(long)]
+    pub export_md: Option<PathBuf>,
+
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_hooks: bool,
+
+    #[arg(long)]
+    pub as_of: Option<String>,
+
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub force_full_analysis: bool,
+
     #[arg(long, hide = true)]
     pub beads_file: Option<PathBuf>,
 
@@ -198,5 +219,8 @@ impl Cli {
             || self.bead_history.is_some()
             || self.robot_docs.is_some()
             || self.robot_schema
+            || self.robot_sprint_list
+            || self.robot_sprint_show.is_some()
+            || self.robot_metrics
     }
 }

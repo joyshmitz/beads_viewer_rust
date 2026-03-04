@@ -261,6 +261,18 @@ pub struct Cli {
     pub related_limit: usize,
 
     #[arg(long)]
+    pub robot_blocker_chain: Option<String>,
+
+    #[arg(long)]
+    pub robot_impact_network: Option<String>,
+
+    #[arg(long, default_value_t = 2)]
+    pub network_depth: usize,
+
+    #[arg(long)]
+    pub robot_causality: Option<String>,
+
+    #[arg(long)]
     pub export_md: Option<PathBuf>,
 
     #[arg(long, action = ArgAction::SetTrue)]
@@ -317,5 +329,8 @@ impl Cli {
             || self.robot_impact.is_some()
             || self.robot_file_relations.is_some()
             || self.robot_related.is_some()
+            || self.robot_blocker_chain.is_some()
+            || self.robot_impact_network.is_some()
+            || self.robot_causality.is_some()
     }
 }

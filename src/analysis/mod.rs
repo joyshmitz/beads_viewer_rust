@@ -1,4 +1,5 @@
 pub mod alerts;
+pub mod causal;
 pub mod correlation;
 pub mod diff;
 pub mod file_intel;

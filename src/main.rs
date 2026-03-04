@@ -962,6 +962,83 @@ fn main() -> ExitCode {
         }
     }
 
+    // ---- Causal network commands (blocker-chain, impact-network, causality) ----
+    if cli.robot_blocker_chain.is_some()
+        || cli.robot_impact_network.is_some()
+        || cli.robot_causality.is_some()
+    {
+        if let Some(ref target_id) = cli.robot_blocker_chain {
+            let result = bvr::analysis::causal::get_blocker_chain(&analyzer.graph, target_id);
+            let output = bvr::analysis::causal::RobotBlockerChainOutput {
+                generated_at: envelope(&issues).generated_at,
+                data_hash: compute_data_hash(&issues),
+                output_format: "json".to_owned(),
+                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                result,
+            };
+            if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+            return ExitCode::SUCCESS;
+        }
+
+        if let Some(ref bead_id) = cli.robot_impact_network {
+            let history_output = match build_robot_history_output(&cli, &issues, &analyzer) {
+                Ok(o) => o,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(1);
+                }
+            };
+            let result = bvr::analysis::causal::build_impact_network_result(
+                &analyzer.graph,
+                &history_output.histories_map,
+                bead_id,
+                cli.network_depth,
+            );
+            let output = bvr::analysis::causal::RobotImpactNetworkOutput {
+                generated_at: envelope(&issues).generated_at,
+                data_hash: compute_data_hash(&issues),
+                output_format: "json".to_owned(),
+                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                result,
+            };
+            if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+            return ExitCode::SUCCESS;
+        }
+
+        if let Some(ref bead_id) = cli.robot_causality {
+            let history_output = match build_robot_history_output(&cli, &issues, &analyzer) {
+                Ok(o) => o,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return ExitCode::from(1);
+                }
+            };
+            let result = bvr::analysis::causal::build_causality_chain(
+                bead_id,
+                &history_output.histories_map,
+                &analyzer.graph,
+            );
+            let output = bvr::analysis::causal::RobotCausalityOutput {
+                generated_at: envelope(&issues).generated_at,
+                data_hash: compute_data_hash(&issues),
+                output_format: "json".to_owned(),
+                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                result,
+            };
+            if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+            return ExitCode::SUCCESS;
+        }
+    }
+
     if let Some(export_path) = cli.export_md.as_deref() {
         if let Err(error) = bvr::export_md::export_markdown_with_hooks(
             &issues,

@@ -273,6 +273,12 @@ pub struct Cli {
     pub robot_causality: Option<String>,
 
     #[arg(long)]
+    pub save_baseline: Option<String>,
+
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_drift: bool,
+
+    #[arg(long)]
     pub export_md: Option<PathBuf>,
 
     #[arg(long, action = ArgAction::SetTrue)]
@@ -332,5 +338,7 @@ impl Cli {
             || self.robot_blocker_chain.is_some()
             || self.robot_impact_network.is_some()
             || self.robot_causality.is_some()
+            || self.save_baseline.is_some()
+            || self.robot_drift
     }
 }

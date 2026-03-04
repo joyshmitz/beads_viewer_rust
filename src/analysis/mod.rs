@@ -2,6 +2,7 @@ pub mod alerts;
 pub mod causal;
 pub mod correlation;
 pub mod diff;
+pub mod drift;
 pub mod file_intel;
 pub mod forecast;
 pub mod git_history;

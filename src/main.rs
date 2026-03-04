@@ -1039,6 +1039,58 @@ fn main() -> ExitCode {
         }
     }
 
+    // ---- Drift commands (save-baseline, robot-drift) ----
+    if let Some(ref description) = cli.save_baseline {
+        let project_dir = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+        let baseline = bvr::analysis::drift::Baseline::from_current(
+            &issues,
+            &analyzer.graph,
+            &analyzer.metrics,
+            description,
+        );
+        match baseline.save(&project_dir) {
+            Ok(path) => {
+                eprintln!("Baseline saved to {}", path.display());
+                return ExitCode::SUCCESS;
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    }
+
+    if cli.robot_drift {
+        let project_dir = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+        let baseline = match bvr::analysis::drift::Baseline::load(&project_dir) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("error: {e}");
+                eprintln!("hint: run --save-baseline first to create a baseline");
+                return ExitCode::from(1);
+            }
+        };
+        let result = bvr::analysis::drift::compute_drift(
+            &baseline,
+            &issues,
+            &analyzer.graph,
+            &analyzer.metrics,
+        );
+        let exit_code = result.exit_code;
+        let output = bvr::analysis::drift::RobotDriftOutput {
+            generated_at: envelope(&issues).generated_at,
+            data_hash: compute_data_hash(&issues),
+            output_format: "json".to_owned(),
+            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            result,
+        };
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+        return ExitCode::from(exit_code);
+    }
+
     if let Some(export_path) = cli.export_md.as_deref() {
         if let Err(error) = bvr::export_md::export_markdown_with_hooks(
             &issues,

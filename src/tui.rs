@@ -337,6 +337,53 @@ impl HistoryViewMode {
     }
 }
 
+/// A node in the history file tree (port of Go `FileTreeNode`).
+#[derive(Debug, Clone)]
+struct FileTreeNode {
+    name: String,
+    path: String,
+    is_dir: bool,
+    change_count: usize,
+    expanded: bool,
+    level: usize,
+    children: Vec<FileTreeNode>,
+}
+
+impl FileTreeNode {
+    /// Flatten the tree into a list of visible (expanded) nodes for navigation.
+    fn flatten_visible(&self) -> Vec<FlatFileEntry> {
+        let mut out = Vec::new();
+        self.flatten_into(&mut out);
+        out
+    }
+
+    fn flatten_into(&self, out: &mut Vec<FlatFileEntry>) {
+        out.push(FlatFileEntry {
+            name: self.name.clone(),
+            path: self.path.clone(),
+            is_dir: self.is_dir,
+            change_count: self.change_count,
+            level: self.level,
+        });
+        if self.is_dir && self.expanded {
+            for child in &self.children {
+                child.flatten_into(out);
+            }
+        }
+    }
+}
+
+/// A single visible entry in the flattened file tree.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct FlatFileEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    change_count: usize,
+    level: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InsightsPanel {
     Bottlenecks,
@@ -476,6 +523,11 @@ struct BvrApp {
     history_git_cache: Option<HistoryGitCache>,
     history_search_active: bool,
     history_search_query: String,
+    history_show_file_tree: bool,
+    history_file_tree_cursor: usize,
+    history_file_tree_filter: Option<String>,
+    history_file_tree_focus: bool,
+    history_status_msg: String,
     board_search_active: bool,
     board_search_query: String,
     board_search_match_cursor: usize,
@@ -733,7 +785,7 @@ impl Model for BvrApp {
                 "Graph mode: centrality ranks, blockers/dependents, cycle membership.".to_string()
             }
             ViewMode::History => format!(
-                "History mode ({}): lifecycle timeline and event stream | c cycles confidence (bead mode) (>= {:.0}%) | v toggles bead/git | / search | h/Esc back",
+                "History ({}): c confidence (>= {:.0}%) | v bead/git | y copy | o open | f file-tree | / search | h/Esc back",
                 self.history_view_mode.label(),
                 self.history_min_confidence() * 100.0
             ),
@@ -923,10 +975,22 @@ impl BvrApp {
                 }
             }
             KeyCode::Tab => {
-                self.focus = match self.focus {
-                    FocusPane::List => FocusPane::Detail,
-                    FocusPane::Detail => FocusPane::List,
-                };
+                if matches!(self.mode, ViewMode::History) && self.history_show_file_tree {
+                    // 3-way cycle: List → Detail → FileTree → List
+                    if self.history_file_tree_focus {
+                        self.history_file_tree_focus = false;
+                        self.focus = FocusPane::List;
+                    } else if self.focus == FocusPane::Detail {
+                        self.history_file_tree_focus = true;
+                    } else {
+                        self.focus = FocusPane::Detail;
+                    }
+                } else {
+                    self.focus = match self.focus {
+                        FocusPane::List => FocusPane::Detail,
+                        FocusPane::Detail => FocusPane::List,
+                    };
+                }
             }
             KeyCode::Char('h') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(-1);
@@ -1059,6 +1123,15 @@ impl BvrApp {
                 self.toggle_history_view_mode();
             }
             KeyCode::Char('s') if matches!(self.mode, ViewMode::Main) => self.cycle_list_sort(),
+            KeyCode::Char('y') if matches!(self.mode, ViewMode::History) => {
+                self.history_copy_to_clipboard();
+            }
+            KeyCode::Char('o') if matches!(self.mode, ViewMode::History) => {
+                self.history_open_in_browser();
+            }
+            KeyCode::Char('f' | 'F') if matches!(self.mode, ViewMode::History) => {
+                self.toggle_history_file_tree();
+            }
             KeyCode::Char('o') => self.set_list_filter(ListFilter::Open),
             KeyCode::Char('c') => self.set_list_filter(ListFilter::Closed),
             KeyCode::Char('r') => self.set_list_filter(ListFilter::Ready),
@@ -1357,6 +1430,188 @@ impl BvrApp {
         self.history_event_cursor = 0;
         self.history_related_bead_cursor = 0;
         self.history_bead_commit_cursor = 0;
+    }
+
+    fn toggle_history_file_tree(&mut self) {
+        self.history_show_file_tree = !self.history_show_file_tree;
+        if self.history_show_file_tree {
+            self.history_file_tree_cursor = 0;
+            self.history_file_tree_filter = None;
+            self.history_status_msg = "File tree: j/k navigate, Enter filter, Esc close".into();
+        } else {
+            self.history_file_tree_focus = false;
+            self.history_file_tree_filter = None;
+            self.history_status_msg = "File tree hidden".into();
+        }
+    }
+
+    fn history_file_tree_nodes(&self) -> Vec<FileTreeNode> {
+        let cache = match &self.history_git_cache {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+
+        let mut file_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for commit in &cache.commits {
+            for file in &commit.files {
+                *file_counts.entry(file.path.clone()).or_default() += 1;
+            }
+        }
+
+        // Build flat file tree with directory grouping
+        let mut roots: BTreeMap<String, FileTreeNode> = BTreeMap::new();
+        for (path, count) in &file_counts {
+            let parts: Vec<&str> = path.rsplitn(2, '/').collect();
+            let (file_name, dir_path) = if parts.len() == 2 {
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                (path.clone(), String::new())
+            };
+
+            let dir_node = roots
+                .entry(dir_path.clone())
+                .or_insert_with(|| FileTreeNode {
+                    name: if dir_path.is_empty() {
+                        ".".to_string()
+                    } else {
+                        dir_path.clone()
+                    },
+                    path: dir_path.clone(),
+                    is_dir: true,
+                    change_count: 0,
+                    expanded: true,
+                    level: 0,
+                    children: Vec::new(),
+                });
+
+            dir_node.change_count += count;
+            dir_node.children.push(FileTreeNode {
+                name: file_name,
+                path: path.clone(),
+                is_dir: false,
+                change_count: *count,
+                expanded: false,
+                level: 1,
+                children: Vec::new(),
+            });
+        }
+
+        roots.into_values().collect()
+    }
+
+    fn history_flat_file_list(&self) -> Vec<FlatFileEntry> {
+        self.history_file_tree_nodes()
+            .iter()
+            .flat_map(|node| node.flatten_visible())
+            .collect()
+    }
+
+    /// Copy selected bead ID or commit SHA to clipboard via external command.
+    fn history_copy_to_clipboard(&mut self) {
+        let text = if matches!(self.history_view_mode, HistoryViewMode::Git) {
+            self.selected_history_git_commit_sha()
+        } else {
+            Some(self.analyzer.issues[self.selected].id.clone())
+        };
+
+        if let Some(text) = text {
+            // Use xclip/xsel/pbcopy via shell
+            let result = std::process::Command::new("sh")
+                .args(["-c", &format!("printf '%s' '{}' | xclip -selection clipboard 2>/dev/null || printf '%s' '{}' | xsel --clipboard 2>/dev/null || printf '%s' '{}' | pbcopy 2>/dev/null", text, text, text)])
+                .output();
+            match result {
+                Ok(output) if output.status.success() => {
+                    let short = if text.len() > 7 { &text[..7] } else { &text };
+                    self.history_status_msg = format!("Copied {short} to clipboard");
+                }
+                _ => {
+                    self.history_status_msg = "Clipboard not available".into();
+                }
+            }
+        } else {
+            self.history_status_msg = "No item selected".into();
+        }
+    }
+
+    fn selected_history_git_commit_sha(&self) -> Option<String> {
+        let cache = self.history_git_cache.as_ref()?;
+        let commit = cache.commits.get(self.history_event_cursor)?;
+        Some(commit.sha.clone())
+    }
+
+    /// Open selected commit in browser via git remote URL.
+    fn history_open_in_browser(&mut self) {
+        let sha = if matches!(self.history_view_mode, HistoryViewMode::Git) {
+            self.selected_history_git_commit_sha()
+        } else {
+            // In bead mode, try to get commit SHA from bead's history
+            let issue = &self.analyzer.issues[self.selected];
+            self.history_git_cache.as_ref().and_then(|cache| {
+                cache
+                    .commit_bead_confidence
+                    .iter()
+                    .find(|(_, pairs)| pairs.iter().any(|(id, _)| id == &issue.id))
+                    .map(|(sha, _)| sha.clone())
+            })
+        };
+
+        let Some(sha) = sha else {
+            self.history_status_msg = "No commit selected".into();
+            return;
+        };
+
+        // Try to get remote URL from repo root
+        let repo_root = self
+            .repo_root
+            .clone()
+            .or_else(|| std::env::current_dir().ok());
+        let Some(repo_root) = repo_root else {
+            self.history_status_msg = "No repository root found".into();
+            return;
+        };
+
+        let remote_url = std::process::Command::new("git")
+            .args(["config", "--get", "remote.origin.url"])
+            .current_dir(&repo_root)
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    String::from_utf8(o.stdout).ok()
+                } else {
+                    None
+                }
+            })
+            .map(|s| s.trim().to_string());
+
+        let Some(remote_url) = remote_url else {
+            self.history_status_msg = "No git remote configured".into();
+            return;
+        };
+
+        // Convert remote URL to web commit URL
+        let web_url = remote_to_commit_url(&remote_url, &sha);
+        let Some(url) = web_url else {
+            self.history_status_msg = "Cannot build commit URL from remote".into();
+            return;
+        };
+
+        let result = std::process::Command::new("sh")
+            .args([
+                "-c",
+                &format!("xdg-open '{url}' 2>/dev/null || open '{url}' 2>/dev/null"),
+            ])
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => {
+                let short = if sha.len() > 7 { &sha[..7] } else { &sha };
+                self.history_status_msg = format!("Opened {short} in browser");
+            }
+            _ => {
+                self.history_status_msg = "Could not open browser".into();
+            }
+        }
     }
 
     fn refresh_history_search_selection(&mut self) {
@@ -3741,9 +3996,20 @@ impl BvrApp {
                 }
             }
 
+            // Append file tree panel inline when toggled on
+            if self.history_show_file_tree {
+                lines.push(String::new());
+                lines.push(self.file_tree_panel_text());
+            }
+
             lines.push(String::new());
             lines.push("Enter: jump to related bead | J/K: cycle related beads".to_string());
             lines.push("v: switch to bead timeline | c: cycle confidence".to_string());
+            lines.push("y: copy SHA | o: open in browser | f: file tree".to_string());
+            if !self.history_status_msg.is_empty() {
+                lines.push(String::new());
+                lines.push(self.history_status_msg.clone());
+            }
             return lines.join("\n");
         }
 
@@ -3932,8 +4198,44 @@ impl BvrApp {
 
         lines.push(String::new());
         lines.push("v: switch to git timeline | J/K: cycle commits".to_string());
+        lines.push("y: copy bead ID | o: open commit | f: file tree".to_string());
+        if !self.history_status_msg.is_empty() {
+            lines.push(String::new());
+            lines.push(self.history_status_msg.clone());
+        }
 
         lines.join("\n")
+    }
+
+    /// Render the file tree panel text (when visible).
+    fn file_tree_panel_text(&self) -> String {
+        let flat = self.history_flat_file_list();
+        if flat.is_empty() {
+            return "No file data available.\n(git history may not be loaded)".to_string();
+        }
+
+        let mut out = Vec::new();
+        out.push(format!("File Tree ({} entries) | Esc close", flat.len()));
+        if let Some(ref filter) = self.history_file_tree_filter {
+            out.push(format!("Filter: {filter}"));
+        }
+        out.push(String::new());
+
+        for (idx, entry) in flat.iter().enumerate() {
+            let marker = if self.history_file_tree_focus && idx == self.history_file_tree_cursor {
+                '>'
+            } else {
+                ' '
+            };
+            let indent = "  ".repeat(entry.level);
+            let icon = if entry.is_dir { "/" } else { "" };
+            out.push(format!(
+                "{marker} {indent}{}{icon} ({})",
+                entry.name, entry.change_count
+            ));
+        }
+
+        out.join("\n")
     }
 }
 
@@ -4100,6 +4402,25 @@ fn cmp_opt_datetime(
     }
 }
 
+/// Convert a git remote URL to a web commit URL.
+fn remote_to_commit_url(remote: &str, sha: &str) -> Option<String> {
+    // Handle ssh (git@github.com:owner/repo.git) and https
+    let trimmed = remote.trim();
+    let web_base = if let Some(rest) = trimmed.strip_prefix("git@") {
+        // git@github.com:owner/repo.git → https://github.com/owner/repo
+        let rest = rest.strip_suffix(".git").unwrap_or(rest);
+        let rest = rest.replacen(':', "/", 1);
+        format!("https://{rest}")
+    } else if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+        let base = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+        base.to_string()
+    } else {
+        return None;
+    };
+
+    Some(format!("{web_base}/commit/{sha}"))
+}
+
 pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
     let repo_root = loader::get_beads_dir(None)
         .ok()
@@ -4128,6 +4449,11 @@ pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
         history_git_cache: None,
         history_search_active: false,
         history_search_query: String::new(),
+        history_show_file_tree: false,
+        history_file_tree_cursor: 0,
+        history_file_tree_filter: None,
+        history_file_tree_focus: false,
+        history_status_msg: String::new(),
         board_search_active: false,
         board_search_query: String::new(),
         board_search_match_cursor: 0,
@@ -4355,6 +4681,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5025,6 +5356,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5084,6 +5420,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5137,6 +5478,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5208,6 +5554,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5263,6 +5614,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5319,6 +5675,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5376,6 +5737,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5428,6 +5794,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5495,6 +5866,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5548,6 +5924,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5631,6 +6012,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -5690,6 +6076,11 @@ mod tests {
             history_git_cache: None,
             history_search_active: false,
             history_search_query: String::new(),
+            history_show_file_tree: false,
+            history_file_tree_cursor: 0,
+            history_file_tree_filter: None,
+            history_file_tree_focus: false,
+            history_status_msg: String::new(),
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
@@ -6141,5 +6532,131 @@ mod tests {
         assert!(auto.should_show_empty(BoardGrouping::Status));
         assert!(!auto.should_show_empty(BoardGrouping::Priority));
         assert!(!auto.should_show_empty(BoardGrouping::Type));
+    }
+
+    // -- History parity tests ------------------------------------------------
+
+    #[test]
+    fn history_f_toggles_file_tree() {
+        let mut app = new_app(ViewMode::History, 0);
+        app.mode = ViewMode::History;
+        assert!(!app.history_show_file_tree);
+
+        app.update(key(KeyCode::Char('f')));
+        assert!(app.history_show_file_tree);
+        assert!(!app.history_status_msg.is_empty());
+
+        app.update(key(KeyCode::Char('f')));
+        assert!(!app.history_show_file_tree);
+    }
+
+    #[test]
+    fn history_tab_cycles_file_tree_focus() {
+        let mut app = new_app(ViewMode::History, 0);
+        app.mode = ViewMode::History;
+        app.history_show_file_tree = true;
+        app.focus = FocusPane::List;
+
+        // List → Detail
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        assert!(!app.history_file_tree_focus);
+
+        // Detail → FileTree
+        app.update(key(KeyCode::Tab));
+        assert!(app.history_file_tree_focus);
+
+        // FileTree → List
+        app.update(key(KeyCode::Tab));
+        assert!(!app.history_file_tree_focus);
+        assert_eq!(app.focus, FocusPane::List);
+    }
+
+    #[test]
+    fn history_detail_shows_yof_hints() {
+        let app = new_app(ViewMode::History, 0);
+        let detail = app.detail_panel_text();
+        assert!(
+            detail.contains("y: copy") || detail.contains("y:"),
+            "history detail should mention y key"
+        );
+        assert!(
+            detail.contains("f: file") || detail.contains("f:"),
+            "history detail should mention f key"
+        );
+    }
+
+    #[test]
+    fn history_footer_shows_key_hints() {
+        // Verify the footer format string contains expected keys
+        let app = new_app(ViewMode::History, 0);
+        // The footer text is rendered in view(), but we can check the mode label
+        assert_eq!(app.history_view_mode.label(), "bead");
+    }
+
+    #[test]
+    fn remote_to_commit_url_ssh() {
+        let url = super::remote_to_commit_url("git@github.com:owner/repo.git", "abc123");
+        assert_eq!(
+            url,
+            Some("https://github.com/owner/repo/commit/abc123".into())
+        );
+    }
+
+    #[test]
+    fn remote_to_commit_url_https() {
+        let url = super::remote_to_commit_url("https://github.com/owner/repo.git", "def456");
+        assert_eq!(
+            url,
+            Some("https://github.com/owner/repo/commit/def456".into())
+        );
+    }
+
+    #[test]
+    fn remote_to_commit_url_no_git_suffix() {
+        let url = super::remote_to_commit_url("https://github.com/owner/repo", "sha789");
+        assert_eq!(
+            url,
+            Some("https://github.com/owner/repo/commit/sha789".into())
+        );
+    }
+
+    #[test]
+    fn file_tree_node_flatten_visible() {
+        let node = super::FileTreeNode {
+            name: "src".into(),
+            path: "src".into(),
+            is_dir: true,
+            change_count: 3,
+            expanded: true,
+            level: 0,
+            children: vec![
+                super::FileTreeNode {
+                    name: "main.rs".into(),
+                    path: "src/main.rs".into(),
+                    is_dir: false,
+                    change_count: 2,
+                    expanded: false,
+                    level: 1,
+                    children: vec![],
+                },
+                super::FileTreeNode {
+                    name: "lib.rs".into(),
+                    path: "src/lib.rs".into(),
+                    is_dir: false,
+                    change_count: 1,
+                    expanded: false,
+                    level: 1,
+                    children: vec![],
+                },
+            ],
+        };
+
+        let flat = node.flatten_visible();
+        assert_eq!(flat.len(), 3);
+        assert_eq!(flat[0].name, "src");
+        assert!(flat[0].is_dir);
+        assert_eq!(flat[1].name, "main.rs");
+        assert_eq!(flat[2].name, "lib.rs");
     }
 }

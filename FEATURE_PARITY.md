@@ -218,6 +218,22 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 | `--graph-root` | `--graph-root` | partial |
 | `--graph-depth` | `--graph-depth` | partial |
 
+### Export/Graph Snapshot Flags — 5 complete
+| Legacy Flag | bvr Flag | Status | Notes |
+|---|---|---|---|
+| `--export-md` | `--export-md` | complete | Markdown report export. |
+| `--no-hooks` | `--no-hooks` | complete | Skip export hook execution. |
+| `--export-graph` | `--export-graph` | complete | Deterministic graph snapshot file output. |
+| `--graph-title` | `--graph-title` | complete | Optional title metadata for exported graph text. |
+| `--graph-preset` | `--graph-preset` | complete | Layout density preset (`compact`/`roomy`) for DOT snapshots. |
+
+### Workspace/Repo Scoping — 3 complete
+| Legacy Flag | bvr Flag | Status |
+|---|---|---|
+| `--workspace` | `--workspace` | complete |
+| `--repo` | `--repo` | complete |
+| `-r` | `-r` | complete |
+
 ### Robot Commands (Sprint/Metrics) — 3 complete
 | Legacy Flag | bvr Flag | Status | Notes |
 |---|---|---|---|
@@ -263,7 +279,7 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 | `--beads-file` | Hidden; override `.beads/beads.jsonl` path. |
 | `--repo-path` | Hidden; override repository root auto-detection. |
 
-### Missing — Not Yet Ported (54 flags)
+### Missing — Not Yet Ported
 | Category | Flags |
 |---|---|
 | Correlation/Impact | `--robot-causality`, `--robot-confirm-correlation`, `--robot-reject-correlation`, `--robot-explain-correlation`, `--robot-correlation-stats`, `--correlation-by`, `--correlation-reason`, `--robot-impact`, `--robot-impact-network`, `--robot-related`, `--related-include-closed`, `--related-max-results`, `--related-min-relevance`, `--relations-limit`, `--relations-threshold`, `--network-depth` |
@@ -271,14 +287,13 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 | Label/Attention | `--robot-label-attention`, `--robot-label-flow`, `--robot-label-health`, `--attention-limit` |
 | Sprint | (moved to implemented) |
 | Search | `--search`, `--search-limit`, `--search-mode`, `--search-preset`, `--search-weights`, `--robot-search` |
-| Export/Pages | `--pages`, `--pages-include-closed`, `--pages-include-history`, `--pages-title`, `--preview-pages`, `--export-pages`, `--export-graph`, `--export-md`, `--watch-export`, `--no-live-reload` |
+| Export/Pages | `--pages`, `--pages-include-closed`, `--pages-include-history`, `--pages-title`, `--preview-pages`, `--export-pages`, `--watch-export`, `--no-live-reload` |
 | Script | `--emit-script`, `--script-format`, `--script-limit` |
 | Baseline/Drift | `--save-baseline`, `--baseline-info`, `--check-drift`, `--robot-drift` |
 | Feedback | `--feedback-show`, `--feedback-accept`, `--feedback-ignore`, `--feedback-reset` |
 | Workflow | `--robot-blocker-chain`, `--robot-orphans`, `--orphans-min-score`, `--priority-brief`, `--agent-brief` |
 | Metadata/Docs | `--robot-recipes` |
-| Graph (Advanced) | `--graph-title`, `--graph-preset` |
-| Workspace/Config | `--workspace`, `--repo`, `-r`, `--recipe`, `--no-hooks` |
+| Workspace/Config | `--recipe` |
 
 ### Harness Coverage Notes
 | Command | Fixture Status | Notes |

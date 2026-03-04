@@ -2207,6 +2207,81 @@ fn robot_graph_mermaid_format_contains_expected_markers() {
 }
 
 #[test]
+fn export_graph_json_writes_snapshot_file() {
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+    let temp = tempdir().expect("tempdir");
+    let export_path = temp.path().join("graph-snapshot.json");
+
+    let mut command = Command::new(bvr_bin);
+    command.args(["--export-graph"]);
+    command.arg(&export_path);
+    command.args(["--beads-file"]);
+    command.arg(&beads_path);
+    command.assert().success();
+
+    let snapshot = fs::read_to_string(&export_path).expect("exported json graph");
+    let payload: Value = serde_json::from_str(&snapshot).expect("valid json graph export");
+    assert_eq!(payload["format"], "json");
+    assert_eq!(payload["nodes"].as_u64(), Some(2));
+    assert_eq!(payload["edges"].as_u64(), Some(1));
+    assert!(payload["adjacency"]["nodes"].is_array());
+    assert!(payload["adjacency"]["edges"].is_array());
+}
+
+#[test]
+fn export_graph_dot_honors_extension_title_and_preset() {
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/adversarial_parity.jsonl");
+    let temp = tempdir().expect("tempdir");
+    let export_path = temp.path().join("deps.dot");
+
+    let mut command = Command::new(bvr_bin);
+    command.args(["--export-graph"]);
+    command.arg(&export_path);
+    command.args([
+        "--graph-format",
+        "json",
+        "--graph-title",
+        "Adversarial Dependencies",
+        "--graph-preset",
+        "roomy",
+        "--beads-file",
+    ]);
+    command.arg(&beads_path);
+    command.assert().success();
+
+    let dot_text = fs::read_to_string(&export_path).expect("exported dot graph");
+    assert!(dot_text.starts_with("// Adversarial Dependencies"));
+    assert!(dot_text.contains("digraph G {"));
+    assert!(dot_text.contains("nodesep=0.75;"));
+    assert!(dot_text.contains("ranksep=1.00;"));
+}
+
+#[test]
+fn export_graph_mermaid_honors_extension_and_title() {
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+    let temp = tempdir().expect("tempdir");
+    let export_path = temp.path().join("deps.mmd");
+
+    let mut command = Command::new(bvr_bin);
+    command.args(["--export-graph"]);
+    command.arg(&export_path);
+    command.args(["--graph-title", "Minimal Flow", "--beads-file"]);
+    command.arg(&beads_path);
+    command.assert().success();
+
+    let mermaid_text = fs::read_to_string(&export_path).expect("exported mermaid graph");
+    assert!(mermaid_text.contains("%% Minimal Flow"));
+    assert!(mermaid_text.contains("%% preset: compact"));
+    assert!(mermaid_text.contains("graph TD"));
+}
+
+#[test]
 fn parity_ledger_documents_all_implemented_bvr_flags() {
     let root = repo_root();
     let parity_md = fs::read_to_string(root.join("FEATURE_PARITY.md")).expect("FEATURE_PARITY.md");
@@ -2246,6 +2321,9 @@ fn parity_ledger_documents_all_implemented_bvr_flags() {
         "--graph-format",
         "--graph-root",
         "--graph-depth",
+        "--graph-preset",
+        "--graph-title",
+        "--export-graph",
         "--robot-max-results",
         "--robot-min-confidence",
         "--robot-by-label",

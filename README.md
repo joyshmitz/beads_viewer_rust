@@ -32,6 +32,13 @@ cargo run -- --robot-graph
 cargo run -- --robot-graph --graph-format dot
 cargo run -- --robot-graph --graph-format mermaid --graph-root B --graph-depth 2
 cargo run -- --robot-graph --label api
+cargo run -- --robot-label-health
+cargo run -- --robot-label-flow
+cargo run -- --robot-label-attention
+cargo run -- --robot-label-attention --attention-limit 5
+cargo run -- --export-graph /tmp/deps.json
+cargo run -- --export-graph /tmp/deps.dot --graph-preset roomy --graph-title "Dependency Snapshot"
+cargo run -- --export-graph /tmp/deps.mmd --graph-title "Docs Diagram"
 
 # run against an explicit fixture file
 cargo run -- --robot-triage --beads-file tests/testdata/minimal.jsonl

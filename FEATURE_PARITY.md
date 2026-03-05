@@ -15,11 +15,11 @@ Legend:
 | `--robot-insights` | complete | Core graph metrics + cycle + bottleneck output. |
 | `--robot-priority` | complete | Ranked recommendation surface implemented. |
 | `--robot-diff` | complete | Snapshot diff emits legacy-style nested metadata (`from/to` timestamps, revision, removed issues, cycle deltas, metric deltas, health summary) and legacy-shaped issue payloads (compact fields, dependency metadata, comments, zero-time defaults) with full fixture-backed conformance assertions; Go reference does not include `output_format`/`version` for diff output. |
-| `--robot-history` | partial | Git-aware commit correlation, commit index, milestones, method stats, `--history-since`, and `--min-confidence` filtering are implemented; robot-history export shape now omits bead-only fields to align with legacy output contracts; milestones and cycle_time now use `skip_serializing_if` to omit null fields matching Go behavior; commits serialize as `null` when empty (matching Go); word-boundary-aware event type inference prevents false positives. |
-| `--robot-forecast` | partial | ETA forecast now supports `--forecast-label`, `--forecast-sprint`, and `--forecast-agents` with legacy-compatible all-vs-single filtering semantics, plus legacy-style ETA payload fields (`eta_date_low/high`, `velocity_minutes_per_day`), `output_format` and `version` envelope metadata, and order/factor/value conformance assertions against fixture data. |
-| `--robot-capacity` | partial | Implemented `--agents` + `--capacity-label`, critical path/actionable/bottleneck metrics, ETA-minute projection via legacy-inspired `EstimateETAForIssue` complexity/velocity model, `output_format` and `version` envelope metadata; added fixture-backed capacity parity checks (including label-scoped output), exact label-scope edge semantics, and forecast/capacity total-minute consistency checks. |
-| `--robot-burndown` | partial | Implemented sprint selection (`current` or ID), burndown totals, `daily_points`, `ideal_line`, git-derived `scope_changes`, `output_format` and `version` envelope metadata; Go-reference fixture generated and fixture-backed conformance assertions for core scalar fields, burn rates, and array lengths added. |
-| `--robot-suggest` | partial | Suggestion suite implemented with `--suggest-type`, `--suggest-confidence`, and `--suggest-bead` filters; detector caps/sorting now uses alphabetical type string ordering (matching Go behavior) and dependency-direction heuristics are aligned with legacy. |
+| `--robot-history` | complete | Git-aware commit correlation, commit index, milestones, method stats, `--history-since`, and `--min-confidence` filtering; robot-history export shape omits bead-only fields to align with legacy output contracts; milestones and cycle_time use `skip_serializing_if` to omit null fields matching Go behavior; commits serialize as `null` when empty (matching Go); word-boundary-aware event type inference; fixture-backed conformance + e2e + specialized tests for all flags. |
+| `--robot-forecast` | complete | ETA forecast with `--forecast-label`, `--forecast-sprint`, and `--forecast-agents` with legacy-compatible all-vs-single filtering semantics, legacy-style ETA payload fields (`eta_date_low/high`, `velocity_minutes_per_day`), `output_format` and `version` envelope metadata; fixture-backed conformance assertions for forecast count, issue IDs, and all filter combinations. |
+| `--robot-capacity` | complete | `--agents` + `--capacity-label`, critical path/actionable/bottleneck metrics, ETA-minute projection via legacy-inspired `EstimateETAForIssue` complexity/velocity model, `output_format` and `version` envelope metadata; fixture-backed capacity parity checks (including label-scoped output), exact label-scope edge semantics, and forecast/capacity total-minute consistency checks. |
+| `--robot-burndown` | complete | Sprint selection (`current` or ID), burndown totals, `daily_points`, `ideal_line`, git-derived `scope_changes`, `output_format` and `version` envelope metadata; Go-reference fixture generated and fixture-backed conformance assertions for core scalar fields, burn rates, and array lengths. |
+| `--robot-suggest` | complete | Suggestion suite with `--suggest-type`, `--suggest-confidence`, and `--suggest-bead` filters; detector caps/sorting uses alphabetical type string ordering (matching Go behavior); dependency-direction heuristics aligned with legacy; fixture-backed conformance + filter + hash stability tests. |
 | `--robot-graph` | complete | JSON/DOT/Mermaid export with `--graph-root`/`--graph-depth`/`--label` filters and deterministic output implemented. |
 
 ## Interactive TUI
@@ -375,9 +375,9 @@ Prerequisites: Wave 2 complete.
 | ~~Performance budgets + stress harness~~ | bd-33w.7.1 | **Implemented** — `benches/triage.rs` with 11 benchmark groups: analyzer_new (sparse/dense × 100/500/1000), triage, insights, plan, diff, forecast, suggest, alerts, history, cycle_detection, real_fixture; synthetic generators for sparse/dense/cyclic graphs at scale; all benchmarks sub-15ms at 1000 issues |
 | Background-mode async orchestration | bd-33w.7.2 | `cargo test background_mode` passes |
 | ~~Profiling parity (cpu-profile, startup profile)~~ | bd-33w.7.3 | **Implemented** — `--profile-startup` (human-readable) and `--profile-startup --profile-json` (machine-readable) with phase timing (load/build/triage/insights), density/cycle/bottleneck stats, and auto-generated recommendations; 2 e2e tests |
-| ~~Module-level unit tests + edge/error coverage~~ | bd-33w.6.4 | **Implemented** — added tests for model.rs (23), error.rs (9), robot.rs (+7), triage.rs (+6), diff.rs (+6), graph.rs (+5); total lib tests: 349; all modules have `#[cfg(test)]` blocks |
+| ~~Module-level unit tests + edge/error coverage~~ | bd-33w.6.4 | **Implemented** — added tests for model.rs (23), error.rs (9), robot.rs (+7), triage.rs (+6), diff.rs (+6), graph.rs (+5); total lib tests: 356; all modules have `#[cfg(test)]` blocks |
 | ~~E2E scripts with diagnostics~~ | bd-33w.6.5 | **Implemented** — `tests/e2e_robot_matrix.rs` with 42 tests: full robot command matrix (triage/next/plan/insights/priority/graph/diff/suggest/alerts/history/forecast/capacity/burndown/metrics/help/docs/schema), debug-render (all views + width variations), export (md/priority-brief/agent-brief), error handling, cross-fixture consistency |
-| ~~CI parity gates wired~~ | bd-33w.6.6 | **Implemented** — `.github/workflows/ci.yml` with 5 jobs: check (fmt+clippy), unit (349 lib tests + snapshots), conformance (73 conformance + 31 schema), e2e (42 robot matrix + alerts + burndown + history + exports + admin + background), bench (criterion smoke), release build with artifact upload |
+| ~~CI parity gates wired~~ | bd-33w.6.6 | **Implemented** — `.github/workflows/ci.yml` with 5 jobs: check (fmt+clippy), unit (356 lib tests + snapshots), conformance (74 conformance + 31 schema), e2e (45 robot matrix + alerts + burndown + history + exports + admin + background), bench (criterion smoke), release build with artifact upload |
 
 ### Wave 4: Release Readiness
 Prerequisites: Wave 3 complete.
@@ -389,7 +389,7 @@ Prerequisites: Wave 3 complete.
 | ~~TUI regression harness (snapshots + keyflow)~~ | bd-33w.3.5 | **Implemented** — 21 insta snapshot tests (5 modes × 3 breakpoints + 6 post-interaction) + 11 keyflow journey tests; `cargo test snap_` and `cargo test keyflow_` pass |
 | Debug-render parity flags | bd-33w.3.6 | `cargo test debug_render` passes |
 | ~~Operational/admin CLI (update/rollback + agents blurb)~~ | bd-33w.2.6 | **Implemented** — `--agents-check/add/update/remove/dry-run/force` + `--check-update/update/rollback/yes` stubs |
-| ~~Docs hardened, roadmap self-contained~~ | bd-33w.8.1 | **Implemented** — README.md updated with full command surface (50+ commands), TUI key map table, test suite table (549+ tests across 7 suites), CI workflow docs, benchmark docs; PROPOSED_ARCHITECTURE.md updated with all 19 analysis modules, conformance/bench design, TUI fidelity status |
+| ~~Docs hardened, roadmap self-contained~~ | bd-33w.8.1 | **Implemented** — README.md updated with full command surface (50+ commands), TUI key map table, test suite table (597+ tests across 7 suites), CI workflow docs, benchmark docs; PROPOSED_ARCHITECTURE.md updated with all 19 analysis modules, conformance/bench design, TUI fidelity status |
 | ~~Release-readiness checklist + evidence index~~ | bd-33w.8.2 | **Implemented** — Release readiness checklist below with evidence links for all parity surfaces |
 
 ### Completion Criteria
@@ -448,12 +448,12 @@ Prerequisites: Wave 3 complete.
 | Gate | Evidence | Status |
 |---|---|---|
 | **Format clean** | `cargo fmt --check` (CI enforced) | PASS |
-| **Clippy warnings** | `cargo clippy --all-targets` (CI enforced) | PASS (warnings exist, non-blocking) |
-| **349 unit tests** | `cargo test --lib` | PASS |
-| **73 conformance tests** | `cargo test --test conformance` | PASS |
+| **Clippy warnings** | `cargo clippy --all-targets` (CI enforced) | PASS (0 warnings) |
+| **356 unit tests** | `cargo test --lib` | PASS |
+| **74 conformance tests** | `cargo test --test conformance` | PASS |
 | **31 schema validation** | `cargo test --test schema_validation` | PASS |
-| **44 e2e tests** | `cargo test --test e2e_robot_matrix` | PASS |
-| **29 integration tests** | 7 integration test files | PASS |
+| **45 e2e tests** | `cargo test --test e2e_robot_matrix` | PASS |
+| **42 integration tests** | 7 integration test files | PASS |
 | **21 snapshot baselines** | `cargo test snap_` with insta | PASS |
 | **11 benchmark groups** | `cargo bench --bench triage` | PASS (all sub-15ms at 1000 issues) |
 

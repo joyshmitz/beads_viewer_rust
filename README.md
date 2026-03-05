@@ -159,13 +159,13 @@ cargo test --test conformance stress_fixture_manifest_has_provenance_and_validat
 
 | Suite | Command | Count |
 |---|---|---|
-| Unit tests | `cargo test --lib` | 349 |
+| Unit tests | `cargo test --lib` | 356 |
 | Snapshots | `cargo test --lib snap_` | 21 |
-| Conformance | `cargo test --test conformance` | 73 |
+| Conformance | `cargo test --test conformance` | 74 |
 | Schema validation | `cargo test --test schema_validation` | 31 |
-| E2E robot matrix | `cargo test --test e2e_robot_matrix` | 44 |
+| E2E robot matrix | `cargo test --test e2e_robot_matrix` | 45 |
 | Stress fixtures | `cargo test --test stress_fixtures` | 49 |
-| Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode` | 29 |
+| Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode` | 42 |
 
 Full suite:
 

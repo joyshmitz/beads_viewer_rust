@@ -174,44 +174,44 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 | `--robot-insights` | `--robot-insights` | complete |
 | `--robot-priority` | `--robot-priority` | complete |
 
-### Robot Commands (Analysis/Suggest) — 5 complete+partial, 1 missing
+### Robot Commands (Analysis/Suggest) — 6 complete
 | Legacy Flag | bvr Flag | Status | Notes |
 |---|---|---|---|
 | `--robot-diff` | `--robot-diff` | complete | Full fixture-backed conformance. |
 | `--diff-since` | `--diff-since` | complete | |
-| `--robot-suggest` | `--robot-suggest` | partial | `--suggest-type`, `--suggest-confidence`, `--suggest-bead` implemented. |
-| `--suggest-type` | `--suggest-type` | partial | |
-| `--suggest-confidence` | `--suggest-confidence` | partial | |
-| `--suggest-bead` | `--suggest-bead` | partial | |
+| `--robot-suggest` | `--robot-suggest` | complete | Fixture-backed conformance + filter + hash stability tests. |
+| `--suggest-type` | `--suggest-type` | complete | |
+| `--suggest-confidence` | `--suggest-confidence` | complete | |
+| `--suggest-bead` | `--suggest-bead` | complete | |
 
-### Robot Commands (Alerts) — 1 complete, 3 partial
+### Robot Commands (Alerts) — 4 complete
 | Legacy Flag | bvr Flag | Status |
 |---|---|---|
 | `--robot-alerts` | `--robot-alerts` | complete |
-| `--alert-type` | `--alert-type` | partial |
-| `--alert-label` | `--alert-label` | partial |
-| `--severity` | `--severity` | partial |
+| `--alert-type` | `--alert-type` | complete |
+| `--alert-label` | `--alert-label` | complete |
+| `--severity` | `--severity` | complete |
 
-### Robot Commands (Forecast/Capacity/Burndown) — 7 partial
+### Robot Commands (Forecast/Capacity/Burndown) — 8 complete
 | Legacy Flag | bvr Flag | Status |
 |---|---|---|
-| `--robot-forecast` | `--robot-forecast` | partial |
-| `--forecast-label` | `--forecast-label` | partial |
-| `--forecast-sprint` | `--forecast-sprint` | partial |
-| `--forecast-agents` | `--forecast-agents` | partial |
-| `--robot-capacity` | `--robot-capacity` | partial |
-| `--agents` | `--agents` | partial |
-| `--capacity-label` | `--capacity-label` | partial |
-| `--robot-burndown` | `--robot-burndown` | partial |
+| `--robot-forecast` | `--robot-forecast` | complete |
+| `--forecast-label` | `--forecast-label` | complete |
+| `--forecast-sprint` | `--forecast-sprint` | complete |
+| `--forecast-agents` | `--forecast-agents` | complete |
+| `--robot-capacity` | `--robot-capacity` | complete |
+| `--agents` | `--agents` | complete |
+| `--capacity-label` | `--capacity-label` | complete |
+| `--robot-burndown` | `--robot-burndown` | complete |
 
-### Robot Commands (History) — 1 partial block
+### Robot Commands (History) — 5 complete
 | Legacy Flag | bvr Flag | Status |
 |---|---|---|
-| `--robot-history` | `--robot-history` | partial |
-| `--bead-history` | `--bead-history` | partial |
-| `--history-limit` | `--history-limit` | partial |
-| `--history-since` | `--history-since` | partial |
-| `--min-confidence` | `--min-confidence` | partial |
+| `--robot-history` | `--robot-history` | complete |
+| `--bead-history` | `--bead-history` | complete |
+| `--history-limit` | `--history-limit` | complete |
+| `--history-since` | `--history-since` | complete |
+| `--min-confidence` | `--min-confidence` | complete |
 
 ### Robot Commands (Graph) — 3 complete
 | Legacy Flag | bvr Flag | Status |
@@ -245,14 +245,14 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 | `--robot-sprint-show` | `--robot-sprint-show` | complete | Sprint detail by ID. |
 | `--robot-metrics` | `--robot-metrics` | complete | Timing, cache, and memory metrics. |
 
-### Robot Options (General) — 5 partial
+### Robot Options (General) — 5 complete
 | Legacy Flag | bvr Flag | Status |
 |---|---|---|
-| `--robot-max-results` | `--robot-max-results` | partial |
-| `--robot-min-confidence` | `--robot-min-confidence` | partial |
-| `--robot-by-label` | `--robot-by-label` | partial |
-| `--robot-by-assignee` | `--robot-by-assignee` | partial |
-| `--label` | `--label` | partial |
+| `--robot-max-results` | `--robot-max-results` | complete |
+| `--robot-min-confidence` | `--robot-min-confidence` | complete |
+| `--robot-by-label` | `--robot-by-label` | complete |
+| `--robot-by-assignee` | `--robot-by-assignee` | complete |
+| `--label` | `--label` | complete |
 | `--robot-triage-by-label` | `--robot-triage-by-label` | complete |
 | `--robot-triage-by-track` | `--robot-triage-by-track` | complete |
 
@@ -322,14 +322,14 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 ### Parity Summary
 | Category | Complete | Partial | Missing | Excluded | Total |
 |---|---|---|---|---|---|
-| Robot Commands | 18 | 22 | 0 | 0 | 40 |
-| Robot Options | 2 | 5 | 0 | 0 | 7 |
+| Robot Commands | 40 | 0 | 0 | 0 | 40 |
+| Robot Options | 7 | 0 | 0 | 0 | 7 |
 | Format/Meta | 4 | 0 | 0 | 0 | 4 |
 | Advanced Analysis | 2 | 0 | 0 | 0 | 2 |
 | Previously Missing Surfaces | 51 | 0 | 0 | 0 | 51 |
 | Excluded | 0 | 0 | 0 | 11 | 11 |
 | Rust-Only | 2 | 0 | 0 | 0 | 2 |
-| **Totals** | **83** | **27** | **0** | **11** | **121+2** |
+| **Totals** | **110** | **0** | **0** | **11** | **121+2** |
 
 ## Phased Implementation Plan
 

@@ -575,14 +575,15 @@ fn snapshot_counts(issues: &[Issue]) -> SnapshotCounts {
     };
 
     for issue in issues {
-        match issue.normalized_status().as_str() {
-            "closed" | "tombstone" => counts.closed = counts.closed.saturating_add(1),
-            "blocked" => {
-                counts.blocked = counts.blocked.saturating_add(1);
-                counts.open = counts.open.saturating_add(1);
-            }
-            "open" | "in_progress" => counts.open = counts.open.saturating_add(1),
-            _ => {}
+        let normalized = issue.normalized_status();
+        if matches!(normalized.as_str(), "closed" | "tombstone") {
+            counts.closed = counts.closed.saturating_add(1);
+            continue;
+        }
+
+        counts.open = counts.open.saturating_add(1);
+        if normalized == "blocked" {
+            counts.blocked = counts.blocked.saturating_add(1);
         }
     }
 
@@ -739,8 +740,8 @@ mod tests {
         assert_eq!(diff.summary.issues_added, 0);
         assert_eq!(diff.summary.issues_removed, 0);
         assert_eq!(diff.summary.issues_modified, 0);
-        assert!(diff.new_issues.as_ref().map_or(true, Vec::is_empty));
-        assert!(diff.closed_issues.as_ref().map_or(true, Vec::is_empty));
+        assert!(diff.new_issues.as_ref().is_none_or(Vec::is_empty));
+        assert!(diff.closed_issues.as_ref().is_none_or(Vec::is_empty));
     }
 
     #[test]
@@ -790,10 +791,10 @@ mod tests {
             ..Issue::default()
         }];
         let diff = compare_snapshots(&issues, &issues);
-        assert!(diff.new_issues.as_ref().map_or(true, Vec::is_empty));
-        assert!(diff.closed_issues.as_ref().map_or(true, Vec::is_empty));
-        assert!(diff.reopened_issues.as_ref().map_or(true, Vec::is_empty));
-        assert!(diff.modified_issues.as_ref().map_or(true, Vec::is_empty));
+        assert!(diff.new_issues.as_ref().is_none_or(Vec::is_empty));
+        assert!(diff.closed_issues.as_ref().is_none_or(Vec::is_empty));
+        assert!(diff.reopened_issues.as_ref().is_none_or(Vec::is_empty));
+        assert!(diff.modified_issues.as_ref().is_none_or(Vec::is_empty));
         assert_eq!(diff.summary.issues_added, 0);
         assert_eq!(diff.summary.issues_removed, 0);
     }
@@ -889,5 +890,23 @@ mod tests {
         let diff = compare_snapshots(&before, &after);
         // Closing M-1 should change open_issues delta
         assert_ne!(diff.metric_deltas.open_issues, 0);
+    }
+
+    #[test]
+    fn metric_deltas_treat_review_like_status_as_open() {
+        let before = vec![Issue {
+            id: "R-1".to_string(),
+            title: "In review".to_string(),
+            status: "review".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let after = Vec::<Issue>::new();
+
+        let diff = compare_snapshots(&before, &after);
+        assert_eq!(
+            diff.metric_deltas.open_issues, -1,
+            "review status should be counted as open-like in deltas"
+        );
     }
 }

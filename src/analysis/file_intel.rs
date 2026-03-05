@@ -105,7 +105,7 @@ pub fn detect_orphans(
                         .entry(bead_id.clone())
                         .or_insert_with(|| (0, Vec::new()));
                     entry.0 += 25;
-                    entry.1.push(format!("File overlap: {}", normalized));
+                    entry.1.push(format!("File overlap: {normalized}"));
                 }
                 if signals
                     .iter()
@@ -152,7 +152,7 @@ pub fn detect_orphans(
                 })
             })
             .collect();
-        probable_beads.sort_by(|a, b| b.confidence.cmp(&a.confidence));
+        probable_beads.sort_by_key(|b| std::cmp::Reverse(b.confidence));
         probable_beads.truncate(3);
 
         orphan_commits.push(OrphanCandidate {
@@ -301,14 +301,14 @@ fn has_bead_id_pattern(text: &str) -> bool {
         let has_alpha_left = left
             .chars()
             .rev()
-            .take_while(|c| c.is_ascii_alphanumeric())
-            .any(|c| c.is_ascii_alphabetic());
+            .take_while(char::is_ascii_alphanumeric)
+            .any(|c: char| c.is_ascii_alphabetic());
         // Check right side has digits
         let right = &text[pos + 1..];
         let has_digit_right = right
             .chars()
-            .take_while(|c| c.is_ascii_alphanumeric())
-            .any(|c| c.is_ascii_digit());
+            .take_while(char::is_ascii_alphanumeric)
+            .any(|c: char| c.is_ascii_digit());
 
         if has_alpha_left && has_digit_right {
             return true;
@@ -394,7 +394,7 @@ pub fn lookup_file_beads(
                     .or_insert_with(|| (Vec::new(), String::new(), 0));
                 entry.0.push(commit.sha.clone());
                 if entry.1.is_empty() || commit.timestamp > entry.1 {
-                    entry.1 = commit.timestamp.clone();
+                    entry.1.clone_from(&commit.timestamp);
                 }
                 for f in &commit.files {
                     let norm = normalize_path(&f.path);
@@ -542,7 +542,7 @@ pub fn compute_file_index_stats(histories: &BTreeMap<String, HistoryBeadCompat>)
     }
 
     let total_files = file_beads.len();
-    let total_bead_links: usize = file_beads.values().map(|s| s.len()).sum();
+    let total_bead_links: usize = file_beads.values().map(BTreeSet::len).sum();
     let files_with_multiple_beads = file_beads.values().filter(|s| s.len() > 1).count();
 
     FileIndexStats {
@@ -1031,7 +1031,7 @@ mod tests {
         assert_eq!(report.stats.total_commits, 2);
         assert_eq!(report.stats.correlated_count, 1);
         assert_eq!(report.stats.orphan_count, 1);
-        assert!(report.candidates.len() >= 1);
+        assert!(!report.candidates.is_empty());
         assert_eq!(report.candidates[0].sha, "orphan-sha-001");
     }
 

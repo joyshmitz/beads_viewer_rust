@@ -241,6 +241,7 @@ mod tests {
                 id: "A-1".to_string(),
                 title: "Fix auth".to_string(),
                 score: 0.9,
+                impact_score: 0.9,
                 confidence: 0.8,
                 reasons: vec!["high priority".to_string()],
                 unblocks: 2,

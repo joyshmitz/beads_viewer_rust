@@ -4,6 +4,7 @@ use serde::Serialize;
 
 use super::git_history::HistoryBeadCompat;
 use super::graph::IssueGraph;
+use crate::model::Issue;
 
 // ---------------------------------------------------------------------------
 // Blocker Chain
@@ -87,12 +88,12 @@ pub fn get_blocker_chain(graph: &IssueGraph, target_id: &str) -> BlockerChainRes
 
         let this_open_blockers = graph.open_blockers(&id);
         let is_root = this_open_blockers.is_empty();
-        let actionable = is_root && entry_issue.is_some_and(|i| i.is_open_like());
+        let actionable = is_root && entry_issue.is_some_and(Issue::is_open_like);
 
         let dependents = graph.dependents(&id);
         let blocks_count = dependents
             .iter()
-            .filter(|dep_id| graph.issue(dep_id).is_some_and(|i| i.is_open_like()))
+            .filter(|dep_id| graph.issue(dep_id).is_some_and(Issue::is_open_like))
             .count();
 
         let entry = BlockerChainEntry {
@@ -358,7 +359,7 @@ pub fn build_impact_network(
 
     // Simple cluster detection via connected components on edge graph
     let mut clusters = detect_clusters(&edges, &mut nodes, &bead_files);
-    clusters.sort_by(|a, b| b.bead_ids.len().cmp(&a.bead_ids.len()));
+    clusters.sort_by_key(|b| std::cmp::Reverse(b.bead_ids.len()));
 
     let isolated_nodes = nodes.iter().filter(|n| n.degree == 0).count();
     let max_degree = nodes.iter().map(|n| n.degree).max().unwrap_or(0);
@@ -466,21 +467,21 @@ fn detect_clusters(
         shared_files.truncate(10);
 
         // Label from most common shared file prefix
-        let label = shared_files
-            .first()
-            .map(|f| {
+        let label = shared_files.first().map_or_else(
+            || format!("cluster-{cluster_id}"),
+            |f| {
                 f.rsplit_once('/')
                     .map_or_else(|| f.clone(), |(dir, _)| dir.to_string())
-            })
-            .unwrap_or_else(|| format!("cluster-{cluster_id}"));
+            },
+        );
 
         // Central bead: highest degree in cluster
         let central_bead = component
             .iter()
             .max_by_key(|id| {
-                adj.get(*id)
-                    .map(|n| n.iter().filter(|x| component_set.contains(x)).count())
-                    .unwrap_or(0)
+                adj.get(*id).map_or(0, |n| {
+                    n.iter().filter(|x| component_set.contains(x)).count()
+                })
             })
             .cloned()
             .unwrap_or_default();
@@ -491,10 +492,11 @@ fn detect_clusters(
             .map(|n| n.commit_count)
             .sum();
 
+        let cluster_id_i32 = i32::try_from(cluster_id).unwrap_or(i32::MAX);
         // Assign cluster_id to nodes
         for node in nodes.iter_mut() {
             if component_set.contains(&node.bead_id) {
-                node.cluster_id = cluster_id as i32;
+                node.cluster_id = cluster_id_i32;
             }
         }
 
@@ -516,7 +518,7 @@ fn detect_clusters(
 
 /// Extract a subnetwork around a specific bead up to a given depth (capped at 3).
 pub fn get_subnetwork(network: &ImpactNetwork, bead_id: &str, depth: usize) -> ImpactNetwork {
-    let capped_depth = depth.min(3).max(1);
+    let capped_depth = depth.clamp(1, 3);
 
     let mut visited = HashSet::new();
     let mut queue: VecDeque<(String, usize)> = VecDeque::new();
@@ -570,15 +572,14 @@ pub fn get_subnetwork(network: &ImpactNetwork, bead_id: &str, depth: usize) -> I
     };
 
     // Recompute clusters for subnetwork
-    let cluster_ids: BTreeSet<i32> = sub_nodes
+    let cluster_ids: BTreeSet<usize> = sub_nodes
         .iter()
-        .filter(|n| n.cluster_id >= 0)
-        .map(|n| n.cluster_id)
+        .filter_map(|n| usize::try_from(n.cluster_id).ok())
         .collect();
     let sub_clusters: Vec<BeadCluster> = network
         .clusters
         .iter()
-        .filter(|c| cluster_ids.contains(&(c.cluster_id as i32)))
+        .filter(|c| cluster_ids.contains(&c.cluster_id))
         .cloned()
         .collect();
 
@@ -611,7 +612,7 @@ pub fn build_impact_network_result(
         (full_network, String::new(), 0)
     } else {
         let sub = get_subnetwork(&full_network, bead_id, depth);
-        (sub, bead_id.to_string(), depth.min(3).max(1))
+        (sub, bead_id.to_string(), depth.clamp(1, 3))
     };
 
     let mut top_connected: Vec<String> = network
@@ -1033,9 +1034,10 @@ fn days_from_date(year: u64, month: u64, day: u64) -> Option<u64> {
     for y in 1970..year {
         days += if is_leap(y) { 366 } else { 365 };
     }
-    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     for m in 1..month {
-        days += month_days[(m - 1) as usize] as u64;
+        let month_index = usize::try_from(m - 1).ok()?;
+        days += month_days[month_index];
         if m == 2 && is_leap(year) {
             days += 1;
         }

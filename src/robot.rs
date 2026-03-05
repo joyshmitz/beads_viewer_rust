@@ -89,6 +89,7 @@ pub fn emit_with_stats<T: Serialize>(
 pub fn default_field_descriptions() -> BTreeMap<&'static str, &'static str> {
     BTreeMap::from([
         ("score", "Composite impact score (0..1)"),
+        ("impact_score", "Legacy alias of score for compatibility"),
         (
             "confidence",
             "Heuristic confidence for recommendation quality (0..1)",

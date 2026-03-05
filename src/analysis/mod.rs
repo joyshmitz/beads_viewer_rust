@@ -16,7 +16,7 @@ pub mod search;
 pub mod suggest;
 pub mod triage;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
@@ -260,16 +260,111 @@ impl Analyzer {
             max_recommendations: max_results.max(50),
         });
 
-        let mut results = triage
-            .result
-            .recommendations
-            .into_iter()
-            .filter(|rec| rec.confidence >= min_confidence)
-            .filter(|rec| {
-                by_label.is_none_or(|label| rec.labels.iter().any(|entry| entry == label))
-            })
-            .filter(|rec| by_assignee.is_none_or(|assignee| rec.assignee == assignee))
-            .collect::<Vec<_>>();
+        // Priority view should consider all open issues, including currently blocked items.
+        // Triage intentionally limits to actionable work; augment with non-actionable open
+        // issues so users can still rank and inspect the full active backlog.
+        let mut results = triage.result.recommendations;
+        let actionable_ids = results
+            .iter()
+            .map(|recommendation| recommendation.id.clone())
+            .collect::<HashSet<_>>();
+
+        let max_pagerank = self
+            .metrics
+            .pagerank
+            .values()
+            .copied()
+            .fold(0.0_f64, f64::max)
+            .max(1e-9);
+        let max_unblocks = self
+            .metrics
+            .blocks_count
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(1)
+            .max(1);
+
+        for issue in self
+            .issues
+            .iter()
+            .filter(|issue| issue.is_open_like() && !actionable_ids.contains(&issue.id))
+        {
+            let pagerank = self
+                .metrics
+                .pagerank
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let pagerank_norm = pagerank / max_pagerank;
+
+            let unblocks = self
+                .metrics
+                .blocks_count
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let unblocks_norm = unblocks as f64 / max_unblocks as f64;
+
+            let urgency = match issue.normalized_status().as_str() {
+                "in_progress" => 1.0,
+                "open" => 0.8,
+                "review" => 0.7,
+                "blocked" => 0.5,
+                _ => 0.6,
+            };
+
+            let blockers = self.graph.open_blockers(&issue.id);
+            let is_blocked = !blockers.is_empty();
+            let mut score = (0.45 * pagerank_norm
+                + 0.30 * unblocks_norm
+                + 0.20 * issue.priority_normalized()
+                + 0.05 * urgency)
+                .clamp(0.0, 1.0);
+            if is_blocked {
+                score = (score * 0.9).clamp(0.0, 1.0);
+            }
+
+            let mut reasons = Vec::<String>::new();
+            if is_blocked {
+                reasons.push(format!("currently blocked by {} issue(s)", blockers.len()));
+            }
+            if pagerank_norm > 0.6 {
+                reasons.push("high graph centrality".to_string());
+            }
+            if unblocks > 0 {
+                reasons.push(format!("unblocks {unblocks} issues"));
+            }
+            if issue.priority <= 2 {
+                reasons.push("high declared priority".to_string());
+            }
+            if reasons.is_empty() {
+                reasons.push("ready to execute now".to_string());
+            }
+
+            results.push(Recommendation {
+                id: issue.id.clone(),
+                title: issue.title.clone(),
+                score,
+                impact_score: score,
+                confidence: (0.5 + 0.5 * score).clamp(0.0, 1.0),
+                reasons,
+                unblocks,
+                status: issue.status.clone(),
+                priority: issue.priority,
+                issue_type: issue.issue_type.clone(),
+                labels: issue.labels.clone(),
+                assignee: issue.assignee.clone(),
+                claim_command: format!("br update {} --status=in_progress", issue.id),
+                show_command: format!("br show {}", issue.id),
+            });
+        }
+
+        results.retain(|rec| rec.confidence >= min_confidence);
+        results.retain(|rec| {
+            by_label.is_none_or(|label| rec.labels.iter().any(|entry| entry == label))
+        });
+        results.retain(|rec| by_assignee.is_none_or(|assignee| rec.assignee == assignee));
 
         results.sort_by(|left, right| {
             right

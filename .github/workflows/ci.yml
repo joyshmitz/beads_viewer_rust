@@ -74,6 +74,8 @@ jobs:
         run: cargo test --test admin_cli -- --test-threads=4
       - name: Background mode tests
         run: cargo test --test background_mode -- --test-threads=4
+      - name: Stress fixture tests
+        run: cargo test --test stress_fixtures -- --test-threads=4
       - name: Upload e2e regression artifacts
         if: always()
         uses: actions/upload-artifact@v4

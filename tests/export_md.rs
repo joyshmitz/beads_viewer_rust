@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -144,13 +145,19 @@ fn export_md_hook_timeout_marks_failure() {
 
     write_hooks(
         repo_dir,
-        "hooks:\n  pre-export:\n    - name: slow\n      command: 'sleep 0.2'\n      timeout: 1ms\n",
+        "hooks:\n  pre-export:\n    - name: slow\n      command: 'sleep 2'\n      timeout: 10ms\n",
     );
 
+    let started = Instant::now();
     bvr_cmd(repo_dir)
         .arg("--export-md")
         .arg("report.md")
         .assert()
         .failure()
         .stderr(predicate::str::contains("timeout"));
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "timeout hook should fail quickly; took {elapsed:?}"
+    );
 }

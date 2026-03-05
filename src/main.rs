@@ -334,9 +334,13 @@ fn main() -> ExitCode {
 
     if cli.robot_insights {
         let insights = analyzer.insights();
+        let legacy_bottlenecks = insights.bottlenecks.clone();
+        let legacy_cycles = insights.cycles.clone();
         let output = RobotInsightsOutput {
             generated_at: envelope(&issues).generated_at,
             data_hash: envelope(&issues).data_hash,
+            bottlenecks: legacy_bottlenecks,
+            cycles: legacy_cycles,
             insights,
             usage_hints: vec![
                 "jq '.insights.bottlenecks[:5]'".to_string(),
@@ -695,6 +699,7 @@ fn main() -> ExitCode {
     if cli.robot_sprint_list || cli.robot_sprint_show.is_some() {
         let sprints = match bvr::loader::load_sprints(cli.repo_path.as_deref()) {
             Ok(sprints) => sprints,
+            Err(bvr::BvrError::MissingBeadsDir(_)) if cli.robot_sprint_list => Vec::new(),
             Err(error) => {
                 eprintln!("error: {error}");
                 return ExitCode::from(1);
@@ -769,8 +774,10 @@ fn main() -> ExitCode {
         let total = load_duration + build_duration + triage_duration + insights_duration;
         let issue_count = issues.len();
         let edge_count: usize = issues.iter().map(|i| i.dependencies.len()).sum();
+        let issue_count_f64 = f64::from(u32::try_from(issue_count).unwrap_or(u32::MAX));
+        let edge_count_f64 = f64::from(u32::try_from(edge_count).unwrap_or(u32::MAX));
         let density = if issue_count > 1 {
-            edge_count as f64 / (issue_count as f64 * (issue_count as f64 - 1.0))
+            edge_count_f64 / (issue_count_f64 * (issue_count_f64 - 1.0))
         } else {
             0.0
         };
@@ -903,7 +910,11 @@ fn main() -> ExitCode {
             .as_deref()
             .or(cli.robot_confirm_correlation.as_deref())
             .or(cli.robot_reject_correlation.as_deref())
-            .unwrap();
+            .unwrap_or_default();
+        if raw_arg.is_empty() {
+            eprintln!("error: missing correlation target argument (expected SHA:BEAD_ID)");
+            return ExitCode::from(1);
+        }
 
         let (commit_sha, bead_id) = match bvr::analysis::correlation::parse_correlation_arg(raw_arg)
         {
@@ -1306,11 +1317,10 @@ fn main() -> ExitCode {
             }
         };
 
-        let mode = cli
-            .search_mode
-            .as_deref()
-            .map(bvr::analysis::search::SearchMode::from_str_or_default)
-            .unwrap_or(bvr::analysis::search::SearchMode::Text);
+        let mode = cli.search_mode.as_deref().map_or(
+            bvr::analysis::search::SearchMode::Text,
+            bvr::analysis::search::SearchMode::from_str_or_default,
+        );
 
         let weights = if let Some(ref json) = cli.search_weights {
             match bvr::analysis::search::SearchWeights::from_json(json) {
@@ -1426,8 +1436,11 @@ fn main() -> ExitCode {
 
         let (issue_id, action) = if let Some(ref id) = cli.feedback_accept {
             (id.as_str(), "accept")
+        } else if let Some(id) = cli.feedback_ignore.as_deref() {
+            (id, "ignore")
         } else {
-            (cli.feedback_ignore.as_deref().unwrap(), "ignore")
+            eprintln!("error: feedback action requires --feedback-accept or --feedback-ignore");
+            return ExitCode::from(1);
         };
 
         // Look up the issue's triage score
@@ -1891,7 +1904,8 @@ fn file_mtime_epoch_millis(path: &Path) -> bvr::Result<u64> {
         .ok()
         .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0, |duration| {
-            duration.as_millis().min(u128::from(u64::MAX)) as u64
+            let millis = duration.as_millis().min(u128::from(u64::MAX));
+            u64::try_from(millis).unwrap_or(u64::MAX)
         });
     Ok(modified)
 }
@@ -2722,8 +2736,16 @@ fn generate_daily_burndown_points(
     let total_issues = i32::try_from(sprint_issues.len()).unwrap_or(i32::MAX);
     let mut points = Vec::<BurndownPointCompat>::new();
     let mut day = start_date;
+    let upper_bound = if now > end_date && end_date > start_date {
+        end_date - Duration::days(1)
+    } else {
+        now.min(end_date)
+    };
+    if upper_bound < start_date {
+        return points;
+    }
 
-    while day <= end_date && day <= now {
+    while day <= upper_bound {
         let day_end = day + Duration::hours(24) - Duration::seconds(1);
         let completed_usize = sprint_issues
             .iter()
@@ -3415,6 +3437,7 @@ impl PngCanvas {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_line(
         &mut self,
         x0: i32,
@@ -3675,8 +3698,8 @@ fn build_grid_layout(
         };
         max_rows = max_rows.max(bucket.len());
         for (row, issue) in bucket.iter().enumerate() {
-            let x = padding + column as f64 * (node_w + col_gap);
-            let y = header_h + padding + row as f64 * (node_h + row_gap);
+            let x = (column as f64).mul_add(node_w + col_gap, padding);
+            let y = (row as f64).mul_add(node_h + row_gap, header_h + padding);
             nodes.push(StaticGraphNode {
                 id: issue.id.clone(),
                 title: truncate_runes(&issue.title, 34),
@@ -3694,16 +3717,20 @@ fn build_grid_layout(
     let width = if ordered_levels.is_empty() {
         760_u32
     } else {
-        (padding * 2.0
-            + ordered_levels.len() as f64 * node_w
-            + (ordered_levels.len().saturating_sub(1)) as f64 * col_gap)
+        let columns = ordered_levels.len() as f64;
+        let column_gaps = ordered_levels.len().saturating_sub(1) as f64;
+        column_gaps
+            .mul_add(col_gap, padding.mul_add(2.0, columns.mul_add(node_w, 0.0)))
             .ceil()
             .max(760.0) as u32
     };
-    let height = (header_h
-        + padding * 2.0
-        + max_rows as f64 * node_h
-        + max_rows.saturating_sub(1) as f64 * row_gap)
+    let rows = max_rows as f64;
+    let row_gaps = max_rows.saturating_sub(1) as f64;
+    let height = row_gaps
+        .mul_add(
+            row_gap,
+            rows.mul_add(node_h, padding.mul_add(2.0, header_h)),
+        )
         .ceil()
         .max(540.0) as u32;
 
@@ -4378,6 +4405,10 @@ struct RobotPlanOutput {
 struct RobotInsightsOutput {
     generated_at: String,
     data_hash: String,
+    #[serde(rename = "Bottlenecks")]
+    bottlenecks: Vec<bvr::analysis::InsightItem>,
+    #[serde(rename = "Cycles")]
+    cycles: Vec<Vec<String>>,
     insights: Insights,
     usage_hints: Vec<String>,
 }
@@ -4727,9 +4758,9 @@ struct ProfileJsonOutput {
 fn format_duration_ms(d: std::time::Duration) -> String {
     let ms = d.as_secs_f64() * 1000.0;
     if ms < 1.0 {
-        format!("{:.3}ms", ms)
+        format!("{ms:.3}ms")
     } else if ms < 1000.0 {
-        format!("{:.1}ms", ms)
+        format!("{ms:.1}ms")
     } else {
         format!("{:.2}s", ms / 1000.0)
     }

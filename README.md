@@ -149,6 +149,12 @@ Run Rust conformance tests:
 cargo test --test conformance
 ```
 
+Validate stress/adversarial fixture provenance metadata:
+
+```bash
+cargo test --test conformance stress_fixture_manifest_has_provenance_and_validated_counts
+```
+
 ## Test Suite
 
 | Suite | Command | Count |
@@ -158,6 +164,7 @@ cargo test --test conformance
 | Conformance | `cargo test --test conformance` | 73 |
 | Schema validation | `cargo test --test schema_validation` | 31 |
 | E2E robot matrix | `cargo test --test e2e_robot_matrix` | 44 |
+| Stress fixtures | `cargo test --test stress_fixtures` | 49 |
 | Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode` | 29 |
 
 Full suite:

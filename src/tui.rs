@@ -509,7 +509,7 @@ struct FileTreeNode {
     change_count: usize,
     expanded: bool,
     level: usize,
-    children: Vec<FileTreeNode>,
+    children: Vec<Self>,
 }
 
 impl FileTreeNode {
@@ -640,8 +640,10 @@ struct HistoryGitCache {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ModalOverlay {
     /// Welcome / first-run tutorial.
+    #[allow(dead_code)]
     Tutorial,
     /// Reusable Y/N confirmation dialog.
+    #[allow(dead_code)]
     Confirm { title: String, message: String },
     /// Interactive pages export wizard.
     PagesWizard(PagesWizardState),
@@ -658,6 +660,7 @@ struct PagesWizardState {
 }
 
 impl PagesWizardState {
+    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             step: 0,
@@ -790,7 +793,7 @@ impl Model for BvrApp {
     fn init(&mut self) -> Cmd<Self::Message> {
         #[cfg(not(test))]
         {
-            return self.background_tick_command();
+            self.background_tick_command()
         }
         #[cfg(test)]
         {
@@ -960,7 +963,7 @@ impl Model for BvrApp {
                     return;
                 }
                 ModalOverlay::PagesWizard(wiz) => {
-                    let text = self.pages_wizard_text(wiz);
+                    let text = Self::pages_wizard_text(wiz);
                     let wiz_title = format!(
                         "Pages Wizard ({}/{}): {}",
                         wiz.step + 1,
@@ -1949,10 +1952,12 @@ impl BvrApp {
         self.history_bead_commit_cursor = 0;
     }
 
+    #[allow(dead_code)]
     fn open_tutorial(&mut self) {
         self.modal_overlay = Some(ModalOverlay::Tutorial);
     }
 
+    #[allow(dead_code)]
     fn open_confirm(&mut self, title: impl Into<String>, message: impl Into<String>) {
         self.modal_confirm_result = None;
         self.modal_overlay = Some(ModalOverlay::Confirm {
@@ -1961,6 +1966,7 @@ impl BvrApp {
         });
     }
 
+    #[allow(dead_code)]
     fn open_pages_wizard(&mut self) {
         self.modal_overlay = Some(ModalOverlay::PagesWizard(PagesWizardState::new()));
     }
@@ -1986,7 +1992,8 @@ impl BvrApp {
         let len = flat.len();
         let cur = self.history_file_tree_cursor.min(len.saturating_sub(1));
         self.history_file_tree_cursor = if delta > 0 {
-            (cur + delta as usize).min(len.saturating_sub(1))
+            cur.saturating_add(delta.unsigned_abs())
+                .min(len.saturating_sub(1))
         } else {
             cur.saturating_sub(delta.unsigned_abs())
         };
@@ -1998,42 +2005,20 @@ impl BvrApp {
             .history_file_tree_cursor
             .min(flat.len().saturating_sub(1));
         if let Some(entry) = flat.get(cursor) {
-            if entry.is_dir {
-                // Toggle expand/collapse on directory nodes
-                let path = entry.path.clone();
-                if let Some(nodes) = self
-                    .history_git_cache
-                    .as_ref()
-                    .map(|_| self.history_file_tree_nodes())
-                {
-                    // Rebuild with toggle — we toggle the filter instead
-                    if self.history_file_tree_filter.as_deref() == Some(&path) {
-                        self.history_file_tree_filter = None;
-                        self.history_status_msg = "Filter cleared".into();
-                    } else {
-                        self.history_file_tree_filter = Some(path.clone());
-                        self.history_status_msg = format!("Filtered to: {path}");
-                    }
-                    let _ = nodes; // suppress unused
-                }
+            let path = entry.path.clone();
+            if self.history_file_tree_filter.as_deref() == Some(&path) {
+                self.history_file_tree_filter = None;
+                self.history_status_msg = "Filter cleared".into();
             } else {
-                // Filter by this file
-                let path = entry.path.clone();
-                if self.history_file_tree_filter.as_deref() == Some(&path) {
-                    self.history_file_tree_filter = None;
-                    self.history_status_msg = "Filter cleared".into();
-                } else {
-                    self.history_file_tree_filter = Some(path.clone());
-                    self.history_status_msg = format!("Filtered to: {path}");
-                }
+                self.history_file_tree_filter = Some(path.clone());
+                self.history_status_msg = format!("Filtered to: {path}");
             }
         }
     }
 
     fn history_file_tree_nodes(&self) -> Vec<FileTreeNode> {
-        let cache = match &self.history_git_cache {
-            Some(c) => c,
-            None => return Vec::new(),
+        let Some(cache) = &self.history_git_cache else {
+            return Vec::new();
         };
 
         let mut file_counts: BTreeMap<String, usize> = BTreeMap::new();
@@ -2087,7 +2072,7 @@ impl BvrApp {
     fn history_flat_file_list(&self) -> Vec<FlatFileEntry> {
         self.history_file_tree_nodes()
             .iter()
-            .flat_map(|node| node.flatten_visible())
+            .flat_map(FileTreeNode::flatten_visible)
             .collect()
     }
 
@@ -2102,7 +2087,7 @@ impl BvrApp {
         if let Some(text) = text {
             // Use xclip/xsel/pbcopy via shell
             let result = std::process::Command::new("sh")
-                .args(["-c", &format!("printf '%s' '{}' | xclip -selection clipboard 2>/dev/null || printf '%s' '{}' | xsel --clipboard 2>/dev/null || printf '%s' '{}' | pbcopy 2>/dev/null", text, text, text)])
+                .args(["-c", &format!("printf '%s' '{text}' | xclip -selection clipboard 2>/dev/null || printf '%s' '{text}' | xsel --clipboard 2>/dev/null || printf '%s' '{text}' | pbcopy 2>/dev/null")])
                 .output();
             match result {
                 Ok(output) if output.status.success() => {
@@ -2228,9 +2213,8 @@ impl BvrApp {
         }
 
         if matches!(self.history_view_mode, HistoryViewMode::Git) {
-            let cache = match &self.history_git_cache {
-                Some(c) => c,
-                None => return Vec::new(),
+            let Some(cache) = &self.history_git_cache else {
+                return Vec::new();
             };
             cache
                 .commits
@@ -3394,7 +3378,7 @@ impl BvrApp {
         Cmd::None
     }
 
-    fn pages_wizard_text(&self, wiz: &PagesWizardState) -> String {
+    fn pages_wizard_text(wiz: &PagesWizardState) -> String {
         match wiz.step {
             0 => format!(
                 "Export directory: {}\n\n\
@@ -7871,15 +7855,6 @@ mod tests {
     // Each test replays a complete keyboard journey that a user would
     // perform, asserting state at each step.  The key_trace vector
     // provides a full audit log for triage.
-
-    /// Helper: replay a sequence of key codes and return the app.
-    fn replay_keys(start_mode: ViewMode, keys: &[KeyCode]) -> BvrApp {
-        let mut app = new_app(start_mode, 0);
-        for &k in keys {
-            app.update(key(k));
-        }
-        app
-    }
 
     #[test]
     fn keyflow_main_to_board_navigate_return() {

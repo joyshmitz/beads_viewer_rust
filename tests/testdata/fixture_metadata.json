@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "generated_at": "2026-03-05T04:00:00Z",
+  "fixtures": [
+    {
+      "file": "stress_large_500.jsonl",
+      "kind": "positive",
+      "origin": "generated",
+      "provenance": "tests/testdata/gen_stress_fixtures.py::gen_large_500",
+      "record_count": 500,
+      "intent": "High-volume mixed-topology workload for stress/perf and graph-shape regressions.",
+      "categories": ["stress", "performance", "topology-mix"],
+      "expected_failure_signatures": [
+        "triage latency spikes or timeout under large input",
+        "graph node/edge count drift from expected topology",
+        "critical-path ordering instability across repeated runs"
+      ]
+    },
+    {
+      "file": "pathological_deps.jsonl",
+      "kind": "adversarial",
+      "origin": "generated",
+      "provenance": "tests/testdata/gen_stress_fixtures.py::gen_pathological",
+      "record_count": 233,
+      "intent": "Pathological dependency structures to exercise cycle detection, dangling edges, and depth extremes.",
+      "categories": ["dependency-pathology", "cycles", "graph-edge-cases"],
+      "expected_failure_signatures": [
+        "cycle detector misses overlapping or long cycles",
+        "planner hangs or explodes on deep chain/fan-in/fan-out",
+        "panic when resolving dangling dependency targets"
+      ]
+    },
+    {
+      "file": "malformed_metadata.jsonl",
+      "kind": "adversarial",
+      "origin": "generated",
+      "provenance": "tests/testdata/gen_stress_fixtures.py::gen_malformed",
+      "record_count": 24,
+      "intent": "Malformed and extreme metadata values to verify parser robustness and normalization.",
+      "categories": ["metadata-malformed", "input-sanitization", "unicode"],
+      "expected_failure_signatures": [
+        "parser crash on malformed date/priority fields",
+        "invalid UTF-8/text handling in output rendering",
+        "normalization drift for duplicate labels and empty fields"
+      ]
+    },
+    {
+      "file": "stress_complex_89.jsonl",
+      "kind": "positive",
+      "origin": "hand-authored",
+      "provenance": "tests/testdata/stress_complex_89.jsonl curated fixture",
+      "record_count": 89,
+      "intent": "Medium-large deterministic stress fixture used for conformance parity and cycle behavior assertions.",
+      "categories": ["stress", "conformance", "deterministic"],
+      "expected_failure_signatures": [
+        "triage quick_ref totals diverge from expected values",
+        "insights cycle component count regression",
+        "graph edge count drift under stable fixture"
+      ]
+    },
+    {
+      "file": "adversarial_stress.jsonl",
+      "kind": "adversarial",
+      "origin": "hand-authored",
+      "provenance": "tests/testdata/adversarial_stress.jsonl curated fixture",
+      "record_count": 16,
+      "intent": "Small adversarial stress fixture for cycle/cascade edge behavior in robot outputs.",
+      "categories": ["adversarial", "stress", "cycle-cascade"],
+      "expected_failure_signatures": [
+        "cycle warning suggestions missing expected members",
+        "alert generation misses cascade blockers",
+        "graph traversal returns incomplete subgraphs"
+      ]
+    },
+    {
+      "file": "adversarial_parity.jsonl",
+      "kind": "adversarial",
+      "origin": "hand-authored",
+      "provenance": "tests/testdata/adversarial_parity.jsonl parity fixture",
+      "record_count": 10,
+      "intent": "Compact adversarial parity fixture used against legacy outputs for behavioral regressions.",
+      "categories": ["adversarial", "parity", "legacy-compat"],
+      "expected_failure_signatures": [
+        "top pick IDs diverge from legacy fixture contract",
+        "history/diff envelope regressions under adversarial graph",
+        "priority recommendation ordering drift"
+      ]
+    }
+  ]
+}

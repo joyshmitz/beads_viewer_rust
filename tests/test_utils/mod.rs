@@ -3,6 +3,8 @@
 /// Provides ordering-invariant array comparisons for unordered collections
 /// and strict field-level checks for contract validation. Produces clear
 /// diff output showing exact field paths, expected vs actual values.
+use std::fmt::Write as _;
+
 use serde_json::Value;
 
 // ============================================================================
@@ -43,7 +45,7 @@ pub fn validate_envelope(value: &Value) -> Vec<String> {
     errors
 }
 
-/// Validate output_format and version fields (newer robot outputs).
+/// Validate `output_format` and `version` fields (newer robot outputs).
 #[must_use]
 pub fn validate_version_envelope(value: &Value) -> Vec<String> {
     let mut errors = validate_envelope(value);
@@ -92,7 +94,7 @@ pub enum JsonType {
     Object,
 }
 
-fn json_type(v: &Value) -> JsonType {
+const fn json_type(v: &Value) -> JsonType {
     match v {
         Value::Null => JsonType::Null,
         Value::Bool(_) => JsonType::Bool,
@@ -103,7 +105,7 @@ fn json_type(v: &Value) -> JsonType {
     }
 }
 
-fn type_name(v: &Value) -> &'static str {
+const fn type_name(v: &Value) -> &'static str {
     match v {
         Value::Null => "null",
         Value::Bool(_) => "bool",
@@ -405,6 +407,7 @@ fn format_value(v: &Value) -> String {
 
 /// Assert that a robot output passes envelope validation.
 /// Panics with detailed errors if validation fails.
+#[allow(dead_code)]
 pub fn assert_valid_envelope(value: &Value) {
     let errors = validate_envelope(value);
     assert!(
@@ -415,6 +418,7 @@ pub fn assert_valid_envelope(value: &Value) {
 }
 
 /// Assert that a robot output passes version envelope validation.
+#[allow(dead_code)]
 pub fn assert_valid_version_envelope(value: &Value) {
     let errors = validate_version_envelope(value);
     assert!(
@@ -426,6 +430,7 @@ pub fn assert_valid_version_envelope(value: &Value) {
 
 /// Assert that two JSON values are structurally equal, with optional
 /// ordering-invariant array comparison by sort key.
+#[allow(dead_code)]
 pub fn assert_json_eq(expected: &Value, actual: &Value, sort_key: Option<&str>) {
     let diffs = compare_json(expected, actual, "", sort_key);
     assert!(
@@ -441,6 +446,7 @@ pub fn assert_json_eq(expected: &Value, actual: &Value, sort_key: Option<&str>) 
 }
 
 /// Assert that two JSON values are equal, ignoring specified fields.
+#[allow(dead_code)]
 pub fn assert_json_eq_ignoring(expected: &Value, actual: &Value, ignore_fields: &[&str]) {
     let diffs = compare_json_ignoring(expected, actual, "", ignore_fields);
     assert!(
@@ -457,6 +463,7 @@ pub fn assert_json_eq_ignoring(expected: &Value, actual: &Value, ignore_fields: 
 }
 
 /// Assert required fields exist at a path.
+#[allow(dead_code)]
 pub fn assert_has_fields(value: &Value, fields: &[&str], path: &str) {
     let errors = validate_fields(value, fields, path);
     assert!(
@@ -467,6 +474,7 @@ pub fn assert_has_fields(value: &Value, fields: &[&str], path: &str) {
 }
 
 /// Assert a value at a JSON path has the expected type.
+#[allow(dead_code)]
 pub fn assert_type_at(value: &Value, path: &str, expected_type: JsonType) {
     let errors = validate_type_at(value, path, expected_type);
     assert!(
@@ -488,10 +496,11 @@ pub fn format_diffs_compact(diffs: &[Diff]) -> String {
 
 /// Format diffs as a verbose report (for local debugging).
 #[must_use]
+#[allow(dead_code)]
 pub fn format_diffs_verbose(diffs: &[Diff]) -> String {
     let mut output = String::new();
     for (i, diff) in diffs.iter().enumerate() {
-        output.push_str(&format!("[{}] {diff}\n", i + 1));
+        let _ = writeln!(&mut output, "[{}] {diff}", i + 1);
     }
     output
 }

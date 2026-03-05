@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -295,28 +296,67 @@ fn run_hook(hook: &HookRuntime, context: &HookContext) -> Result<HookRunResult> 
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 
+    let mut child = command.spawn()?;
+
+    let stdout_reader = child.stdout.take().map(|mut stdout| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::<u8>::new();
+            let _ = stdout.read_to_end(&mut bytes);
+            bytes
+        })
+    });
+    let stderr_reader = child.stderr.take().map(|mut stderr| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::<u8>::new();
+            let _ = stderr.read_to_end(&mut bytes);
+            bytes
+        })
+    });
+
     let started = Instant::now();
-    let output = command.output()?;
+    let (status, timed_out) = loop {
+        if let Some(status) = child.try_wait()? {
+            break (status, false);
+        }
+
+        if started.elapsed() > hook.timeout {
+            let _ = child.kill();
+            break (child.wait()?, true);
+        }
+
+        std::thread::sleep(Duration::from_millis(10));
+    };
     let elapsed = started.elapsed();
 
-    let mut success = output.status.success();
-    let mut error = if success {
-        None
+    // If the hook timed out, do not join IO reader threads because children of the shell
+    // may still hold inherited pipes open briefly; dropping the handles detaches the threads
+    // and keeps timeout behavior bounded.
+    let stderr = if timed_out {
+        drop(stdout_reader);
+        drop(stderr_reader);
+        String::new()
     } else {
-        Some(format!("exit status {}", output.status))
+        let _ = stdout_reader.map_or_else(Vec::new, |reader| reader.join().unwrap_or_default());
+        let stderr =
+            stderr_reader.map_or_else(Vec::new, |reader| reader.join().unwrap_or_default());
+        String::from_utf8_lossy(&stderr).trim().to_string()
     };
 
-    if elapsed > hook.timeout {
-        success = false;
-        error = Some(format!("timeout after {}ms", hook.timeout.as_millis()));
-    }
+    let success = status.success() && !timed_out;
+    let error = if timed_out {
+        Some(format!("timeout after {}ms", hook.timeout.as_millis()))
+    } else if status.success() {
+        None
+    } else {
+        Some(format!("exit status {status}"))
+    };
 
     Ok(HookRunResult {
         name: hook.name.clone(),
         success,
         duration: elapsed,
         error,
-        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        stderr,
     })
 }
 
@@ -479,11 +519,12 @@ fn generate_markdown_report(issues: &[Issue]) -> String {
     markdown.push_str("## Summary\n\n");
     markdown.push_str("| Metric | Count |\n");
     markdown.push_str("|---|---:|\n");
-    let _ = writeln!(markdown, "| Total | {} |", sorted.len());
-    let _ = writeln!(markdown, "| Open | {} |", open_count);
-    let _ = writeln!(markdown, "| In Progress | {} |", in_progress_count);
-    let _ = writeln!(markdown, "| Blocked | {} |", blocked_count);
-    let _ = writeln!(markdown, "| Closed | {} |\n", closed_count);
+    let total_count = sorted.len();
+    let _ = writeln!(markdown, "| Total | {total_count} |");
+    let _ = writeln!(markdown, "| Open | {open_count} |");
+    let _ = writeln!(markdown, "| In Progress | {in_progress_count} |");
+    let _ = writeln!(markdown, "| Blocked | {blocked_count} |");
+    let _ = writeln!(markdown, "| Closed | {closed_count} |\n");
 
     for issue in sorted {
         let _ = writeln!(markdown, "## {} {}\n", issue.id, issue.title);
@@ -544,7 +585,7 @@ fn generate_markdown_report(issues: &[Issue]) -> String {
                     dep.dep_type.trim()
                 };
 
-                Some(format!("- `{}` (`{}`)", depends_on, dep_type))
+                Some(format!("- `{depends_on}` (`{dep_type}`)"))
             })
             .collect::<Vec<_>>();
 
@@ -563,7 +604,7 @@ fn generate_markdown_report(issues: &[Issue]) -> String {
                     comment.author.trim()
                 };
                 let text = comment.text.trim();
-                let _ = writeln!(markdown, "- **{}**: {}", author, text);
+                let _ = writeln!(markdown, "- **{author}**: {text}");
             }
             markdown.push('\n');
         }

@@ -42,6 +42,7 @@ pub struct SearchWeights {
 }
 
 impl SearchWeights {
+    #[must_use]
     pub fn normalize(&self) -> Self {
         let sum =
             self.text + self.pagerank + self.status + self.impact + self.priority + self.recency;
@@ -233,7 +234,6 @@ fn normalize_status(status: &str) -> f64 {
     match status.to_ascii_lowercase().as_str() {
         "open" => 1.0,
         "in_progress" => 0.8,
-        "blocked" => 0.5,
         "closed" => 0.1,
         "tombstone" => 0.0,
         _ => 0.5,
@@ -269,7 +269,7 @@ fn normalize_recency(updated_at: Option<&str>) -> f64 {
     }
     let days = (now_ms - ts_ms) / 86_400_000;
     // Exponential decay with half-life ~30 days
-    (-1.0 * days as f64 / 30.0_f64).exp()
+    (-(days as f64) / 30.0_f64).exp()
 }
 
 // ---------------------------------------------------------------------------
@@ -429,7 +429,7 @@ pub fn execute_search(
     // Promote exact ID match to top
     if let Some(pos) = results
         .iter()
-        .position(|r| r.issue_id.to_ascii_lowercase() == query.to_ascii_lowercase())
+        .position(|r| r.issue_id.eq_ignore_ascii_case(query))
     {
         if pos > 0 {
             let exact = results.remove(pos);
@@ -600,7 +600,7 @@ mod tests {
         assert_eq!(r1.len(), r2.len());
         for (a, b) in r1.iter().zip(r2.iter()) {
             assert_eq!(a.issue_id, b.issue_id);
-            assert_eq!(a.score, b.score);
+            assert!((a.score - b.score).abs() < f64::EPSILON);
         }
     }
 }

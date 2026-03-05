@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use super::triage::{Recommendation, TriageComputation};
+use super::triage::Recommendation;
 use crate::model::Issue;
 
 // ---------------------------------------------------------------------------
@@ -465,11 +465,10 @@ pub struct RobotFeedbackOutput {
 impl FeedbackData {
     pub fn load(project_dir: &Path) -> Self {
         let path = project_dir.join(".bv").join("feedback.json");
-        if let Ok(content) = fs::read_to_string(&path) {
-            serde_json::from_str(&content).unwrap_or_default()
-        } else {
-            Self::default()
-        }
+        fs::read_to_string(&path).map_or_else(
+            |_| Self::default(),
+            |content| serde_json::from_str(&content).unwrap_or_default(),
+        )
     }
 
     pub fn save(&self, project_dir: &Path) -> Result<(), String> {
@@ -600,6 +599,7 @@ mod tests {
             id: id.to_string(),
             title: title.to_string(),
             score,
+            impact_score: score,
             confidence: 0.8,
             reasons: vec!["test".to_string()],
             unblocks: 0,

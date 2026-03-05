@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn dependency_is_blocking_for_empty_type() {
         let dep = Dependency {
-            dep_type: "".to_string(),
+            dep_type: String::new(),
             ..Default::default()
         };
         assert!(dep.is_blocking());
@@ -377,7 +377,7 @@ mod tests {
     fn validate_rejects_empty_title() {
         let issue = Issue {
             id: "X-1".to_string(),
-            title: "".to_string(),
+            title: String::new(),
             issue_type: "task".to_string(),
             status: "open".to_string(),
             ..Default::default()
@@ -391,7 +391,7 @@ mod tests {
         let issue = Issue {
             id: "X-1".to_string(),
             title: "Test".to_string(),
-            issue_type: "".to_string(),
+            issue_type: String::new(),
             status: "open".to_string(),
             ..Default::default()
         };
@@ -405,7 +405,7 @@ mod tests {
             id: "X-1".to_string(),
             title: "Test".to_string(),
             issue_type: "task".to_string(),
-            status: "".to_string(),
+            status: String::new(),
             ..Default::default()
         };
         let err = issue.validate().unwrap_err();

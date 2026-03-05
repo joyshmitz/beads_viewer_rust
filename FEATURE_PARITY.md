@@ -157,7 +157,7 @@ Legend:
 | Capability | Status | Notes |
 |---|---|---|
 | Conformance harness scaffold | complete | Go reference harness + fixture + Rust test skeleton in repo. |
-| Fixture-driven parity tests | partial | Legacy fixture-backed conformance checks for diff/history/forecast/triage/plan/priority/burndown with adversarial coverage; added edge-case fixtures (`single_issue.jsonl`, `all_closed.jsonl`) with boundary-condition tests for triage, suggest, plan, insights, forecast, graph, history, and burndown modes; Go-reference burndown fixture generated via `--sprints-file` harness flag; history milestones validated to omit null fields; 89-issue `stress_complex_89.jsonl` stress fixture with diamond deps, fan-out hub, overlapping cycles, deep chain, mixed closed/open, independent islands and 7 conformance tests covering triage counts, cycle detection, graph topology, plan tracks, suggest warnings, graph-root filtering, and deep-chain traversal. |
+| Fixture-driven parity tests | complete | Legacy fixture-backed conformance checks for diff/history/forecast/triage/plan/priority/burndown with adversarial coverage; edge-case fixtures; 89-issue `stress_complex_89.jsonl` stress fixture; **large-dataset stress fixtures**: `stress_large_500.jsonl` (500 issues, 7 topologies), `pathological_deps.jsonl` (233 issues, extreme dep patterns: deep chain, convergence/divergence, overlapping cycles, self-dep, bidirectional, long cycle, dangling), `malformed_metadata.jsonl` (24 issues, edge-case metadata); 49 stress tests in `tests/stress_fixtures.rs`; fixture catalog at `tests/testdata/FIXTURES.md`. |
 | Bench harness | complete | Criterion benchmark for triage path added. |
 
 ## CLI Flag Parity Ledger (129 legacy flags)

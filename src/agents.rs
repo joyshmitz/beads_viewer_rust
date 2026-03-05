@@ -14,6 +14,7 @@ use crate::{BvrError, Result};
 /// Current blurb format version. Increment on breaking changes.
 const BLURB_VERSION: u32 = 1;
 
+#[cfg(test)]
 const BLURB_START_MARKER: &str = "<!-- bv-agent-instructions-v1 -->";
 const BLURB_END_MARKER: &str = "<!-- end-bv-agent-instructions -->";
 
@@ -188,15 +189,12 @@ fn check_agent_file(path: &Path, file_type: &str) -> Option<AgentFileDetection> 
         return None;
     }
 
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => {
-            return Some(AgentFileDetection {
-                file_path: Some(path.to_path_buf()),
-                file_type: file_type.to_string(),
-                ..Default::default()
-            });
-        }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Some(AgentFileDetection {
+            file_path: Some(path.to_path_buf()),
+            file_type: file_type.to_string(),
+            ..Default::default()
+        });
     };
 
     let has_legacy = contains_legacy_blurb(&content);
@@ -283,29 +281,29 @@ fn remove_legacy_blurb(content: &str) -> String {
     let start = content[..start_byte].rfind('#').unwrap_or(start_byte);
 
     // Find end: "bv already computes the hard parts"
-    let end = if let Some(pos) = content[start..].find("bv already computes the hard parts") {
-        let mut e = start + pos;
-        // Skip to end of line
-        if let Some(nl) = content[e..].find('\n') {
-            e += nl + 1;
-        } else {
-            e = content.len();
-        }
-        // Skip trailing code fence if present
-        let remaining = &content[e..];
-        if remaining.starts_with("```") {
-            if let Some(nl) = remaining.find('\n') {
+    let end = content[start..]
+        .find("bv already computes the hard parts")
+        .map_or(content.len(), |pos| {
+            let mut e = start + pos;
+            // Skip to end of line
+            if let Some(nl) = content[e..].find('\n') {
                 e += nl + 1;
+            } else {
+                e = content.len();
             }
-        }
-        // Consume trailing newlines
-        while e < content.len() && matches!(content.as_bytes()[e], b'\n' | b'\r') {
-            e += 1;
-        }
-        e
-    } else {
-        content.len()
-    };
+            // Skip trailing code fence if present
+            let remaining = &content[e..];
+            if remaining.starts_with("```") {
+                if let Some(nl) = remaining.find('\n') {
+                    e += nl + 1;
+                }
+            }
+            // Consume trailing newlines
+            while e < content.len() && matches!(content.as_bytes()[e], b'\n' | b'\r') {
+                e += 1;
+            }
+            e
+        });
 
     // Consume leading newlines before start
     let mut adj_start = start;
@@ -336,7 +334,7 @@ fn update_blurb(content: &str) -> String {
 fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     use std::io::Write;
 
-    let dir = path.parent().unwrap_or(Path::new("."));
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
 
     // Try atomic temp-file + rename first
     match tempfile::NamedTempFile::new_in(dir) {
@@ -379,7 +377,16 @@ pub fn agents_check(work_dir: &Path) -> AgentsResult {
         };
     }
 
-    let path = det.file_path.as_ref().unwrap().display();
+    let Some(path_buf) = det.file_path.as_ref() else {
+        return AgentsResult {
+            message: format!(
+                "Found {} but could not resolve its path; run 'bvr --agents-check' again.",
+                det.file_type
+            ),
+            changed: false,
+        };
+    };
+    let path = path_buf.display();
 
     if det.needs_upgrade() {
         let current_ver = if det.has_legacy_blurb {
@@ -422,7 +429,11 @@ pub fn agents_add(work_dir: &Path, dry_run: bool) -> Result<AgentsResult> {
     let det = detect_agent_file_in_parents(work_dir, 3);
 
     if det.found() {
-        let path = det.file_path.as_ref().unwrap();
+        let Some(path) = det.file_path.as_ref() else {
+            return Err(BvrError::InvalidArgument(
+                "Agent file detected but no file path was recorded.".to_string(),
+            ));
+        };
 
         if det.has_blurb && !det.needs_upgrade() {
             return Ok(AgentsResult {
@@ -489,7 +500,11 @@ pub fn agents_update(work_dir: &Path, dry_run: bool) -> Result<AgentsResult> {
         ));
     }
 
-    let path = det.file_path.as_ref().unwrap();
+    let Some(path) = det.file_path.as_ref() else {
+        return Err(BvrError::InvalidArgument(
+            "Agent file detected but no file path was recorded.".to_string(),
+        ));
+    };
 
     if !det.has_blurb {
         return Err(BvrError::InvalidArgument(format!(
@@ -544,7 +559,11 @@ pub fn agents_remove(work_dir: &Path, dry_run: bool) -> Result<AgentsResult> {
         });
     }
 
-    let path = det.file_path.as_ref().unwrap();
+    let Some(path) = det.file_path.as_ref() else {
+        return Err(BvrError::InvalidArgument(
+            "Agent file detected but no file path was recorded.".to_string(),
+        ));
+    };
 
     if !det.has_blurb {
         return Ok(AgentsResult {

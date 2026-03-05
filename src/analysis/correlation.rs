@@ -326,7 +326,8 @@ pub fn build_explanation(
     // File overlap signal
     let file_count = commit.files.len();
     if file_count > 0 {
-        let weight = (file_count as u32 * 5).min(15);
+        let file_count_u32 = u32::try_from(file_count).unwrap_or(u32::MAX);
+        let weight = file_count_u32.saturating_mul(5).min(15);
         signals.push(CorrelationSignal {
             signal_type: "file_overlap".to_string(),
             weight,
@@ -336,7 +337,9 @@ pub fn build_explanation(
 
     let total_weight: u32 = signals.iter().map(|s| s.weight).sum();
     let level = confidence_level(commit.confidence);
-    let confidence_pct = (commit.confidence * 100.0) as u32;
+    let confidence_pct = format!("{:.0}", (commit.confidence * 100.0).clamp(0.0, 100.0))
+        .parse::<u32>()
+        .unwrap_or(0);
 
     let summary = format!(
         "{} with bead update ({confidence_pct}% confidence, {} signal{})",
@@ -350,18 +353,23 @@ pub fn build_explanation(
         if signals.len() == 1 { "" } else { "s" }
     );
 
-    let recommendation = if let Some(fb) = existing_feedback {
-        format!(
-            "Already {} by {} at {}",
-            fb.feedback_type, fb.feedback_by, fb.feedback_at
-        )
-    } else if commit.confidence >= 0.75 {
-        "High confidence - likely correct, no action needed".to_string()
-    } else if commit.confidence >= 0.5 {
-        "Moderate confidence - review recommended".to_string()
-    } else {
-        "Low confidence - manual verification suggested".to_string()
-    };
+    let recommendation = existing_feedback.map_or_else(
+        || {
+            if commit.confidence >= 0.75 {
+                "High confidence - likely correct, no action needed".to_string()
+            } else if commit.confidence >= 0.5 {
+                "Moderate confidence - review recommended".to_string()
+            } else {
+                "Low confidence - manual verification suggested".to_string()
+            }
+        },
+        |fb| {
+            format!(
+                "Already {} by {} at {}",
+                fb.feedback_type, fb.feedback_by, fb.feedback_at
+            )
+        },
+    );
 
     CorrelationExplanation {
         commit_sha: commit.sha.clone(),
@@ -377,7 +385,7 @@ pub fn build_explanation(
     }
 }
 
-/// Parse a "SHA:beadID" argument into (commit_sha, bead_id).
+/// Parse a `SHA:beadID` argument into (`commit_sha`, `bead_id`).
 pub fn parse_correlation_arg(arg: &str) -> crate::Result<(String, String)> {
     let parts: Vec<&str> = arg.splitn(2, ':').collect();
     if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
@@ -626,6 +634,6 @@ mod tests {
         let stats = store.stats();
 
         assert_eq!(stats.total_feedback, 0);
-        assert_eq!(stats.accuracy_rate, 0.0);
+        assert!((stats.accuracy_rate - 0.0).abs() < f64::EPSILON);
     }
 }

@@ -186,13 +186,14 @@ impl IssueGraph {
         let mut children_of: HashMap<String, Vec<String>> = HashMap::new();
         for issue in self.issues.values() {
             for dep in &issue.dependencies {
-                if dep.is_parent_child() && !dep.depends_on_id.trim().is_empty() {
-                    if self.issues.contains_key(&dep.depends_on_id) {
-                        children_of
-                            .entry(dep.depends_on_id.clone())
-                            .or_default()
-                            .push(issue.id.clone());
-                    }
+                if dep.is_parent_child()
+                    && !dep.depends_on_id.trim().is_empty()
+                    && self.issues.contains_key(&dep.depends_on_id)
+                {
+                    children_of
+                        .entry(dep.depends_on_id.clone())
+                        .or_default()
+                        .push(issue.id.clone());
                 }
             }
         }
@@ -206,14 +207,13 @@ impl IssueGraph {
             for parent_id in &blocked {
                 if let Some(children) = children_of.get(parent_id) {
                     for child_id in children {
-                        if !blocked.contains(child_id) {
-                            if self
+                        if !blocked.contains(child_id)
+                            && self
                                 .issues
                                 .get(child_id)
                                 .is_some_and(|issue| !issue.is_closed_like())
-                            {
-                                newly_blocked.push(child_id.clone());
-                            }
+                        {
+                            newly_blocked.push(child_id.clone());
                         }
                     }
                 }
@@ -229,10 +229,7 @@ impl IssueGraph {
         // Phase 4: Collect actionable issues (open, not blocked).
         let mut ids = self.issue_ids_sorted();
         ids.retain(|id| {
-            self.issues
-                .get(id)
-                .is_some_and(|issue| issue.is_open_like())
-                && !blocked.contains(id)
+            self.issues.get(id).is_some_and(Issue::is_open_like) && !blocked.contains(id)
         });
         ids
     }

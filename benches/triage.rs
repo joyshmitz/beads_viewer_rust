@@ -30,8 +30,8 @@ fn make_issue(id: usize, deps: &[usize], status: &str) -> Issue {
         title: format!("Issue {id}"),
         status: status.to_string(),
         issue_type: "task".to_string(),
-        priority: ((id % 5) as i32) + 1,
-        estimated_minutes: Some(30 + (id % 120) as i32),
+        priority: i32::try_from(id % 5).unwrap_or(0) + 1,
+        estimated_minutes: Some(30 + i32::try_from(id % 120).unwrap_or(0)),
         labels: vec![format!("area-{}", id % 8), format!("team-{}", id % 3)],
         dependencies: dep_list,
         created_at: Some("2026-01-15T10:00:00Z".to_string()),
@@ -84,13 +84,13 @@ fn bench_analyzer_construction(c: &mut Criterion) {
     for &size in &[100, 500, 1000] {
         let issues = gen_sparse(size);
         group.bench_with_input(BenchmarkId::new("sparse", size), &issues, |b, issues| {
-            b.iter(|| black_box(Analyzer::new(issues.clone())))
+            b.iter(|| black_box(Analyzer::new(issues.clone())));
         });
     }
     for &size in &[100, 500, 1000] {
         let issues = gen_dense(size);
         group.bench_with_input(BenchmarkId::new("dense", size), &issues, |b, issues| {
-            b.iter(|| black_box(Analyzer::new(issues.clone())))
+            b.iter(|| black_box(Analyzer::new(issues.clone())));
         });
     }
     group.finish();
@@ -108,14 +108,14 @@ fn bench_triage(c: &mut Criterion) {
         let issues = gen_sparse(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("sparse", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.triage(opts.clone())))
+            b.iter(|| black_box(a.triage(opts.clone())));
         });
     }
     for &size in &[100, 500, 1000] {
         let issues = gen_dense(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("dense", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.triage(opts.clone())))
+            b.iter(|| black_box(a.triage(opts.clone())));
         });
     }
     group.finish();
@@ -127,7 +127,7 @@ fn bench_insights(c: &mut Criterion) {
         let issues = gen_dense(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("dense", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.insights()))
+            b.iter(|| black_box(a.insights()));
         });
     }
     group.finish();
@@ -184,7 +184,7 @@ fn bench_forecast(c: &mut Criterion) {
         let issues = gen_sparse(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("sparse", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.forecast("all", None, 2)))
+            b.iter(|| black_box(a.forecast("all", None, 2)));
         });
     }
     group.finish();
@@ -202,7 +202,7 @@ fn bench_suggest(c: &mut Criterion) {
         let issues = gen_dense(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("dense", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.suggest(&opts)))
+            b.iter(|| black_box(a.suggest(&opts)));
         });
     }
     group.finish();
@@ -219,7 +219,7 @@ fn bench_alerts(c: &mut Criterion) {
         let issues = gen_dense(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("dense", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.alerts(&opts)))
+            b.iter(|| black_box(a.alerts(&opts)));
         });
     }
     group.finish();
@@ -231,7 +231,7 @@ fn bench_history(c: &mut Criterion) {
         let issues = gen_sparse(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("sparse", size), &analyzer, |b, a| {
-            b.iter(|| black_box(a.history(None, 50)))
+            b.iter(|| black_box(a.history(None, 50)));
         });
     }
     group.finish();
@@ -244,8 +244,8 @@ fn bench_cycle_detection(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("cyclic", size), &issues, |b, issues| {
             b.iter(|| {
                 let a = Analyzer::new(issues.clone());
-                black_box(a.insights().cycles.len())
-            })
+                black_box(a.insights().cycles.len());
+            });
         });
     }
     group.finish();

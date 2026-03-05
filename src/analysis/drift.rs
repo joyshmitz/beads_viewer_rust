@@ -187,6 +187,14 @@ pub struct RobotDriftOutput {
     pub result: DriftResult,
 }
 
+fn signed_usize_delta(current: usize, baseline: usize) -> i64 {
+    if current >= baseline {
+        i64::try_from(current - baseline).unwrap_or(i64::MAX)
+    } else {
+        -i64::try_from(baseline - current).unwrap_or(i64::MAX)
+    }
+}
+
 /// Compare current state against a saved baseline and produce drift alerts.
 pub fn compute_drift(
     baseline: &Baseline,
@@ -248,7 +256,8 @@ pub fn compute_drift(
     }
 
     // 3. Blocked count increase (WARNING if delta >= 5)
-    let blocked_delta = current.stats.blocked_count as i64 - baseline.stats.blocked_count as i64;
+    let blocked_delta =
+        signed_usize_delta(current.stats.blocked_count, baseline.stats.blocked_count);
     if blocked_delta >= 5 {
         alerts.push(DriftAlert {
             alert_type: "blocked_increase".to_string(),
@@ -300,7 +309,7 @@ pub fn compute_drift(
     }
 
     // 5. Node count change (INFO)
-    let node_delta = current.stats.node_count as i64 - baseline.stats.node_count as i64;
+    let node_delta = signed_usize_delta(current.stats.node_count, baseline.stats.node_count);
     if node_delta != 0 && baseline.stats.node_count > 0 {
         let pct = (node_delta.unsigned_abs() as f64 / baseline.stats.node_count as f64) * 100.0;
         if pct >= 25.0 {
@@ -325,7 +334,7 @@ pub fn compute_drift(
     }
 
     // 6. Edge count change (INFO)
-    let edge_delta = current.stats.edge_count as i64 - baseline.stats.edge_count as i64;
+    let edge_delta = signed_usize_delta(current.stats.edge_count, baseline.stats.edge_count);
     if edge_delta != 0 && baseline.stats.edge_count > 0 {
         let pct = (edge_delta.unsigned_abs() as f64 / baseline.stats.edge_count as f64) * 100.0;
         if pct >= 25.0 {
@@ -450,8 +459,7 @@ fn chrono_now() -> String {
     // Simple UTC timestamp without chrono dependency
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
 
     // Convert epoch seconds to ISO-8601
     let days = secs / 86400;
@@ -584,7 +592,7 @@ mod tests {
         baseline.cycles.clear();
 
         // Simulate current having a cycle
-        let mut current_metrics = metrics.clone();
+        let mut current_metrics = metrics;
         current_metrics.cycles = vec![vec!["A".to_string(), "B".to_string(), "A".to_string()]];
 
         let result = compute_drift(&baseline, &issues, &graph, &current_metrics);
@@ -624,13 +632,11 @@ mod tests {
         let metrics2 = graph2.compute_metrics();
 
         let result = compute_drift(&baseline, &issues_with_blockers, &graph2, &metrics2);
-        let blocked_alerts: Vec<&DriftAlert> = result
-            .alerts
-            .iter()
-            .filter(|a| a.alert_type == "blocked_increase")
-            .collect();
         assert!(
-            !blocked_alerts.is_empty(),
+            result
+                .alerts
+                .iter()
+                .any(|a| a.alert_type == "blocked_increase"),
             "Expected blocked_increase alert"
         );
     }

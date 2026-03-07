@@ -150,7 +150,10 @@ fn resolve_workspace_root(config_path: &Path) -> PathBuf {
 }
 
 fn qualify_id(local_id: &str, prefix: &str) -> String {
-    if local_id.to_ascii_lowercase().starts_with(&prefix.to_ascii_lowercase()) {
+    if local_id
+        .to_ascii_lowercase()
+        .starts_with(&prefix.to_ascii_lowercase())
+    {
         local_id.to_string()
     } else {
         format!("{prefix}{local_id}")
@@ -323,6 +326,38 @@ pub fn load_workspace_config(path: &Path) -> Result<WorkspaceConfig> {
 pub fn load_workspace_issues(path: &Path) -> Result<Vec<Issue>> {
     let (issues, _) = load_workspace_issues_with_summary(path)?;
     Ok(issues)
+}
+
+pub fn find_workspace_issue_paths(path: &Path) -> Result<Vec<PathBuf>> {
+    let config = load_workspace_config(path)?;
+    let workspace_root = resolve_workspace_root(path);
+    let mut paths = Vec::<PathBuf>::new();
+
+    for repo in config.repos.iter().filter(|repo| repo.is_enabled()) {
+        let repo_name = repo.effective_name();
+        let repo_path = if Path::new(repo.path.trim()).is_absolute() {
+            PathBuf::from(repo.path.trim())
+        } else {
+            workspace_root.join(repo.path.trim())
+        };
+        let beads_dir = repo_path.join(repo.effective_beads_path());
+
+        match find_jsonl_path(&beads_dir) {
+            Ok(jsonl_path) => paths.push(jsonl_path),
+            Err(error) => warn(format!(
+                "workspace repo '{repo_name}' watch source unavailable: {error}"
+            )),
+        }
+    }
+
+    if paths.is_empty() {
+        return Err(BvrError::InvalidArgument(format!(
+            "workspace has no readable issues.jsonl sources: {}",
+            path.display()
+        )));
+    }
+
+    Ok(paths)
 }
 
 pub fn load_workspace_issues_with_summary(
@@ -612,6 +647,37 @@ mod tests {
 
         let path = find_jsonl_path(beads_dir).expect("find fallback path");
         assert!(path.ends_with("alpha.jsonl"));
+    }
+
+    #[test]
+    fn find_workspace_issue_paths_collects_enabled_repo_sources() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("services/api/.beads")).expect("create api beads");
+        std::fs::create_dir_all(root.join("apps/web/.beads")).expect("create web beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            concat!(
+                "repos:\n",
+                "  - name: api\n",
+                "    path: services/api\n",
+                "  - name: web\n",
+                "    path: apps/web\n",
+            ),
+        )
+        .expect("write workspace config");
+        std::fs::write(root.join("services/api/.beads/issues.jsonl"), "{}\n")
+            .expect("write api issues");
+        std::fs::write(root.join("apps/web/.beads/issues.jsonl"), "{}\n").expect("write web");
+
+        let mut paths =
+            find_workspace_issue_paths(&root.join(".bv/workspace.yaml")).expect("watch paths");
+        paths.sort();
+
+        assert_eq!(paths.len(), 2);
+        assert!(paths[0].ends_with("apps/web/.beads/issues.jsonl"));
+        assert!(paths[1].ends_with("services/api/.beads/issues.jsonl"));
     }
 
     #[test]

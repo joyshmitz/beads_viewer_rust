@@ -29,6 +29,7 @@ serde_yaml = "0.9.34"
 sha2 = "0.10.9"
 tempfile = "3.25.0"
 thiserror = "2.0.18"
+toon = { package = "tru", version = "0.2.0" }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
@@ -37,7 +38,7 @@ default = []
 asupersync-runtime = ["dep:asupersync"]
 
 [build-dependencies]
-vergen-gix = { version = "1.0.9", features = ["build", "cargo", "rustc", "si"] }
+vergen-gix = { version = "9.1.0", features = ["build", "cargo", "rustc", "si"] }
 
 [dev-dependencies]
 assert_cmd = "2.1.2"

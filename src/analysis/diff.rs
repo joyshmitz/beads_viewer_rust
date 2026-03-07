@@ -234,6 +234,9 @@ pub fn compare_snapshots_with_metadata(
     let to_metrics = to_graph.compute_metrics();
     let (new_cycles, resolved_cycles) = compare_cycles(&from_metrics.cycles, &to_metrics.cycles);
 
+    let from_component_count = from_graph.connected_open_components().len();
+    let to_component_count = to_graph.connected_open_components().len();
+
     let metric_deltas = calculate_metric_deltas(MetricDeltaInputs {
         before,
         after,
@@ -243,6 +246,10 @@ pub fn compare_snapshots_with_metadata(
         to_pagerank: &to_metrics.pagerank,
         from_betweenness: &from_metrics.betweenness,
         to_betweenness: &to_metrics.betweenness,
+        from_edge_count: from_graph.edge_count(),
+        to_edge_count: to_graph.edge_count(),
+        from_component_count,
+        to_component_count,
     });
 
     let summary = calculate_summary(SummaryInputs {
@@ -534,6 +541,10 @@ struct MetricDeltaInputs<'a> {
     to_pagerank: &'a HashMap<String, f64>,
     from_betweenness: &'a HashMap<String, f64>,
     to_betweenness: &'a HashMap<String, f64>,
+    from_edge_count: usize,
+    to_edge_count: usize,
+    from_component_count: usize,
+    to_component_count: usize,
 }
 
 fn calculate_metric_deltas(inputs: MetricDeltaInputs<'_>) -> MetricDeltas {
@@ -549,10 +560,12 @@ fn calculate_metric_deltas(inputs: MetricDeltaInputs<'_>) -> MetricDeltas {
             - i64::try_from(before_counts.closed).unwrap_or(i64::MAX),
         blocked_issues: i64::try_from(after_counts.blocked).unwrap_or(i64::MAX)
             - i64::try_from(before_counts.blocked).unwrap_or(i64::MAX),
-        total_edges: 0,
+        total_edges: i64::try_from(inputs.to_edge_count).unwrap_or(i64::MAX)
+            - i64::try_from(inputs.from_edge_count).unwrap_or(i64::MAX),
         cycle_count: i64::try_from(inputs.new_cycles_count).unwrap_or(i64::MAX)
             - i64::try_from(inputs.resolved_cycles_count).unwrap_or(i64::MAX),
-        component_count: 0,
+        component_count: i64::try_from(inputs.to_component_count).unwrap_or(i64::MAX)
+            - i64::try_from(inputs.from_component_count).unwrap_or(i64::MAX),
         avg_pagerank: average_map_value(inputs.to_pagerank)
             - average_map_value(inputs.from_pagerank),
         avg_betweenness: average_map_value(inputs.to_betweenness)

@@ -97,9 +97,11 @@ pub fn detect_orphans(
         check_message_patterns(&commit.message, &mut signals);
 
         // Signal 2: File overlap with bead-touched files
+        let mut overlapping_files = 0;
         for file_path in &files {
             let normalized = normalize_path(file_path);
             if let Some(bead_ids) = file_bead_map.get(&normalized) {
+                overlapping_files += 1;
                 for bead_id in bead_ids {
                     let entry = probable_beads_map
                         .entry(bead_id.clone())
@@ -107,20 +109,15 @@ pub fn detect_orphans(
                     entry.0 += 25;
                     entry.1.push(format!("File overlap: {normalized}"));
                 }
-                if signals
-                    .iter()
-                    .all(|s: &OrphanSignalHit| s.signal != "file_overlap")
-                {
-                    signals.push(OrphanSignalHit {
-                        signal: "file_overlap".to_string(),
-                        weight: 25,
-                        detail: format!(
-                            "{} file(s) overlap with bead-tracked files",
-                            files.len().min(3)
-                        ),
-                    });
-                }
             }
+        }
+
+        if overlapping_files > 0 {
+            signals.push(OrphanSignalHit {
+                signal: "file_overlap".to_string(),
+                weight: 25,
+                detail: format!("{overlapping_files} file(s) overlap with bead-tracked files"),
+            });
         }
 
         // Signal 3: Author proximity (author has linked commits)

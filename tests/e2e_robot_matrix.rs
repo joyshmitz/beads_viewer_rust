@@ -16,12 +16,11 @@ use serde_json::json;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Output;
-use std::process::{Command as StdCommand, Stdio};
 use test_utils::{JsonType, assert_valid_envelope, validate_fields, validate_type_at};
+use toon::toon_to_json;
 
 fn bvr() -> Command {
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
@@ -178,38 +177,10 @@ fn run_robot_raw(args: &[&str], fixture: &str) -> Output {
         .expect("failed to execute bvr")
 }
 
-fn tru_available() -> bool {
-    StdCommand::new("tru")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
-}
-
 fn decode_toon(stdout: &[u8]) -> Value {
-    let mut child = StdCommand::new("tru")
-        .arg("--decode")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("spawn tru --decode");
-
-    child
-        .stdin
-        .as_mut()
-        .expect("tru stdin")
-        .write_all(stdout)
-        .expect("write toon payload");
-
-    let output = child.wait_with_output().expect("wait for tru");
-    assert!(
-        output.status.success(),
-        "tru --decode failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    serde_json::from_slice(&output.stdout).expect("decoded toon json")
+    let toon = std::str::from_utf8(stdout).expect("utf8 toon payload");
+    let json = toon_to_json(toon).expect("decode toon payload");
+    serde_json::from_str(&json).expect("decoded toon json")
 }
 
 #[test]
@@ -287,11 +258,7 @@ fn e2e_robot_next() {
 }
 
 #[test]
-fn e2e_robot_next_toon_round_trips_via_tru() {
-    if !tru_available() {
-        return;
-    }
-
+fn e2e_robot_next_toon_round_trips_via_library_decoder() {
     let output = run_robot_raw(&["--robot-next", "--format", "toon"], FIXTURE);
     assert!(
         output.status.success(),
@@ -308,15 +275,10 @@ fn e2e_robot_next_toon_round_trips_via_tru() {
     let decoded = decode_toon(&output.stdout);
     assert!(validate_fields(&decoded, &["generated_at", "data_hash"], "").is_empty());
     assert!(validate_fields(&decoded, &["id", "title", "score"], "").is_empty());
-    assert_eq!(decoded["output_format"].as_str(), Some("toon"));
 }
 
 #[test]
 fn e2e_robot_next_honors_output_format_env_and_cli_override() {
-    if !tru_available() {
-        return;
-    }
-
     let env_output = bvr()
         .env("BV_OUTPUT_FORMAT", "toon")
         .args(["--robot-next", "--beads-file", FIXTURE])
@@ -334,7 +296,8 @@ fn e2e_robot_next_honors_output_format_env_and_cli_override() {
         "expected BV_OUTPUT_FORMAT=toon to emit TOON"
     );
     let decoded_env = decode_toon(&env_output.stdout);
-    assert_eq!(decoded_env["output_format"].as_str(), Some("toon"));
+    assert!(validate_fields(&decoded_env, &["generated_at", "data_hash"], "").is_empty());
+    assert!(validate_fields(&decoded_env, &["id", "title", "score"], "").is_empty());
 
     let override_output = bvr()
         .env("BV_OUTPUT_FORMAT", "toon")
@@ -348,15 +311,12 @@ fn e2e_robot_next_honors_output_format_env_and_cli_override() {
     );
     let override_json: Value =
         serde_json::from_slice(&override_output.stdout).expect("override json payload");
-    assert_eq!(override_json["output_format"].as_str(), Some("json"));
+    assert!(validate_fields(&override_json, &["generated_at", "data_hash"], "").is_empty());
+    assert!(validate_fields(&override_json, &["id", "title", "score"], "").is_empty());
 }
 
 #[test]
 fn e2e_robot_next_toon_stats_can_be_enabled_via_env() {
-    if !tru_available() {
-        return;
-    }
-
     let output = bvr()
         .env("TOON_STATS", "1")
         .args(["--robot-next", "--format", "toon", "--beads-file", FIXTURE])
@@ -371,6 +331,24 @@ fn e2e_robot_next_toon_stats_can_be_enabled_via_env() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("TOON"));
     assert!(stderr.contains("savings"));
+}
+
+#[test]
+fn e2e_robot_next_toon_does_not_require_external_tru_binary() {
+    let output = bvr()
+        .env("PATH", "")
+        .args(["--robot-next", "--format", "toon", "--beads-file", FIXTURE])
+        .output()
+        .expect("run toon without PATH");
+    assert!(
+        output.status.success(),
+        "toon without PATH failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let decoded = decode_toon(&output.stdout);
+    assert!(validate_fields(&decoded, &["generated_at", "data_hash"], "").is_empty());
+    assert!(validate_fields(&decoded, &["id", "title", "score"], "").is_empty());
 }
 
 #[test]

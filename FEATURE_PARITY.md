@@ -143,15 +143,15 @@ Legend:
 
 ### Remaining Fidelity Gaps
 - ~~Responsive width breakpoints~~ — **Implemented** (Narrow/Medium/Wide breakpoint enum with adaptive split ratios).
-- ~~File tree panel, `o`/`y` hotkeys, legacy search modes~~ — **Implemented** (file tree j/k + Enter filter + Tab focus; o/y clipboard/browser; n/N search match cycling).
+- File tree panel and `o`/`y` hotkeys are implemented, and generic `n/N` search cycling works, but legacy history-specific search modes (`all` / commit / SHA / bead / author) are still pending.
 - ~~No snapshot-based automated visual regression framework yet.~~ — **Implemented** (21 insta snapshots + 11 keyflow journeys).
 
 ## Integrations
 | Capability | Status | Notes |
 |---|---|---|
 | FrankentUI runtime integration | complete | Active dependency and runtime app usage. |
-| Asupersync integration points | partial | Feature-gated wiring scaffolded; deeper worker orchestration pending. |
-| Hooks/workspace/history full parity | planned | To be ported in subsequent waves. |
+| Asupersync integration points | partial | Optional dependency/feature gate is present, but runtime still uses local `ftui::TaskSpec` background reload logic rather than true asupersync orchestration. |
+| Hooks/workspace/history parity | partial | Export hooks, explicit workspace loading/aggregation, repo filters, robot history, and TUI history are implemented; remaining gaps are workspace auto-discovery defaults, history search modes, and full pages/export workflow parity. |
 
 ## Verification
 | Capability | Status | Notes |
@@ -291,7 +291,7 @@ Legend: `complete` / `partial` / `missing` / `excluded` (intentionally out-of-sc
 | ~~Label/Attention~~ | ~~`--robot-label-attention`, `--robot-label-flow`, `--robot-label-health`, `--attention-limit`~~ — **Implemented** |
 | Sprint | (moved to implemented) |
 | ~~Search~~ | ~~`--search`, `--search-limit`, `--search-mode`, `--search-preset`, `--search-weights`, `--robot-search`~~ — **Implemented** |
-| ~~Export/Pages~~ | ~~`--pages`, `--pages-include-closed`, `--pages-include-history`, `--pages-title`, `--preview-pages`, `--export-pages`, `--watch-export`, `--no-live-reload`~~ — **Implemented (baseline bundle/preview/watch)** |
+| Export/Pages | `--pages`, `--pages-include-closed`, `--pages-include-history`, `--pages-title`, `--preview-pages`, `--export-pages`, `--watch-export`, `--no-live-reload` | partial | Baseline bundle/preview/watch is implemented, including export hooks, workspace-aware watch polling, preview status, and browser-open support; legacy SQLite/viewer-asset export fidelity and the interactive pages wizard are still outstanding. |
 | ~~Script~~ | ~~`--emit-script`, `--script-format`, `--script-limit`~~ — **Implemented** |
 | ~~Baseline/Drift~~ | ~~`--save-baseline`, `--baseline-info`, `--check-drift`, `--robot-drift`~~ — **Implemented** |
 | ~~Feedback~~ | ~~`--feedback-show`, `--feedback-accept`, `--feedback-ignore`, `--feedback-reset`~~ — **Implemented** |
@@ -463,7 +463,7 @@ Prerequisites: Wave 3 complete.
 |---|---|---|
 | Clippy warnings (5 dead-code) | Low | Tutorial/Confirm/PagesWizard TUI code is wired but not yet called from event handlers |
 | No `--cpu-profile` (pprof equivalent) | Low | `--profile-startup` covers startup timing; external tools (perf, samply) available for CPU profiling |
-| Static pages preview server not implemented | Medium | `--export-pages` works; `--preview-pages` stubbed; legacy Go used embedded HTTP server |
+| Static pages export/preview fidelity still below legacy | Medium | Embedded preview server, live reload, status endpoint, and watch mode exist, but legacy SQLite-backed viewer assets and interactive pages wizard remain unported |
 
 ### Go/No-Go Decision
 

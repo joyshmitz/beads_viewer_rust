@@ -3,6 +3,8 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
+use std::thread;
 use std::time::UNIX_EPOCH;
 
 use chrono::Utc;
@@ -64,6 +66,16 @@ struct PagesMeta {
     include_history: bool,
     generator: String,
     version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PreviewStatusResponse {
+    status: &'static str,
+    port: u16,
+    bundle_path: String,
+    has_index: bool,
+    file_count: usize,
+    live_reload: bool,
 }
 
 pub fn print_pages_wizard() {
@@ -190,6 +202,7 @@ pub fn run_preview_server(bundle_dir: &Path, live_reload: bool) -> Result<()> {
         if live_reload { "enabled" } else { "disabled" }
     );
     println!("Press Ctrl+C to stop.");
+    maybe_open_preview_in_browser(port);
 
     let max_requests = std::env::var(PREVIEW_MAX_REQUESTS_ENV)
         .ok()
@@ -199,7 +212,7 @@ pub fn run_preview_server(bundle_dir: &Path, live_reload: bool) -> Result<()> {
 
     loop {
         let (stream, _) = listener.accept()?;
-        if let Err(error) = handle_preview_request(stream, bundle_dir, live_reload) {
+        if let Err(error) = handle_preview_request(stream, bundle_dir, live_reload, port) {
             eprintln!("warning: preview request failed: {error}");
         }
         served = served.saturating_add(1);
@@ -234,6 +247,7 @@ fn handle_preview_request(
     mut stream: TcpStream,
     bundle_dir: &Path,
     live_reload: bool,
+    port: u16,
 ) -> Result<()> {
     let mut buffer = [0_u8; 8192];
     let bytes = stream.read(&mut buffer)?;
@@ -260,6 +274,18 @@ fn handle_preview_request(
     }
 
     let route = target.split('?').next().unwrap_or("/");
+    if route == "/__preview__/status" || route == "/.bvr/status" {
+        let payload = serde_json::to_vec(&preview_status(bundle_dir, live_reload, port)?)?;
+        write_http_response(
+            &mut stream,
+            "200 OK",
+            "application/json; charset=utf-8",
+            &payload,
+            head_only,
+        )?;
+        return Ok(());
+    }
+
     if route == "/.bvr/livereload" {
         let token = latest_modified_token(bundle_dir)?.to_string();
         write_http_response(
@@ -348,7 +374,13 @@ fn write_http_response(
     head_only: bool,
 ) -> Result<()> {
     let headers = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\n\
+         Content-Type: {content_type}\r\n\
+         Content-Length: {}\r\n\
+         Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n\
+         Pragma: no-cache\r\n\
+         Expires: 0\r\n\
+         Connection: close\r\n\r\n",
         body.len()
     );
     stream.write_all(headers.as_bytes())?;
@@ -380,8 +412,36 @@ fn inject_live_reload(html: Vec<u8>) -> Vec<u8> {
     injected.into_bytes()
 }
 
+fn preview_status(
+    bundle_dir: &Path,
+    live_reload: bool,
+    port: u16,
+) -> Result<PreviewStatusResponse> {
+    Ok(PreviewStatusResponse {
+        status: "running",
+        port,
+        bundle_path: bundle_dir.to_string_lossy().to_string(),
+        has_index: bundle_dir.join("index.html").is_file(),
+        file_count: count_files_recursive(bundle_dir)?,
+        live_reload,
+    })
+}
+
 fn latest_modified_token(path: &Path) -> Result<u64> {
     latest_modified_recursive(path, 0)
+}
+
+fn count_files_recursive(path: &Path) -> Result<usize> {
+    let metadata = fs::metadata(path)?;
+    if metadata.is_file() {
+        return Ok(1);
+    }
+
+    let mut total = 0usize;
+    for entry in fs::read_dir(path)? {
+        total = total.saturating_add(count_files_recursive(&entry?.path())?);
+    }
+    Ok(total)
 }
 
 fn latest_modified_recursive(path: &Path, mut latest: u64) -> Result<u64> {
@@ -412,6 +472,41 @@ fn write_json<T: Serialize>(path: PathBuf, payload: &T) -> Result<()> {
     let text = serde_json::to_string_pretty(payload)?;
     fs::write(path, text)?;
     Ok(())
+}
+
+fn maybe_open_preview_in_browser(port: u16) {
+    if std::env::var("BV_NO_BROWSER").is_ok() || std::env::var("BVR_NO_BROWSER").is_ok() {
+        return;
+    }
+
+    let url = format!("http://127.0.0.1:{port}");
+    thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        if !open_url_in_browser(&url) {
+            eprintln!("warning: could not open browser automatically; open {url}");
+        }
+    });
+}
+
+fn open_url_in_browser(url: &str) -> bool {
+    if cfg!(target_os = "windows") {
+        run_command("cmd", &["/C", "start", "", url])
+    } else if cfg!(target_os = "macos") {
+        run_command("open", &[url])
+    } else {
+        run_command("xdg-open", &[url])
+            || run_command("open", &[url])
+            || run_command("gio", &["open", url])
+    }
+}
+
+fn run_command(command: &str, args: &[&str]) -> bool {
+    Command::new(command)
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 fn render_index_html(title: &str, include_history: bool) -> String {

@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use std::io::Write as _;
-use std::process::{Command, Stdio};
 
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use toon::EncodeOptions;
+use toon::options::KeyFoldingMode;
 
 use crate::Result;
 use crate::cli::OutputFormat;
@@ -83,25 +83,38 @@ struct RenderedPayload {
 }
 
 // ---------------------------------------------------------------------------
-// TOON encoding (shells out to `tru --encode`)
+// TOON encoding (direct in-process library integration)
 // ---------------------------------------------------------------------------
 
 /// Options for TOON encoding, resolved from environment variables.
 struct ToonEncodeOptions {
-    key_folding: Option<String>,
-    indent: Option<u8>,
+    key_folding: Option<KeyFoldingMode>,
+    indent: Option<usize>,
 }
 
 fn resolve_toon_encode_options() -> ToonEncodeOptions {
     let key_folding = std::env::var("TOON_KEY_FOLDING")
         .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty() && v != "off");
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(parse_toon_key_folding_mode);
 
     let indent = std::env::var("TOON_INDENT")
         .ok()
-        .and_then(|v| v.trim().parse::<u8>().ok())
-        .map(|n| n.min(16));
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .and_then(|raw| {
+            raw.parse::<usize>().map_or_else(
+                |_| {
+                    eprintln!(
+                        "warning: ignoring invalid TOON_INDENT value {raw:?}; expected integer 0-16"
+                    );
+                    None
+                },
+                |indent| Some(indent.min(16)),
+            )
+        });
 
     ToonEncodeOptions {
         key_folding,
@@ -109,32 +122,17 @@ fn resolve_toon_encode_options() -> ToonEncodeOptions {
     }
 }
 
-/// Find the `tru` binary path.  Checks `TOON_TRU_BIN`, `TOON_BIN`, then PATH.
-fn find_tru_binary() -> Option<String> {
-    for env in &["TOON_TRU_BIN", "TOON_BIN"] {
-        if let Ok(val) = std::env::var(env) {
-            let val = val.trim().to_string();
-            if !val.is_empty() {
-                return Some(val);
-            }
+fn parse_toon_key_folding_mode(raw: &str) -> Option<KeyFoldingMode> {
+    match raw {
+        "off" => None,
+        "safe" => Some(KeyFoldingMode::Safe),
+        invalid => {
+            eprintln!(
+                "warning: ignoring invalid TOON_KEY_FOLDING value {invalid:?}; expected off|safe"
+            );
+            None
         }
     }
-    // Check if `tru` is on PATH by attempting to run it
-    if Command::new("tru")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok()
-    {
-        return Some("tru".to_string());
-    }
-    None
-}
-
-struct EncodedToonOutput {
-    text: String,
-    used_toon: bool,
 }
 
 fn render_payload<T: Serialize>(format: OutputFormat, payload: &T) -> Result<RenderedPayload> {
@@ -154,24 +152,12 @@ fn render_payload<T: Serialize>(format: OutputFormat, payload: &T) -> Result<Ren
         OutputFormat::Toon => {
             set_top_level_output_format(&mut value, OutputFormat::Toon);
             let json_for_stats = serde_json::to_string(&value)?;
-            let encoded = encode_toon(&json_for_stats)?;
-
-            if encoded.used_toon {
-                Ok(RenderedPayload {
-                    output: encoded.text.clone(),
-                    json_for_stats,
-                    toon_for_stats: Some(encoded.text),
-                })
-            } else {
-                set_top_level_output_format(&mut value, OutputFormat::Json);
-                let fallback_json = serde_json::to_string(&value)?;
-                let output = encode_json(&value)?;
-                Ok(RenderedPayload {
-                    output,
-                    json_for_stats: fallback_json,
-                    toon_for_stats: None,
-                })
-            }
+            let output = encode_toon(&value);
+            Ok(RenderedPayload {
+                toon_for_stats: Some(output.clone()),
+                output,
+                json_for_stats,
+            })
         }
     }
 }
@@ -206,63 +192,21 @@ fn print_output(output: &str) {
     }
 }
 
-/// Encode a JSON string to TOON format by invoking `tru --encode`.
-/// Falls back to JSON with a stderr warning if `tru` is not available.
-fn encode_toon(json: &str) -> Result<EncodedToonOutput> {
-    let Some(tru_bin) = find_tru_binary() else {
-        eprintln!("warning: tru not available; falling back to JSON");
-        return Ok(EncodedToonOutput {
-            text: format!("{json}\n"),
-            used_toon: false,
-        });
-    };
-
+fn encode_toon(value: &Value) -> String {
     let opts = resolve_toon_encode_options();
-    let mut args = vec!["--encode".to_string()];
-
-    if let Some(ref kf) = opts.key_folding {
-        args.push("--key-folding".to_string());
-        args.push(kf.clone());
-    }
-    if let Some(indent) = opts.indent {
-        args.push("--indent".to_string());
-        args.push(indent.to_string());
-    }
-
-    let mut child = Command::new(&tru_bin)
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    if let Some(ref mut stdin) = child.stdin {
-        stdin.write_all(json.as_bytes())?;
-    }
-    // Drop stdin so tru can read EOF
-    drop(child.stdin.take());
-
-    let output = child.wait_with_output()?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("warning: tru encode failed ({stderr}); falling back to JSON");
-        return Ok(EncodedToonOutput {
-            text: format!("{json}\n"),
-            used_toon: false,
-        });
-    }
-
-    let mut toon_str = String::from_utf8_lossy(&output.stdout).into_owned();
+    let options = Some(EncodeOptions {
+        indent: opts.indent,
+        delimiter: None,
+        key_folding: opts.key_folding,
+        flatten_depth: None,
+        replacer: None,
+    });
+    let mut toon_str = toon::encode(value.clone(), options);
     // Normalize: trim trailing whitespace, add single newline
     let trimmed_len = toon_str.trim_end().len();
     toon_str.truncate(trimmed_len);
     toon_str.push('\n');
-
-    Ok(EncodedToonOutput {
-        text: toon_str,
-        used_toon: true,
-    })
+    toon_str
 }
 
 #[must_use]
@@ -1190,6 +1134,15 @@ mod tests {
         print_format_stats("{\"id\":\"A\"}", Some("id: A\n"));
     }
 
+    #[test]
+    fn parse_toon_key_folding_mode_supports_safe_and_off() {
+        assert_eq!(
+            parse_toon_key_folding_mode("safe"),
+            Some(KeyFoldingMode::Safe)
+        );
+        assert_eq!(parse_toon_key_folding_mode("off"), None);
+    }
+
     // -- compute_data_hash tests --
 
     #[test]
@@ -1296,21 +1249,19 @@ mod tests {
 
     // -- TOON encoding tests --
 
-    // -- TOON encoding tests --
-
     #[test]
     fn encode_toon_produces_output() {
-        let json = r#"{"id":"A","score":0.5}"#;
-        let result = encode_toon(json).expect("encode_toon");
-        // Either TOON format or JSON fallback — both are valid
-        assert!(!result.text.is_empty());
-        assert!(result.text.ends_with('\n'));
-        if result.used_toon {
-            assert!(
-                result.text.contains("id:") || result.text.contains("id: A"),
-                "TOON output should use key: value format"
-            );
-        }
+        let value = json!({
+            "id": "A",
+            "score": 0.5
+        });
+        let result = encode_toon(&value);
+        assert!(!result.is_empty());
+        assert!(result.ends_with('\n'));
+        assert!(
+            result.contains("id:") || result.contains("id: A"),
+            "TOON output should use key: value format"
+        );
     }
 
     #[test]
@@ -1348,27 +1299,21 @@ mod tests {
             "data_hash": "abc123"
         });
         let rendered = render_payload(OutputFormat::Toon, &payload).expect("rendered");
-        if rendered.toon_for_stats.is_some() {
-            let stats_json: Value =
-                serde_json::from_str(&rendered.json_for_stats).expect("parse stats json");
-            assert_eq!(stats_json["output_format"], "toon");
-        }
+        let stats_json: Value =
+            serde_json::from_str(&rendered.json_for_stats).expect("parse stats json");
+        assert_eq!(stats_json["output_format"], "toon");
+        assert!(rendered.toon_for_stats.is_some());
     }
 
     #[test]
-    fn render_payload_toon_fallback_resets_output_format() {
-        // When tru is not available, output_format should fall back to "json"
+    fn render_payload_toon_output_is_not_json() {
         let payload = json!({
             "output_format": "toon",
             "data_hash": "abc123"
         });
         let rendered = render_payload(OutputFormat::Toon, &payload).expect("rendered");
-        if rendered.toon_for_stats.is_none() {
-            // Fell back to JSON — output_format should say "json"
-            let fallback: Value =
-                serde_json::from_str(&rendered.output).expect("parse fallback");
-            assert_eq!(fallback["output_format"], "json");
-        }
+        assert!(rendered.toon_for_stats.is_some());
+        assert!(!rendered.output.trim_start().starts_with('{'));
     }
 
     #[test]
@@ -1387,6 +1332,9 @@ mod tests {
     fn encode_json_respects_pretty_flag() {
         let value = json!({"a": 1, "b": 2});
         let compact = encode_json(&value).expect("compact json");
-        assert!(!compact.contains('\n'), "compact JSON should be single line");
+        assert!(
+            !compact.contains('\n'),
+            "compact JSON should be single line"
+        );
     }
 }

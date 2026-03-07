@@ -208,10 +208,11 @@ jq '.blockers_to_clear[] | select(.unblocks > 1)' triage.json
 }
 
 fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
+        let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{truncated}...")
     }
 }
 
@@ -320,5 +321,11 @@ mod tests {
     fn truncate_str_works() {
         assert_eq!(truncate_str("short", 10), "short");
         assert_eq!(truncate_str("this is a long string", 10), "this is...");
+    }
+
+    #[test]
+    fn truncate_str_unicode_safe() {
+        let emoji = "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀";
+        assert_eq!(truncate_str(emoji, 5), "🦀🦀...");
     }
 }

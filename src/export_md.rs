@@ -84,14 +84,16 @@ struct HookRuntime {
 #[derive(Debug, Clone)]
 struct HookContext {
     export_path: String,
+    export_format: String,
     issue_count: usize,
     timestamp: String,
 }
 
 impl HookContext {
-    fn new(export_path: &Path, issue_count: usize) -> Self {
+    fn new(export_path: &Path, export_format: &str, issue_count: usize) -> Self {
         Self {
             export_path: export_path.to_string_lossy().to_string(),
+            export_format: export_format.to_string(),
             issue_count,
             timestamp: Utc::now().to_rfc3339(),
         }
@@ -113,8 +115,29 @@ pub fn export_markdown_with_hooks(
     no_hooks: bool,
     repo_path: Option<&Path>,
 ) -> Result<()> {
+    run_export_with_hooks(
+        export_path,
+        "markdown",
+        issues.len(),
+        no_hooks,
+        repo_path,
+        || write_markdown_report(issues, export_path),
+    )
+}
+
+pub fn run_export_with_hooks<T, F>(
+    export_path: &Path,
+    export_format: &str,
+    issue_count: usize,
+    no_hooks: bool,
+    repo_path: Option<&Path>,
+    export_fn: F,
+) -> Result<T>
+where
+    F: FnOnce() -> Result<T>,
+{
     let project_dir = resolve_project_dir(repo_path)?;
-    let hook_context = HookContext::new(export_path, issues.len());
+    let hook_context = HookContext::new(export_path, export_format, issue_count);
 
     let hooks = if no_hooks {
         HookPhases::default()
@@ -146,7 +169,7 @@ pub fn export_markdown_with_hooks(
         }
     }
 
-    write_markdown_report(issues, export_path)?;
+    let output = export_fn()?;
 
     let mut post_failure = None::<String>;
     for hook in normalize_hooks(&hooks.post_export, HookPhase::PostExport) {
@@ -169,7 +192,7 @@ pub fn export_markdown_with_hooks(
         println!("{}", format_hook_summary(&hook_results));
     }
 
-    Ok(())
+    Ok(output)
 }
 
 fn resolve_project_dir(repo_path: Option<&Path>) -> Result<PathBuf> {
@@ -363,7 +386,10 @@ fn run_hook(hook: &HookRuntime, context: &HookContext) -> Result<HookRunResult> 
 fn build_hook_env(hook: &HookRuntime, context: &HookContext) -> BTreeMap<String, String> {
     let mut env = std::env::vars().collect::<BTreeMap<String, String>>();
     env.insert("BV_EXPORT_PATH".to_string(), context.export_path.clone());
-    env.insert("BV_EXPORT_FORMAT".to_string(), "markdown".to_string());
+    env.insert(
+        "BV_EXPORT_FORMAT".to_string(),
+        context.export_format.clone(),
+    );
     env.insert(
         "BV_ISSUE_COUNT".to_string(),
         context.issue_count.to_string(),

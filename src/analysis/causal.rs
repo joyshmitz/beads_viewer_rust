@@ -543,18 +543,28 @@ pub fn get_subnetwork(network: &ImpactNetwork, bead_id: &str, depth: usize) -> I
         }
     }
 
-    let sub_nodes: Vec<NetworkNode> = network
-        .nodes
-        .iter()
-        .filter(|n| visited.contains(&n.bead_id))
-        .cloned()
-        .collect();
-
     let sub_edges: Vec<NetworkEdge> = network
         .edges
         .iter()
         .filter(|e| visited.contains(&e.from_bead) && visited.contains(&e.to_bead))
         .cloned()
+        .collect();
+
+    let mut degree_map: HashMap<String, usize> = HashMap::new();
+    for edge in &sub_edges {
+        *degree_map.entry(edge.from_bead.clone()).or_default() += 1;
+        *degree_map.entry(edge.to_bead.clone()).or_default() += 1;
+    }
+
+    let sub_nodes: Vec<NetworkNode> = network
+        .nodes
+        .iter()
+        .filter(|n| visited.contains(&n.bead_id))
+        .cloned()
+        .map(|mut n| {
+            n.degree = degree_map.get(&n.bead_id).copied().unwrap_or(0);
+            n
+        })
         .collect();
 
     let isolated = sub_nodes.iter().filter(|n| n.degree == 0).count();
@@ -1004,6 +1014,8 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
         .split('+')
         .next()?
         .split('-')
+        .next()?
+        .split('.')
         .next()?;
     let time_parts: Vec<u64> = time_str.split(':').filter_map(|p| p.parse().ok()).collect();
     if time_parts.len() < 2 {

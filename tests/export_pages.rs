@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command as ProcessCommand, Stdio};
@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::Value;
 
 fn write_test_beads(repo_dir: &Path) {
     fs::create_dir_all(repo_dir.join(".beads")).expect("create .beads");
@@ -38,6 +39,33 @@ fn write_repo_scoped_beads(repo_dir: &Path) {
         ),
     )
     .expect("write beads file");
+}
+
+fn write_hooks(repo_dir: &Path, yaml: &str) {
+    fs::create_dir_all(repo_dir.join(".bv")).expect("create .bv");
+    fs::write(repo_dir.join(".bv/hooks.yaml"), yaml).expect("write hooks");
+}
+
+fn preview_request(port: u16, path: &str) -> String {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect preview server");
+    stream
+        .write_all(
+            format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .as_bytes(),
+        )
+        .expect("write preview request");
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .expect("read preview response");
+    response
+}
+
+fn preview_response_body(response: &str) -> &str {
+    response
+        .split_once("\r\n\r\n")
+        .map_or("", |(_, body)| body)
+        .trim()
 }
 
 #[test]
@@ -94,6 +122,64 @@ fn export_pages_can_exclude_closed_and_history() {
     assert!(
         !out.join("data/history.json").exists(),
         "history should be omitted when --pages-include-history=false"
+    );
+}
+
+#[test]
+fn export_pages_runs_hooks_and_passes_export_context() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    write_test_beads(repo_dir);
+    write_hooks(
+        repo_dir,
+        concat!(
+            "hooks:\n",
+            "  pre-export:\n",
+            "    - name: mark-pre\n",
+            "      command: 'mkdir -p \"$BV_EXPORT_PATH\" && echo pre > \"$BV_EXPORT_PATH/pre-hook.txt\"'\n",
+            "    - name: capture-env\n",
+            "      command: 'printf \"%s\\n\" \"$BV_EXPORT_FORMAT|$BV_ISSUE_COUNT\" > \"$BV_EXPORT_PATH/hook-env.txt\"'\n",
+            "  post-export:\n",
+            "    - name: mark-post\n",
+            "      command: 'echo post > \"$BV_EXPORT_PATH/post-hook.txt\"'\n",
+        ),
+    );
+
+    bvr_cmd(repo_dir)
+        .args([
+            "--export-pages",
+            "pages-out",
+            "--pages-include-closed=false",
+        ])
+        .assert()
+        .success();
+
+    let out = repo_dir.join("pages-out");
+    assert!(out.join("pre-hook.txt").is_file());
+    assert!(out.join("post-hook.txt").is_file());
+    let env_line = fs::read_to_string(out.join("hook-env.txt")).expect("read hook env");
+    assert_eq!(env_line.trim(), "html|1");
+}
+
+#[test]
+fn export_pages_pre_hook_failure_blocks_export() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    write_test_beads(repo_dir);
+    write_hooks(
+        repo_dir,
+        "hooks:\n  pre-export:\n    - name: fail-fast\n      command: 'exit 7'\n",
+    );
+
+    bvr_cmd(repo_dir)
+        .args(["--export-pages", "pages-out"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("pre-export hook"));
+
+    assert!(
+        !repo_dir.join("pages-out/index.html").exists(),
+        "bundle should not be written when pre-export hook fails"
     );
 }
 
@@ -185,6 +271,85 @@ fn watch_export_regenerates_after_change_and_keeps_repo_filter() {
 }
 
 #[test]
+fn watch_export_regenerates_after_workspace_change() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    fs::create_dir_all(repo_dir.join(".bv")).expect("create .bv");
+    fs::create_dir_all(repo_dir.join("services/api/.beads")).expect("create api beads");
+    fs::create_dir_all(repo_dir.join("apps/web/.beads")).expect("create web beads");
+    fs::write(
+        repo_dir.join(".bv/workspace.yaml"),
+        concat!(
+            "repos:\n",
+            "  - name: api\n",
+            "    path: services/api\n",
+            "    prefix: api-\n",
+            "  - name: web\n",
+            "    path: apps/web\n",
+            "    prefix: web-\n",
+        ),
+    )
+    .expect("write workspace");
+    fs::write(
+        repo_dir.join("services/api/.beads/issues.jsonl"),
+        "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write api issues");
+    fs::write(
+        repo_dir.join("apps/web/.beads/issues.jsonl"),
+        "{\"id\":\"UI-1\",\"title\":\"Web UI\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write web issues");
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args([
+            "--export-pages",
+            "pages-out",
+            "--watch-export",
+            "--workspace",
+            ".",
+        ])
+        .env("BVR_WATCH_MAX_LOOPS", "8")
+        .env("BVR_WATCH_INTERVAL_MS", "200")
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("spawn workspace watch export");
+
+    thread::sleep(Duration::from_millis(350));
+    let mut beads = fs::OpenOptions::new()
+        .append(true)
+        .open(repo_dir.join("apps/web/.beads/issues.jsonl"))
+        .expect("open web beads for append");
+    beads
+        .write_all(
+            b"{\"id\":\"UI-2\",\"title\":\"Web UI Two\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("append web issue");
+    beads.flush().expect("flush append");
+
+    let output = child.wait_with_output().expect("wait for workspace watch");
+    assert!(
+        output.status.success(),
+        "workspace watch export failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Regenerated pages bundle at"),
+        "expected regeneration log in stderr, got: {stderr}"
+    );
+
+    let issues = fs::read_to_string(repo_dir.join("pages-out/data/issues.json")).expect("issues");
+    assert!(issues.contains("api-AUTH-1"));
+    assert!(issues.contains("web-UI-1"));
+    assert!(issues.contains("web-UI-2"));
+}
+
+#[test]
 fn preview_pages_reports_session_diagnostics() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
@@ -206,6 +371,7 @@ fn preview_pages_reports_session_diagnostics() {
         .args(["--preview-pages", "bundle"])
         .env("BVR_PREVIEW_PORT", port.to_string())
         .env("BVR_PREVIEW_MAX_REQUESTS", "1")
+        .env("BV_NO_BROWSER", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -237,4 +403,112 @@ fn preview_pages_reports_session_diagnostics() {
     )));
     assert!(stdout.contains("Serving bundle:"));
     assert!(stdout.contains("Live reload: enabled"));
+}
+
+#[test]
+fn preview_pages_status_endpoint_reports_bundle_metadata() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    let bundle_dir = repo_dir.join("bundle");
+    fs::create_dir_all(bundle_dir.join("assets")).expect("create assets");
+    fs::write(
+        bundle_dir.join("index.html"),
+        "<!doctype html><html><body>ok</body></html>",
+    )
+    .expect("write index");
+    fs::write(bundle_dir.join("assets/style.css"), "body{}").expect("write style");
+
+    let probe = TcpListener::bind(("127.0.0.1", 0)).expect("probe port");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args(["--preview-pages", "bundle"])
+        .env("BVR_PREVIEW_PORT", port.to_string())
+        .env("BVR_PREVIEW_MAX_REQUESTS", "2")
+        .env("BV_NO_BROWSER", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+
+    let mut response = None::<String>;
+    for _ in 0..40 {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            response = Some(preview_request(port, "/__preview__/status"));
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let response = response.expect("status response");
+    let body = preview_response_body(&response);
+    let payload = serde_json::from_str::<Value>(body).expect("decode status json");
+    assert_eq!(payload["status"], "running");
+    assert_eq!(payload["port"], port);
+    assert_eq!(payload["has_index"], true);
+    assert_eq!(payload["live_reload"], true);
+    assert_eq!(payload["file_count"], 2);
+    assert!(
+        payload["bundle_path"]
+            .as_str()
+            .is_some_and(|value| value.ends_with("bundle"))
+    );
+
+    let output = child.wait_with_output().expect("wait for preview");
+    assert!(
+        output.status.success(),
+        "preview status request failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn preview_pages_no_live_reload_omits_reload_script() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    let bundle_dir = repo_dir.join("bundle");
+    fs::create_dir_all(&bundle_dir).expect("create bundle dir");
+    fs::write(
+        bundle_dir.join("index.html"),
+        "<!doctype html><html><body>ok</body></html>",
+    )
+    .expect("write index");
+
+    let probe = TcpListener::bind(("127.0.0.1", 0)).expect("probe port");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args(["--preview-pages", "bundle", "--no-live-reload"])
+        .env("BVR_PREVIEW_PORT", port.to_string())
+        .env("BVR_PREVIEW_MAX_REQUESTS", "2")
+        .env("BV_NO_BROWSER", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+
+    let mut response = None::<String>;
+    for _ in 0..40 {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            response = Some(preview_request(port, "/"));
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let response = response.expect("html response");
+    let body = preview_response_body(&response);
+    assert!(body.contains("<body>ok</body>"));
+    assert!(!body.contains("window.location.reload"));
+
+    let output = child.wait_with_output().expect("wait for preview");
+    assert!(
+        output.status.success(),
+        "preview html request failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

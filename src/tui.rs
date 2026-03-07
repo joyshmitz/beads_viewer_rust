@@ -289,12 +289,16 @@ mod tokens {
     }
 
     pub fn status_style(status: &str) -> Style {
-        let fg = match status {
-            "open" => STATUS_OPEN,
-            "in_progress" => STATUS_IN_PROGRESS,
-            "blocked" => STATUS_BLOCKED,
-            "closed" => STATUS_CLOSED,
-            _ => FG_DIM,
+        let fg = if status.eq_ignore_ascii_case("open") {
+            STATUS_OPEN
+        } else if status.eq_ignore_ascii_case("in_progress") {
+            STATUS_IN_PROGRESS
+        } else if status.eq_ignore_ascii_case("blocked") {
+            STATUS_BLOCKED
+        } else if status.eq_ignore_ascii_case("closed") {
+            STATUS_CLOSED
+        } else {
+            FG_DIM
         };
         Style::new().fg(fg)
     }
@@ -5034,27 +5038,40 @@ fn mini_bar(value: f64, max: f64) -> String {
 }
 
 fn status_icon(status: &str) -> &'static str {
-    match status {
-        "open" => "o",
-        "in_progress" => "*",
-        "blocked" => "!",
-        "closed" => "x",
-        "deferred" => "~",
-        "review" => "r",
-        "pinned" => "^",
-        _ => "?",
+    if status.eq_ignore_ascii_case("open") {
+        "o"
+    } else if status.eq_ignore_ascii_case("in_progress") {
+        "*"
+    } else if status.eq_ignore_ascii_case("blocked") {
+        "!"
+    } else if status.eq_ignore_ascii_case("closed") {
+        "x"
+    } else if status.eq_ignore_ascii_case("deferred") {
+        "~"
+    } else if status.eq_ignore_ascii_case("review") {
+        "r"
+    } else if status.eq_ignore_ascii_case("pinned") {
+        "^"
+    } else {
+        "?"
     }
 }
 
 fn type_icon(issue_type: &str) -> &'static str {
-    match issue_type {
-        "bug" => "B",
-        "feature" => "F",
-        "task" => "T",
-        "epic" => "E",
-        "question" => "Q",
-        "docs" => "D",
-        _ => "-",
+    if issue_type.eq_ignore_ascii_case("bug") {
+        "B"
+    } else if issue_type.eq_ignore_ascii_case("feature") {
+        "F"
+    } else if issue_type.eq_ignore_ascii_case("task") {
+        "T"
+    } else if issue_type.eq_ignore_ascii_case("epic") {
+        "E"
+    } else if issue_type.eq_ignore_ascii_case("question") {
+        "Q"
+    } else if issue_type.eq_ignore_ascii_case("docs") {
+        "D"
+    } else {
+        "-"
     }
 }
 

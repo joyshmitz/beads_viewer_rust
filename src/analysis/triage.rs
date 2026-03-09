@@ -113,8 +113,6 @@ fn compute_impact_score(
     // 4. Staleness (how long since last update — stale items get deprioritized)
     let updated_ts = issue
         .updated_at
-        .as_ref()
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.timestamp())
         .unwrap_or(ctx.now_ts);
     let days_stale = ((ctx.now_ts - updated_ts) as f64 / 86400.0).max(0.0);
@@ -1012,7 +1010,8 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
-        let score = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+        let score =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
 
         assert_eq!(score.breakdown.len(), 8);
         assert_eq!(score.breakdown[0].name, "PageRank");
@@ -1116,7 +1115,8 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
-        let score = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+        let score =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
 
         // Single node: PageRank=1.0 (normalized to 1.0), no blockers, no risk.
         assert!(score.score > 0.0);
@@ -1152,8 +1152,10 @@ mod tests {
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
 
-        let score_a = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
-        let score_b = super::compute_impact_score(&issues[1], &metrics, &graph, &ctx, &HashMap::new());
+        let score_a =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+        let score_b =
+            super::compute_impact_score(&issues[1], &metrics, &graph, &ctx, &HashMap::new());
 
         assert!(
             score_a.score > score_b.score,
@@ -1225,7 +1227,8 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
-        let score = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+        let score =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
 
         // Risk component should be non-zero (cycle detected).
         let risk = &score.breakdown[7];
@@ -1530,24 +1533,13 @@ mod tests {
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
 
         // Baseline: no adjustments
-        let baseline = super::compute_impact_score(
-            &issues[0],
-            &metrics,
-            &graph,
-            &ctx,
-            &HashMap::new(),
-        );
+        let baseline =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
 
         // With PageRank boosted to 2x
         let mut adjustments = HashMap::new();
         adjustments.insert("PageRank".to_string(), 2.0);
-        let boosted = super::compute_impact_score(
-            &issues[0],
-            &metrics,
-            &graph,
-            &ctx,
-            &adjustments,
-        );
+        let boosted = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &adjustments);
 
         // The PageRank component weight should be higher in the boosted version.
         let baseline_pr_weight = baseline.breakdown[0].weight;
@@ -1575,13 +1567,11 @@ mod tests {
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
 
-        let no_adj = super::compute_impact_score(
-            &issues[0], &metrics, &graph, &ctx, &HashMap::new(),
-        );
+        let no_adj =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
         let empty_map: HashMap<String, f64> = HashMap::new();
-        let with_empty = super::compute_impact_score(
-            &issues[0], &metrics, &graph, &ctx, &empty_map,
-        );
+        let with_empty =
+            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &empty_map);
 
         assert!(
             (no_adj.score - with_empty.score).abs() < 1e-12,
@@ -1606,14 +1596,18 @@ mod tests {
         // All weights doubled → should renormalize to sum=1.0
         let mut adjustments = HashMap::new();
         for name in &[
-            "PageRank", "Betweenness", "BlockerRatio", "Staleness",
-            "PriorityBoost", "TimeToImpact", "Urgency", "Risk",
+            "PageRank",
+            "Betweenness",
+            "BlockerRatio",
+            "Staleness",
+            "PriorityBoost",
+            "TimeToImpact",
+            "Urgency",
+            "Risk",
         ] {
             adjustments.insert(name.to_string(), 2.0);
         }
-        let score = super::compute_impact_score(
-            &issues[0], &metrics, &graph, &ctx, &adjustments,
-        );
+        let score = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &adjustments);
 
         let weight_sum: f64 = score.breakdown.iter().map(|c| c.weight).sum();
         assert!(

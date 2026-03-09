@@ -161,8 +161,7 @@ fn detect_stale_issues(issues: &[Issue], now: DateTime<Utc>, alerts: &mut Vec<Al
             continue;
         }
 
-        let Some(last_active) = parse_timestamp(issue.updated_at.as_deref())
-            .or_else(|| parse_timestamp(issue.created_at.as_deref()))
+        let Some(last_active) = issue.updated_at.or(issue.created_at)
         else {
             continue;
         };
@@ -380,16 +379,16 @@ mod tests {
     #[test]
     fn robot_alerts_include_cycle_stale_and_cascade() {
         let now = chrono::Utc::now();
-        let stale_at = (now - Duration::days(20)).to_rfc3339();
-        let fresh_at = (now - Duration::days(1)).to_rfc3339();
+        let stale_at = now - Duration::days(20);
+        let fresh_at = now - Duration::days(1);
 
         let mut root = issue("ROOT", "open");
-        root.updated_at = Some(fresh_at.clone());
-        root.created_at = Some(fresh_at.clone());
+        root.updated_at = Some(fresh_at);
+        root.created_at = Some(fresh_at);
 
         let mut d1 = issue("D1", "open");
-        d1.updated_at = Some(fresh_at.clone());
-        d1.created_at = Some(fresh_at.clone());
+        d1.updated_at = Some(fresh_at);
+        d1.created_at = Some(fresh_at);
         d1.dependencies.push(Dependency {
             issue_id: "D1".to_string(),
             depends_on_id: "ROOT".to_string(),
@@ -398,8 +397,8 @@ mod tests {
         });
 
         let mut d2 = issue("D2", "open");
-        d2.updated_at = Some(fresh_at.clone());
-        d2.created_at = Some(fresh_at.clone());
+        d2.updated_at = Some(fresh_at);
+        d2.created_at = Some(fresh_at);
         d2.dependencies.push(Dependency {
             issue_id: "D2".to_string(),
             depends_on_id: "ROOT".to_string(),
@@ -408,7 +407,7 @@ mod tests {
         });
 
         let mut d3 = issue("D3", "open");
-        d3.updated_at = Some(fresh_at.clone());
+        d3.updated_at = Some(fresh_at);
         d3.created_at = Some(fresh_at);
         d3.dependencies.push(Dependency {
             issue_id: "D3".to_string(),
@@ -418,11 +417,11 @@ mod tests {
         });
 
         let mut stale = issue("STALE", "open");
-        stale.updated_at = Some(stale_at.clone());
-        stale.created_at = Some(stale_at.clone());
+        stale.updated_at = Some(stale_at);
+        stale.created_at = Some(stale_at);
 
         let mut tombstone = issue("TOMBSTONE", "tombstone");
-        tombstone.updated_at = Some(stale_at.clone());
+        tombstone.updated_at = Some(stale_at);
         tombstone.created_at = Some(stale_at);
 
         let mut cycle_a = issue("cycle-a", "open");
@@ -472,16 +471,16 @@ mod tests {
     #[test]
     fn robot_alert_filters_are_applied() {
         let now = chrono::Utc::now();
-        let stale_at = (now - Duration::days(20)).to_rfc3339();
-        let fresh_at = (now - Duration::days(1)).to_rfc3339();
+        let stale_at = now - Duration::days(20);
+        let fresh_at = now - Duration::days(1);
 
         let mut root = issue("ROOT", "open");
-        root.updated_at = Some(fresh_at.clone());
-        root.created_at = Some(fresh_at.clone());
+        root.updated_at = Some(fresh_at);
+        root.created_at = Some(fresh_at);
 
         let mut d1 = issue("D1", "open");
-        d1.updated_at = Some(fresh_at.clone());
-        d1.created_at = Some(fresh_at.clone());
+        d1.updated_at = Some(fresh_at);
+        d1.created_at = Some(fresh_at);
         d1.dependencies.push(Dependency {
             issue_id: "D1".to_string(),
             depends_on_id: "ROOT".to_string(),
@@ -490,8 +489,8 @@ mod tests {
         });
 
         let mut d2 = issue("D2", "open");
-        d2.updated_at = Some(fresh_at.clone());
-        d2.created_at = Some(fresh_at.clone());
+        d2.updated_at = Some(fresh_at);
+        d2.created_at = Some(fresh_at);
         d2.dependencies.push(Dependency {
             issue_id: "D2".to_string(),
             depends_on_id: "ROOT".to_string(),
@@ -500,7 +499,7 @@ mod tests {
         });
 
         let mut d3 = issue("D3", "open");
-        d3.updated_at = Some(fresh_at.clone());
+        d3.updated_at = Some(fresh_at);
         d3.created_at = Some(fresh_at);
         d3.dependencies.push(Dependency {
             issue_id: "D3".to_string(),
@@ -510,7 +509,7 @@ mod tests {
         });
 
         let mut stale = issue("STALE", "open");
-        stale.updated_at = Some(stale_at.clone());
+        stale.updated_at = Some(stale_at);
         stale.created_at = Some(stale_at);
 
         let issues = vec![root, d1, d2, d3, stale];

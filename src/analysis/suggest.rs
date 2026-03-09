@@ -622,12 +622,12 @@ fn detect_stale_cleanup(
     let mut suggestions = Vec::new();
 
     for issue in issues.iter().filter(|i| i.is_open_like()) {
-        let updated = parse_timestamp(issue.updated_at.as_deref());
+        let updated = issue.updated_at;
         let days_stale = match updated {
             Some(ts) => (now - ts).num_days(),
             None => {
                 // Fall back to created_at; if neither exists, skip.
-                match parse_timestamp(issue.created_at.as_deref()) {
+                match issue.created_at {
                     Some(ts) => (now - ts).num_days(),
                     None => continue,
                 }
@@ -703,8 +703,8 @@ fn base_suggestion(
 }
 
 fn dependency_direction<'a>(left: &'a Issue, right: &'a Issue) -> (&'a Issue, &'a Issue) {
-    let left_created = parse_timestamp(left.created_at.as_deref());
-    let right_created = parse_timestamp(right.created_at.as_deref());
+    let left_created = left.created_at;
+    let right_created = right.created_at;
 
     let priority_cmp = left.priority.cmp(&right.priority);
     let time_cmp = match (left_created, right_created) {
@@ -991,8 +991,8 @@ mod tests {
             status: status.to_string(),
             issue_type: "task".to_string(),
             priority: 3,
-            updated_at: Some(updated.to_rfc3339()),
-            created_at: Some(updated.to_rfc3339()),
+            updated_at: Some(updated),
+            created_at: Some(updated),
             ..Issue::default()
         }
     }

@@ -302,11 +302,7 @@ fn velocity_minutes_per_day_for_label(
             continue;
         }
 
-        let closed_at = issue
-            .closed_at
-            .as_deref()
-            .and_then(parse_rfc3339_utc)
-            .or_else(|| issue.updated_at.as_deref().and_then(parse_rfc3339_utc));
+        let closed_at = issue.closed_at.or(issue.updated_at);
         let Some(closed_at) = closed_at else {
             continue;
         };
@@ -501,7 +497,7 @@ mod tests {
                 status: "closed".to_string(),
                 issue_type: "task".to_string(),
                 estimated_minutes: Some(120),
-                closed_at: Some((now - chrono::Duration::days(1)).to_rfc3339()),
+                closed_at: Some(now - chrono::Duration::days(1)),
                 ..Issue::default()
             },
             Issue {
@@ -510,7 +506,7 @@ mod tests {
                 status: "tombstone".to_string(),
                 issue_type: "task".to_string(),
                 estimated_minutes: Some(60),
-                closed_at: Some((now - chrono::Duration::days(2)).to_rfc3339()),
+                closed_at: Some(now - chrono::Duration::days(2)),
                 ..Issue::default()
             },
         ];

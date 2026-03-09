@@ -6,7 +6,7 @@ use crate::model::Issue;
 #[derive(Debug, Clone, Serialize)]
 pub struct HistoryEvent {
     pub kind: String,
-    pub timestamp: Option<String>,
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
     pub details: String,
 }
 
@@ -64,7 +64,7 @@ pub fn build_histories(
             }
         }
 
-        events.sort_by_key(|event| parse_ts(event.timestamp.as_deref()));
+        events.sort_by_key(|event| event.timestamp);
 
         histories.push(IssueHistory {
             id: issue.id.clone(),
@@ -82,17 +82,10 @@ pub fn build_histories(
     histories
 }
 
-fn parse_ts(value: Option<&str>) -> Option<DateTime<Utc>> {
-    let value = value?;
-
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-}
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Dependency, Issue};
+    use crate::model::{Dependency, Issue, ts};
 
     use super::build_histories;
 
@@ -103,8 +96,8 @@ mod tests {
             title: "A".to_string(),
             status: "open".to_string(),
             issue_type: "task".to_string(),
-            created_at: Some("2026-01-01T00:00:00Z".to_string()),
-            updated_at: Some("2026-01-02T00:00:00Z".to_string()),
+            created_at: ts("2026-01-01T00:00:00Z"),
+            updated_at: ts("2026-01-02T00:00:00Z"),
             ..Issue::default()
         }];
 
@@ -121,8 +114,8 @@ mod tests {
                 title: "Primary blocker".to_string(),
                 status: "in_progress".to_string(),
                 issue_type: "feature".to_string(),
-                created_at: Some("2026-02-18T03:00:00Z".to_string()),
-                updated_at: Some("2026-02-18T03:05:00Z".to_string()),
+                created_at: ts("2026-02-18T03:00:00Z"),
+                updated_at: ts("2026-02-18T03:05:00Z"),
                 ..Issue::default()
             },
             Issue {
@@ -130,8 +123,8 @@ mod tests {
                 title: "Follow-on work".to_string(),
                 status: "blocked".to_string(),
                 issue_type: "task".to_string(),
-                created_at: Some("2026-02-18T03:01:00Z".to_string()),
-                updated_at: Some("2026-02-18T03:06:00Z".to_string()),
+                created_at: ts("2026-02-18T03:01:00Z"),
+                updated_at: ts("2026-02-18T03:06:00Z"),
                 dependencies: vec![Dependency {
                     issue_id: "bd-3q1".to_string(),
                     depends_on_id: "bd-3q0".to_string(),

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use super::graph::GraphMetrics;
@@ -258,19 +258,15 @@ fn normalize_impact(blocks_count: usize, max_blocks: usize) -> f64 {
     blocks_count as f64 / max_blocks as f64
 }
 
-fn normalize_recency(updated_at: Option<&str>) -> f64 {
+fn normalize_recency(updated_at: Option<DateTime<Utc>>) -> f64 {
     let Some(ts) = updated_at else {
         return 0.0;
     };
-    // Parse date and compute days since update
-    let now_ms = u64::try_from(Utc::now().timestamp_millis())
-        .ok()
-        .unwrap_or(0);
-    let ts_ms = super::causal::parse_timestamp_ms_pub(ts).unwrap_or(0);
-    if ts_ms == 0 || now_ms == 0 || ts_ms > now_ms {
+    let now = Utc::now();
+    if ts > now {
         return 0.5;
     }
-    let days = (now_ms - ts_ms) / 86_400_000;
+    let days = (now - ts).num_days();
     // Exponential decay with half-life ~30 days
     (-(days as f64) / 30.0_f64).exp()
 }
@@ -371,7 +367,7 @@ pub fn execute_search(
                     let blocks = metrics.blocks_count.get(&issue.id).copied().unwrap_or(0);
                     let impact = normalize_impact(blocks, max_blocks);
                     let priority = normalize_priority(issue.priority);
-                    let recency = normalize_recency(issue.updated_at.as_deref());
+                    let recency = normalize_recency(issue.updated_at);
 
                     effective_weights.text * boosted_text
                         + effective_weights.pagerank * pagerank
@@ -395,7 +391,7 @@ pub fn execute_search(
                     let blocks = metrics.blocks_count.get(&issue.id).copied().unwrap_or(0);
                     let impact_val = normalize_impact(blocks, max_blocks);
                     let priority_val = normalize_priority(issue.priority);
-                    let recency_val = normalize_recency(issue.updated_at.as_deref());
+                    let recency_val = normalize_recency(issue.updated_at);
 
                     (
                         Some(boosted_text),
@@ -607,8 +603,7 @@ mod tests {
 
     #[test]
     fn recency_for_current_timestamp_is_high() {
-        let now_iso = chrono::Utc::now().to_rfc3339();
-        let score = normalize_recency(Some(&now_iso));
+        let score = normalize_recency(Some(chrono::Utc::now()));
         assert!(
             score > 0.9,
             "expected recent timestamp score > 0.9, got {score}"

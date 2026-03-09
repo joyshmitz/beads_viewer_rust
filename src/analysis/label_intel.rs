@@ -209,11 +209,7 @@ fn compute_velocity(labeled_issues: &[&Issue], now: DateTime<Utc>) -> VelocityMe
         if !issue.is_closed_like() {
             continue;
         }
-        let closed_at = issue
-            .closed_at
-            .as_deref()
-            .and_then(parse_datetime)
-            .or_else(|| issue.updated_at.as_deref().and_then(parse_datetime));
+        let closed_at = issue.closed_at.or(issue.updated_at);
         let Some(closed_at) = closed_at else {
             continue;
         };
@@ -229,7 +225,7 @@ fn compute_velocity(labeled_issues: &[&Issue], now: DateTime<Utc>) -> VelocityMe
             prev_week += 1;
         }
 
-        if let Some(created) = issue.created_at.as_deref().and_then(parse_datetime) {
+        if let Some(created) = issue.created_at {
             let days = (closed_at - created).num_hours() as f64 / 24.0;
             if days >= 0.0 {
                 total_close_days += days;
@@ -294,7 +290,7 @@ fn compute_freshness(
     let mut stale_count = 0i32;
 
     for issue in labeled_issues {
-        if let Some(updated) = issue.updated_at.as_deref().and_then(parse_datetime) {
+        if let Some(updated) = issue.updated_at {
             if most_recent.is_none_or(|mr| updated > mr) {
                 most_recent = Some(updated);
             }
@@ -307,7 +303,7 @@ fn compute_freshness(
         }
 
         if !issue.is_closed_like() {
-            if let Some(created) = issue.created_at.as_deref().and_then(parse_datetime) {
+            if let Some(created) = issue.created_at {
                 if oldest_open.is_none_or(|oo| created < oo) {
                     oldest_open = Some(created);
                 }
@@ -791,8 +787,8 @@ pub fn compute_label_attention(
             pr_sum += metrics.pagerank.get(&issue.id).copied().unwrap_or(0.0);
 
             // Check staleness
-            if let Some(updated) = issue.updated_at.as_deref().and_then(parse_datetime) {
-                let days = (now - updated).num_hours() as f64 / 24.0;
+            if let Some(updated) = issue.updated_at {
+                let days: f64 = (now - updated).num_hours() as f64 / 24.0;
                 if days >= DEFAULT_STALE_THRESHOLD_DAYS as f64 {
                     stale_count += 1;
                 }
@@ -908,7 +904,7 @@ pub fn compute_label_attention(
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{Dependency, Issue};
+    use crate::model::{Dependency, Issue, ts};
 
     use super::*;
 
@@ -920,8 +916,8 @@ mod tests {
             issue_type: "task".to_string(),
             priority: 2,
             labels: labels.iter().map(|s| (*s).to_string()).collect(),
-            created_at: Some("2026-01-01T00:00:00Z".to_string()),
-            updated_at: Some("2026-02-15T00:00:00Z".to_string()),
+            created_at: ts("2026-01-01T00:00:00Z"),
+            updated_at: ts("2026-02-15T00:00:00Z"),
             ..Issue::default()
         }
     }

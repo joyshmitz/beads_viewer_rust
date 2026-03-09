@@ -418,9 +418,9 @@ fn to_diff_issue(issue: &Issue) -> DiffIssue {
         priority: issue.priority,
         issue_type: issue.issue_type.clone(),
         assignee: non_empty(&issue.assignee),
-        created_at: timestamp_or_zero(issue.created_at.as_deref()),
-        updated_at: timestamp_or_zero(issue.updated_at.as_deref()),
-        closed_at: issue.closed_at.as_deref().and_then(non_empty),
+        created_at: dt_or_zero(issue.created_at),
+        updated_at: dt_or_zero(issue.updated_at),
+        closed_at: issue.closed_at.map(|dt| dt.to_rfc3339()),
         labels: issue.labels.clone(),
         dependencies: issue.dependencies.iter().map(to_diff_dependency).collect(),
         comments: issue.comments.iter().map(to_diff_comment).collect(),
@@ -433,7 +433,7 @@ fn to_diff_dependency(dep: &Dependency) -> DiffDependency {
         depends_on_id: dep.depends_on_id.clone(),
         dep_type: dep.dep_type.clone(),
         created_by: dep.created_by.clone(),
-        created_at: timestamp_or_zero(dep.created_at.as_deref()),
+        created_at: dt_or_zero(dep.created_at),
     }
 }
 
@@ -443,14 +443,12 @@ fn to_diff_comment(comment: &Comment) -> DiffComment {
         issue_id: comment.issue_id.clone(),
         author: comment.author.clone(),
         text: comment.text.clone(),
-        created_at: timestamp_or_zero(comment.created_at.as_deref()),
+        created_at: dt_or_zero(comment.created_at),
     }
 }
 
-fn timestamp_or_zero(raw: Option<&str>) -> String {
-    raw.filter(|value| !value.trim().is_empty())
-        .unwrap_or(ZERO_TIME_RFC3339)
-        .to_string()
+fn dt_or_zero(dt: Option<chrono::DateTime<chrono::Utc>>) -> String {
+    dt.map_or_else(|| ZERO_TIME_RFC3339.to_string(), |d| d.to_rfc3339())
 }
 
 fn non_empty(value: &str) -> Option<String> {

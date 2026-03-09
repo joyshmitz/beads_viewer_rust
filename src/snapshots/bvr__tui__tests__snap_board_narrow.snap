@@ -10,14 +10,14 @@ bvr Board | 3/3 | all
 │ Lanes (5) | 3 iss ││ │ Root                              │
 │                   ││ ├────────────────────────────────── │
 │ > open         [  ││ │ Lane: open                        │
-│     ▶ o A         ││ │ Assignee:                         │
-│       o B         ││ └────────────────────────────────── │
-│                   ││                                     │
-│   in_progress  [  ││ Unblocks (1)                        │
-│     (empty)       ││   o B                               │
-│                   ││                                     │
-│   blocked      [  ││ Ready to advance to next lane.      │
-│     (empty)       ││                                     │
+│     ▶ o A         ││ │ Assignee: alice                   │
+│       o B         ││ │ Top-level issue that unblocks dow │
+│                   ││ └────────────────────────────────── │
+│   in_progress  [  ││                                     │
+│     (empty)       ││ Unblocks (1)                        │
+│                   ││   o B                               │
+│   blocked      [  ││                                     │
+│     (empty)       ││ Ready to advance to next lane.      │
 │                   ││                                     │
 │   closed       [  ││                                     │
 │       x C         ││                                     │

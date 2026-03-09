@@ -11,13 +11,13 @@ bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                        ││ ├────────────────────────────────────────┤             │
 │ Lanes (5) | 3 issues total             ││ │ Lane: open                             │             │
 │                                        ││ │ Assignee:                              │             │
-│ > open         [  2] ██                ││ └────────────────────────────────────────┘             │
-│       o A          p0 Root             ││                                                        │
-│     ▶ o B          p0 Dependent        ││ Depends on (1)                                         │
-│                                        ││   o A [OPEN]                                           │
-│   in_progress  [  0]                   ││                                                        │
-│     (empty)                            ││ Blocked by 1 open issue(s).                            │
-│                                        ││                                                        │
+│ > open         [  2] ██                ││ │ Depends on A and should report blo...  │             │
+│       o A          p0 Root             ││ └────────────────────────────────────────┘             │
+│     ▶ o B          p0 Dependent        ││                                                        │
+│                                        ││ Depends on (1)                                         │
+│   in_progress  [  0]                   ││   o A [OPEN]                                           │
+│     (empty)                            ││                                                        │
+│                                        ││ Blocked by 1 open issue(s).                            │
 │   blocked      [  0]                   ││                                                        │
 │     (empty)                            ││                                                        │
 │                                        ││                                                        │

@@ -5,29 +5,29 @@ expression: text
 bvr | mode=Main | focus=list | issues=2/3 | filter=open | sort=default | ? help | Tab focus | Esc ba
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ > A              open        p0 Root   ││ ID: A                                                  │
-│   B              open        p0 Depend ││ Title: Root                                            │
-│                                        ││ Status: open                                           │
-│                                        ││ Priority: 0                                            │
-│                                        ││ Type: task                                             │
-│                                        ││ Assignee:                                              │
-│                                        ││ Labels:                                                │
-│                                        ││ PageRank: 0.4805                                       │
-│                                        ││ Critical depth: 2                                      │
-│                                        ││ Depends on: none                                       │
-│                                        ││ Open blockers: none                                    │
-│                                        ││ Direct dependents: B                                   │
+│ > A              open        p0 Root   ││ T A  Root                                              │
+│   B              open        p0 Depend ││ Status: open | Priority: p0 | Type: task | State: read │
+│                                        ││ Assignee: alice | Repo: viewer | Estimate: 90m         │
+│                                        ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a   │
+│                                        ││ Closed: n/a | Labels: core, parity                     │
+│                                        ││                                                        │
+│                                        ││ Triage Snapshot:                                       │
+│                                        ││   open blockers: 0 (none)                              │
+│                                        ││   unblocks: 1 (B)                                      │
+│                                        ││   dependency pressure: 0 upstream | 1 downstream       │
+│                                        ││                                                        │
+│                                        ││ Graph Signals:                                         │
+│                                        ││   Critical depth: 2 | k-core: 1 | slack: 0.0000 | cut- │
+│                                        ││   PageRank:       0.4805  ██████  #1                   │
+│                                        ││   Betweenness:    0.0000  ░░░░░░  #1                   │
+│                                        ││   Eigenvector:    1.0000  ██████  #1                   │
+│                                        ││   HITS: hub 0.0000 ░░░░░░ #2 | auth 1.0000 ██████ #1   │
 │                                        ││                                                        │
 │                                        ││ Description:                                           │
+│                                        ││   Top-level issue that unblocks downstream work once t │
 │                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
+│                                        ││ Design Notes:                                          │
+│                                        ││   Keep the main flow lean, surface the most important  │
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘

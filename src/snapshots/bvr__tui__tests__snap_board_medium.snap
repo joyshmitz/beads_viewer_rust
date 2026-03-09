@@ -10,14 +10,14 @@ bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │ Lanes (5) | 3 issues total             ││ │ Root                                   │             │
 │                                        ││ ├────────────────────────────────────────┤             │
 │ > open         [  2] ██                ││ │ Lane: open                             │             │
-│     ▶ o A          p0 Root             ││ │ Assignee:                              │             │
-│       o B          p0 Dependent        ││ └────────────────────────────────────────┘             │
-│                                        ││                                                        │
-│   in_progress  [  0]                   ││ Unblocks (1)                                           │
-│     (empty)                            ││   o B                                                  │
-│                                        ││                                                        │
-│   blocked      [  0]                   ││ Ready to advance to next lane.                         │
-│     (empty)                            ││                                                        │
+│     ▶ o A          p0 Root             ││ │ Assignee: alice                        │             │
+│       o B          p0 Dependent        ││ │ Top-level issue that unblocks down...  │             │
+│                                        ││ └────────────────────────────────────────┘             │
+│   in_progress  [  0]                   ││                                                        │
+│     (empty)                            ││ Unblocks (1)                                           │
+│                                        ││   o B                                                  │
+│   blocked      [  0]                   ││                                                        │
+│     (empty)                            ││ Ready to advance to next lane.                         │
 │                                        ││                                                        │
 │   closed       [  1] █                 ││                                                        │
 │       x C          p0 Closed           ││                                                        │

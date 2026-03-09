@@ -9,6 +9,8 @@ use crate::analysis::git_history::{
     GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryMilestonesCompat,
     correlate_histories_with_git, finalize_history_entries, load_git_commits,
 };
+use crate::analysis::history::IssueHistory;
+use crate::analysis::triage::TriageOptions;
 use crate::loader;
 use crate::model::Issue;
 #[cfg(not(test))]
@@ -628,6 +630,23 @@ impl InsightsPanel {
     }
 }
 
+const INSIGHTS_HEATMAP_DEPTH_LABELS: [&str; 5] = ["D=0", "D1-2", "D3-5", "D6-10", "D10+"];
+const INSIGHTS_HEATMAP_SCORE_LABELS: [&str; 5] = ["0-.2", ".2-.4", ".4-.6", ".6-.8", ".8-1"];
+
+#[derive(Debug, Clone, Default)]
+struct InsightsHeatmapState {
+    row: usize,
+    col: usize,
+    drill_active: bool,
+    drill_cursor: usize,
+}
+
+#[derive(Debug, Clone)]
+struct InsightsHeatmapData {
+    counts: Vec<Vec<usize>>,
+    issue_ids: Vec<Vec<Vec<String>>>,
+}
+
 const HISTORY_CONFIDENCE_STEPS: [f64; 4] = [0.0, 0.5, 0.75, 0.9];
 
 #[derive(Debug, Clone)]
@@ -762,6 +781,7 @@ struct BvrApp {
     board_search_active: bool,
     board_search_query: String,
     board_search_match_cursor: usize,
+    board_detail_scroll_offset: usize,
     graph_search_active: bool,
     graph_search_query: String,
     graph_search_match_cursor: usize,
@@ -769,6 +789,7 @@ struct BvrApp {
     insights_search_query: String,
     insights_search_match_cursor: usize,
     insights_panel: InsightsPanel,
+    insights_heatmap: Option<InsightsHeatmapState>,
     insights_show_explanations: bool,
     insights_show_calc_proof: bool,
     detail_dep_cursor: usize,
@@ -1045,7 +1066,14 @@ impl Model for BvrApp {
             )
             .render(panes[0], frame);
 
-        let detail_text = self.detail_panel_text();
+        let detail_viewport_height = panes[1].height.saturating_sub(2) as usize;
+        let (detail_text, board_detail_line) = if matches!(self.mode, ViewMode::Board) {
+            let (text, offset, total_lines) =
+                self.board_detail_render_state(detail_viewport_height);
+            (text, Some((offset, total_lines)))
+        } else {
+            (self.detail_panel_text(), None)
+        };
         let detail_title = match self.mode {
             ViewMode::Board => "Board Focus",
             ViewMode::Insights => "Insight Detail",
@@ -1085,10 +1113,25 @@ impl Model for BvrApp {
                 self.list_sort.label()
             ),
             ViewMode::Board => {
+                let detail_hint = board_detail_line.map_or_else(
+                    || "Ctrl+j/k detail scroll".to_string(),
+                    |(offset, total_lines)| {
+                        if total_lines > detail_viewport_height {
+                            format!(
+                                "Ctrl+j/k detail scroll | line {}/{}",
+                                offset + 1,
+                                total_lines
+                            )
+                        } else {
+                            "Ctrl+j/k detail scroll".to_string()
+                        }
+                    },
+                );
                 format!(
-                    "Board mode: lane counts, queued IDs, and selected issue delivery context | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges",
+                    "Board mode: lane counts, queued IDs, and selected issue delivery context | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
                     self.board_grouping.label(),
                     self.board_empty_visibility.label(),
+                    detail_hint,
                 )
             }
             ViewMode::Insights => {
@@ -1251,6 +1294,7 @@ impl BvrApp {
         self.analyzer = Analyzer::new(issues);
         self.history_git_cache = None;
         self.detail_dep_cursor = 0;
+        self.board_detail_scroll_offset = 0;
         self.selected = 0;
 
         if let Some(id) = selected_id.as_deref() {
@@ -1258,11 +1302,238 @@ impl BvrApp {
         }
 
         self.ensure_selected_visible();
+        self.sync_insights_heatmap_selection();
     }
 
     fn board_shortcut_focus(&self) -> bool {
         matches!(self.mode, ViewMode::Board)
             && matches!(self.focus, FocusPane::List | FocusPane::Detail)
+    }
+
+    fn insights_heatmap_shortcut_focus(&self) -> bool {
+        matches!(self.mode, ViewMode::Insights)
+            && self.focus == FocusPane::List
+            && self.insights_heatmap.is_some()
+    }
+
+    fn insights_heatmap_data(&self) -> InsightsHeatmapData {
+        let mut counts =
+            vec![vec![0; INSIGHTS_HEATMAP_SCORE_LABELS.len()]; INSIGHTS_HEATMAP_DEPTH_LABELS.len()];
+        let mut issue_ids = vec![
+            vec![Vec::new(); INSIGHTS_HEATMAP_SCORE_LABELS.len()];
+            INSIGHTS_HEATMAP_DEPTH_LABELS.len()
+        ];
+        let recommendations = self.analyzer.triage(TriageOptions {
+            max_recommendations: self.analyzer.issues.len().max(50),
+            ..TriageOptions::default()
+        });
+
+        for recommendation in recommendations.result.recommendations {
+            let Some(issue) = self
+                .analyzer
+                .issues
+                .iter()
+                .find(|issue| issue.id == recommendation.id)
+            else {
+                continue;
+            };
+
+            if !issue.is_open_like() || !self.issue_matches_filter(issue) {
+                continue;
+            }
+
+            let depth = self
+                .analyzer
+                .metrics
+                .critical_depth
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let row = match depth {
+                0 => 0,
+                1 | 2 => 1,
+                3..=5 => 2,
+                6..=10 => 3,
+                _ => 4,
+            };
+
+            let score = recommendation.score.clamp(0.0, 1.0);
+            let col = if score <= 0.2 {
+                0
+            } else if score <= 0.4 {
+                1
+            } else if score <= 0.6 {
+                2
+            } else if score <= 0.8 {
+                3
+            } else {
+                4
+            };
+
+            counts[row][col] += 1;
+            issue_ids[row][col].push(issue.id.clone());
+        }
+
+        InsightsHeatmapData { counts, issue_ids }
+    }
+
+    fn insights_heatmap_issue_ids_for_current_cell(&self) -> Vec<String> {
+        let Some(state) = self.insights_heatmap.as_ref() else {
+            return Vec::new();
+        };
+        let data = self.insights_heatmap_data();
+        let row = state
+            .row
+            .min(INSIGHTS_HEATMAP_DEPTH_LABELS.len().saturating_sub(1));
+        let col = state
+            .col
+            .min(INSIGHTS_HEATMAP_SCORE_LABELS.len().saturating_sub(1));
+        data.issue_ids[row][col].clone()
+    }
+
+    fn sync_insights_heatmap_selection(&mut self) {
+        let Some(mut state) = self.insights_heatmap.clone() else {
+            return;
+        };
+        let data = self.insights_heatmap_data();
+        let row = state
+            .row
+            .min(INSIGHTS_HEATMAP_DEPTH_LABELS.len().saturating_sub(1));
+        let col = state
+            .col
+            .min(INSIGHTS_HEATMAP_SCORE_LABELS.len().saturating_sub(1));
+        let cell_issue_ids = data.issue_ids[row][col].clone();
+
+        state.row = row;
+        state.col = col;
+
+        if cell_issue_ids.is_empty() {
+            for (next_row, row_issue_ids) in data.issue_ids.iter().enumerate() {
+                if let Some((next_col, next_cell_ids)) = row_issue_ids
+                    .iter()
+                    .enumerate()
+                    .find(|(_, ids)| !ids.is_empty())
+                {
+                    state.row = next_row;
+                    state.col = next_col;
+                    state.drill_active = false;
+                    state.drill_cursor = 0;
+                    let issue_id = next_cell_ids[0].clone();
+                    self.insights_heatmap = Some(state);
+                    self.select_issue_by_id(&issue_id);
+                    return;
+                }
+            }
+
+            state.drill_active = false;
+            state.drill_cursor = 0;
+            self.insights_heatmap = Some(state);
+            return;
+        }
+
+        if !state.drill_active {
+            state.drill_cursor = 0;
+        } else {
+            state.drill_cursor = state
+                .drill_cursor
+                .min(cell_issue_ids.len().saturating_sub(1));
+        }
+
+        let issue_id = cell_issue_ids[state.drill_cursor].clone();
+        self.insights_heatmap = Some(state);
+        self.select_issue_by_id(&issue_id);
+    }
+
+    fn toggle_insights_heatmap(&mut self) {
+        if self.insights_heatmap.is_some() {
+            self.insights_heatmap = None;
+            return;
+        }
+
+        self.insights_heatmap = Some(InsightsHeatmapState::default());
+        self.sync_insights_heatmap_selection();
+    }
+
+    fn enter_insights_heatmap_drill(&mut self) {
+        let cell_issue_ids = self.insights_heatmap_issue_ids_for_current_cell();
+        if cell_issue_ids.is_empty() {
+            return;
+        }
+
+        if let Some(state) = self.insights_heatmap.as_mut() {
+            state.drill_active = true;
+            state.drill_cursor = 0;
+        }
+        self.sync_insights_heatmap_selection();
+    }
+
+    fn exit_insights_heatmap_drill(&mut self) -> bool {
+        let Some(state) = self.insights_heatmap.as_mut() else {
+            return false;
+        };
+        if !state.drill_active {
+            return false;
+        }
+
+        state.drill_active = false;
+        state.drill_cursor = 0;
+        self.sync_insights_heatmap_selection();
+        true
+    }
+
+    fn move_insights_heatmap_row(&mut self, delta: isize) {
+        let Some(state) = self.insights_heatmap.as_mut() else {
+            return;
+        };
+        if state.drill_active || delta == 0 {
+            return;
+        }
+
+        let max_row = INSIGHTS_HEATMAP_DEPTH_LABELS.len().saturating_sub(1);
+        state.row = if delta >= 0 {
+            state.row.saturating_add(delta.unsigned_abs()).min(max_row)
+        } else {
+            state.row.saturating_sub(delta.unsigned_abs())
+        };
+        self.sync_insights_heatmap_selection();
+    }
+
+    fn move_insights_heatmap_col(&mut self, delta: isize) {
+        let Some(state) = self.insights_heatmap.as_mut() else {
+            return;
+        };
+        if state.drill_active || delta == 0 {
+            return;
+        }
+
+        let max_col = INSIGHTS_HEATMAP_SCORE_LABELS.len().saturating_sub(1);
+        state.col = if delta >= 0 {
+            state.col.saturating_add(delta.unsigned_abs()).min(max_col)
+        } else {
+            state.col.saturating_sub(delta.unsigned_abs())
+        };
+        self.sync_insights_heatmap_selection();
+    }
+
+    fn move_insights_heatmap_drill(&mut self, delta: isize) {
+        let cell_issue_ids = self.insights_heatmap_issue_ids_for_current_cell();
+        let Some(state) = self.insights_heatmap.as_mut() else {
+            return;
+        };
+        if !state.drill_active || delta == 0 || cell_issue_ids.is_empty() {
+            return;
+        }
+
+        let max_slot = cell_issue_ids.len().saturating_sub(1);
+        state.drill_cursor = if delta >= 0 {
+            state
+                .drill_cursor
+                .saturating_add(delta.unsigned_abs())
+                .min(max_slot)
+        } else {
+            state.drill_cursor.saturating_sub(delta.unsigned_abs())
+        };
+        self.sync_insights_heatmap_selection();
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: Modifiers) -> Cmd<Msg> {
@@ -1427,9 +1698,13 @@ impl BvrApp {
         }
 
         match code {
+            KeyCode::Escape if self.exit_insights_heatmap_drill() => return Cmd::None,
             KeyCode::Char('?') => {
                 self.show_help = true;
                 self.focus_before_help = self.focus;
+            }
+            KeyCode::Enter if self.insights_heatmap_shortcut_focus() => {
+                self.enter_insights_heatmap_drill();
             }
             KeyCode::Enter
                 if !(matches!(self.mode, ViewMode::History) && self.history_file_tree_focus) =>
@@ -1467,6 +1742,42 @@ impl BvrApp {
                     self.show_quit_confirm = true;
                 }
             }
+            KeyCode::Char('j') | KeyCode::Down
+                if self.insights_heatmap_shortcut_focus()
+                    && self
+                        .insights_heatmap
+                        .as_ref()
+                        .is_some_and(|state| state.drill_active) =>
+            {
+                self.move_insights_heatmap_drill(1);
+            }
+            KeyCode::Char('k') | KeyCode::Up
+                if self.insights_heatmap_shortcut_focus()
+                    && self
+                        .insights_heatmap
+                        .as_ref()
+                        .is_some_and(|state| state.drill_active) =>
+            {
+                self.move_insights_heatmap_drill(-1);
+            }
+            KeyCode::Char('j') | KeyCode::Down if self.insights_heatmap_shortcut_focus() => {
+                self.move_insights_heatmap_row(1);
+            }
+            KeyCode::Char('k') | KeyCode::Up if self.insights_heatmap_shortcut_focus() => {
+                self.move_insights_heatmap_row(-1);
+            }
+            KeyCode::Char('h') if self.insights_heatmap_shortcut_focus() => {
+                self.move_insights_heatmap_col(-1);
+            }
+            KeyCode::Char('l')
+                if self.insights_heatmap_shortcut_focus()
+                    && self
+                        .insights_heatmap
+                        .as_ref()
+                        .is_some_and(|state| !state.drill_active) =>
+            {
+                self.move_insights_heatmap_col(1);
+            }
             KeyCode::Tab => {
                 if matches!(self.mode, ViewMode::History) && self.history_show_file_tree {
                     // 3-way cycle: List → Detail → FileTree → List
@@ -1484,6 +1795,20 @@ impl BvrApp {
                         FocusPane::Detail => FocusPane::List,
                     };
                 }
+            }
+            KeyCode::Char('j')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(3);
+            }
+            KeyCode::Char('k')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(-3);
             }
             KeyCode::Char('h') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(-1);
@@ -1564,6 +1889,20 @@ impl BvrApp {
                 self.move_board_row_relative(-1);
             }
             KeyCode::Char('d')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(10);
+            }
+            KeyCode::Char('u')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(-10);
+            }
+            KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
             {
                 self.move_board_row_relative(10);
@@ -1630,6 +1969,9 @@ impl BvrApp {
                 self.toggle_history_view_mode();
             }
             KeyCode::Char('s') if matches!(self.mode, ViewMode::Main) => self.cycle_list_sort(),
+            KeyCode::Char('m') if matches!(self.mode, ViewMode::Insights) => {
+                self.toggle_insights_heatmap();
+            }
             KeyCode::Char('y') if matches!(self.mode, ViewMode::History) => {
                 self.history_copy_to_clipboard();
             }
@@ -1833,10 +2175,14 @@ impl BvrApp {
             KeyCode::Char('e') if matches!(self.mode, ViewMode::Board) => {
                 self.toggle_board_empty_visibility();
             }
-            KeyCode::Char('s') if matches!(self.mode, ViewMode::Insights) => {
+            KeyCode::Char('s')
+                if matches!(self.mode, ViewMode::Insights) && self.insights_heatmap.is_none() =>
+            {
                 self.insights_panel = self.insights_panel.next();
             }
-            KeyCode::Char('S') if matches!(self.mode, ViewMode::Insights) => {
+            KeyCode::Char('S')
+                if matches!(self.mode, ViewMode::Insights) && self.insights_heatmap.is_none() =>
+            {
                 self.insights_panel = self.insights_panel.prev();
             }
             KeyCode::Char('e') if matches!(self.mode, ViewMode::Insights) => {
@@ -2185,7 +2531,7 @@ impl BvrApp {
 
         let visible = self.history_visible_issue_indices();
         if let Some(index) = visible.first().copied() {
-            self.selected = index;
+            self.set_selected_index(index);
             self.focus = FocusPane::List;
             self.history_bead_commit_cursor = 0;
         }
@@ -2245,7 +2591,7 @@ impl BvrApp {
             self.history_event_cursor = matches[next];
             self.history_related_bead_cursor = 0;
         } else {
-            self.selected = matches[next];
+            self.set_selected_index(matches[next]);
             self.history_bead_commit_cursor = 0;
         }
     }
@@ -2766,11 +3112,11 @@ impl BvrApp {
     fn ensure_selected_visible(&mut self) {
         let visible = self.visible_issue_indices_for_list_nav();
         if visible.is_empty() {
-            self.selected = 0;
+            self.set_selected_index(0);
             return;
         }
         if !visible.contains(&self.selected) {
-            self.selected = visible[0];
+            self.set_selected_index(visible[0]);
         }
     }
 
@@ -2789,19 +3135,18 @@ impl BvrApp {
         } else {
             current_slot.saturating_sub(delta.unsigned_abs())
         };
-        self.selected = visible[next_slot];
-        self.detail_dep_cursor = 0;
+        self.set_selected_index(visible[next_slot]);
     }
 
     fn select_first_visible(&mut self) {
         if let Some(index) = self.visible_issue_indices_for_list_nav().first().copied() {
-            self.selected = index;
+            self.set_selected_index(index);
         }
     }
 
     fn select_last_visible(&mut self) {
         if let Some(index) = self.visible_issue_indices_for_list_nav().last().copied() {
-            self.selected = index;
+            self.set_selected_index(index);
         }
     }
 
@@ -2812,12 +3157,14 @@ impl BvrApp {
     fn set_list_filter(&mut self, list_filter: ListFilter) {
         self.list_filter = list_filter;
         self.ensure_selected_visible();
+        self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
     }
 
     fn cycle_list_sort(&mut self) {
         self.list_sort = self.list_sort.next();
         self.ensure_selected_visible();
+        self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
     }
 
@@ -2831,6 +3178,33 @@ impl BvrApp {
         self.board_empty_visibility = self.board_empty_visibility.next();
         self.ensure_selected_visible();
         self.focus = FocusPane::List;
+    }
+
+    fn scroll_board_detail(&mut self, delta: isize) {
+        if delta == 0 || !matches!(self.mode, ViewMode::Board) || self.focus != FocusPane::Detail {
+            return;
+        }
+
+        if delta > 0 {
+            self.board_detail_scroll_offset = self
+                .board_detail_scroll_offset
+                .saturating_add(delta.unsigned_abs());
+        } else {
+            self.board_detail_scroll_offset = self
+                .board_detail_scroll_offset
+                .saturating_sub(delta.unsigned_abs());
+        }
+    }
+
+    fn set_selected_index(&mut self, index: usize) {
+        let changed = self.selected != index;
+        self.selected = index;
+        if changed {
+            self.detail_dep_cursor = 0;
+            if matches!(self.mode, ViewMode::Board) {
+                self.board_detail_scroll_offset = 0;
+            }
+        }
     }
 
     fn toggle_insights_explanations(&mut self) {
@@ -2933,7 +3307,7 @@ impl BvrApp {
         if let Some((_, indices)) = self.board_lane_indices().get(lane_position - 1)
             && let Some(index) = indices.first().copied()
         {
-            self.selected = index;
+            self.set_selected_index(index);
         }
     }
 
@@ -2956,7 +3330,7 @@ impl BvrApp {
             .find(|(_, indices)| !indices.is_empty())
             && let Some(index) = indices.first().copied()
         {
-            self.selected = index;
+            self.set_selected_index(index);
         }
     }
 
@@ -2972,7 +3346,7 @@ impl BvrApp {
             .find(|(_, indices)| !indices.is_empty())
             && let Some(index) = indices.first().copied()
         {
-            self.selected = index;
+            self.set_selected_index(index);
         }
     }
 
@@ -3007,7 +3381,7 @@ impl BvrApp {
                 && !indices.is_empty()
             {
                 let target_row = current_row.min(indices.len().saturating_sub(1));
-                self.selected = indices[target_row];
+                self.set_selected_index(indices[target_row]);
                 return;
             }
             target_lane_slot += delta.signum();
@@ -3051,8 +3425,7 @@ impl BvrApp {
             current_row.saturating_sub(delta.unsigned_abs())
         };
 
-        self.selected = indices[next_row];
-        self.detail_dep_cursor = 0;
+        self.set_selected_index(indices[next_row]);
     }
 
     fn start_board_search(&mut self) {
@@ -3109,7 +3482,7 @@ impl BvrApp {
         self.board_search_match_cursor = self
             .board_search_match_cursor
             .min(matches.len().saturating_sub(1));
-        self.selected = matches[self.board_search_match_cursor];
+        self.set_selected_index(matches[self.board_search_match_cursor]);
     }
 
     fn move_board_search_match_relative(&mut self, delta: isize) {
@@ -3128,7 +3501,7 @@ impl BvrApp {
         };
 
         self.board_search_match_cursor = next;
-        self.selected = matches[next];
+        self.set_selected_index(matches[next]);
     }
 
     // ── Graph search ──────────────────────────────────────────
@@ -3177,7 +3550,7 @@ impl BvrApp {
         self.graph_search_match_cursor = self
             .graph_search_match_cursor
             .min(matches.len().saturating_sub(1));
-        self.selected = matches[self.graph_search_match_cursor];
+        self.set_selected_index(matches[self.graph_search_match_cursor]);
     }
 
     fn move_graph_search_match_relative(&mut self, delta: isize) {
@@ -3196,7 +3569,7 @@ impl BvrApp {
         };
 
         self.graph_search_match_cursor = next;
-        self.selected = matches[next];
+        self.set_selected_index(matches[next]);
     }
 
     // ── Insights search ──────────────────────────────────────────
@@ -3245,7 +3618,7 @@ impl BvrApp {
         self.insights_search_match_cursor = self
             .insights_search_match_cursor
             .min(matches.len().saturating_sub(1));
-        self.selected = matches[self.insights_search_match_cursor];
+        self.set_selected_index(matches[self.insights_search_match_cursor]);
     }
 
     fn move_insights_search_match_relative(&mut self, delta: isize) {
@@ -3264,7 +3637,7 @@ impl BvrApp {
         };
 
         self.insights_search_match_cursor = next;
-        self.selected = matches[next];
+        self.set_selected_index(matches[next]);
     }
 
     fn select_edge_in_current_board_lane(&mut self, select_last: bool) {
@@ -3288,7 +3661,7 @@ impl BvrApp {
         };
 
         if let Some(index) = candidate {
-            self.selected = index;
+            self.set_selected_index(index);
         }
     }
 
@@ -3310,7 +3683,7 @@ impl BvrApp {
             .iter()
             .position(|issue| issue.id == issue_id)
         {
-            self.selected = index;
+            self.set_selected_index(index);
             self.ensure_selected_visible();
         }
     }
@@ -3473,6 +3846,14 @@ impl BvrApp {
             lines
                 .push("        -> authorities -> k-core -> cut-pts -> slack -> cycles".to_string());
             lines.push(format!(
+                "Heatmap: {} (m toggles) | list-focus h/l/j/k navigates | Enter drills | Esc backs out",
+                if self.insights_heatmap.is_some() {
+                    "on"
+                } else {
+                    "off"
+                }
+            ));
+            lines.push(format!(
                 "Toggles: explanations={} (e) | calc-proof={} (x)",
                 if self.insights_show_explanations {
                     "on"
@@ -3602,10 +3983,166 @@ impl BvrApp {
     }
 
     fn insights_list_text(&self) -> String {
+        if let Some(state) = self.insights_heatmap.as_ref() {
+            let data = self.insights_heatmap_data();
+            let row = state
+                .row
+                .min(INSIGHTS_HEATMAP_DEPTH_LABELS.len().saturating_sub(1));
+            let col = state
+                .col
+                .min(INSIGHTS_HEATMAP_SCORE_LABELS.len().saturating_sub(1));
+            let cell_issue_ids = data.issue_ids[row][col].clone();
+
+            if state.drill_active {
+                let mut lines = vec![
+                    "Priority heatmap drill | m toggle | j/k issue | Tab detail | Esc back"
+                        .to_string(),
+                    format!(
+                        "Cell: {} x {} ({} issue(s))",
+                        INSIGHTS_HEATMAP_DEPTH_LABELS[row],
+                        INSIGHTS_HEATMAP_SCORE_LABELS[col],
+                        cell_issue_ids.len()
+                    ),
+                    String::new(),
+                ];
+
+                if cell_issue_ids.is_empty() {
+                    lines.push("  (no issues in selected cell)".to_string());
+                    return lines.join("\n");
+                }
+
+                let max_visible = 10usize;
+                let cursor = state
+                    .drill_cursor
+                    .min(cell_issue_ids.len().saturating_sub(1));
+                let start = cursor.saturating_sub(max_visible.saturating_sub(1));
+                let end = (start + max_visible).min(cell_issue_ids.len());
+
+                for (idx, issue_id) in cell_issue_ids[start..end].iter().enumerate() {
+                    let actual = start + idx;
+                    let marker = if actual == cursor { '>' } else { ' ' };
+                    let (priority, title) = self
+                        .analyzer
+                        .issues
+                        .iter()
+                        .find(|issue| issue.id == *issue_id)
+                        .map_or((9, String::new()), |issue| {
+                            (issue.priority, truncate_str(&issue.title, 28))
+                        });
+                    lines.push(format!("{marker} {issue_id:<12} p{priority} {title}"));
+                }
+
+                if cell_issue_ids.len() > max_visible {
+                    lines.push(String::new());
+                    lines.push(format!(
+                        "Drill cursor: {}/{}",
+                        cursor + 1,
+                        cell_issue_ids.len()
+                    ));
+                }
+
+                return lines.join("\n");
+            }
+
+            let mut lines = vec![
+                "Priority heatmap | m toggle | h/l/j/k cell | Enter drill | Tab detail".to_string(),
+                String::new(),
+            ];
+
+            if data
+                .counts
+                .iter()
+                .all(|row_counts| row_counts.iter().all(|count| *count == 0))
+            {
+                lines.push("  (no open, filter-matching issues to chart)".to_string());
+                return lines.join("\n");
+            }
+
+            let col_totals = (0..INSIGHTS_HEATMAP_SCORE_LABELS.len())
+                .map(|score_col| {
+                    data.counts
+                        .iter()
+                        .map(|row_counts| row_counts[score_col])
+                        .sum()
+                })
+                .collect::<Vec<usize>>();
+
+            lines.push(format!(
+                "{:<8} | {:>4} {:>4} {:>4} {:>4} {:>4} | {:>4}",
+                "Depth",
+                INSIGHTS_HEATMAP_SCORE_LABELS[0],
+                INSIGHTS_HEATMAP_SCORE_LABELS[1],
+                INSIGHTS_HEATMAP_SCORE_LABELS[2],
+                INSIGHTS_HEATMAP_SCORE_LABELS[3],
+                INSIGHTS_HEATMAP_SCORE_LABELS[4],
+                "Tot"
+            ));
+            lines.push("-".repeat(46));
+
+            for (depth_row, label) in INSIGHTS_HEATMAP_DEPTH_LABELS.iter().enumerate() {
+                let row_total = data.counts[depth_row].iter().sum::<usize>();
+                let mut cell_chunks = Vec::with_capacity(INSIGHTS_HEATMAP_SCORE_LABELS.len());
+                for score_col in 0..INSIGHTS_HEATMAP_SCORE_LABELS.len() {
+                    let count = data.counts[depth_row][score_col];
+                    let cell = if depth_row == row && score_col == col {
+                        if count == 0 {
+                            "[ .]".to_string()
+                        } else {
+                            format!("[{count:>2}]")
+                        }
+                    } else if count == 0 {
+                        "  . ".to_string()
+                    } else {
+                        format!(" {count:>2} ")
+                    };
+                    cell_chunks.push(cell);
+                }
+                lines.push(format!(
+                    "{label:<8} | {} | {row_total:>4}",
+                    cell_chunks.join(" ")
+                ));
+            }
+
+            lines.push("-".repeat(46));
+            lines.push(format!(
+                "{:<8} | {:>4} {:>4} {:>4} {:>4} {:>4} | {:>4}",
+                "Total",
+                col_totals[0],
+                col_totals[1],
+                col_totals[2],
+                col_totals[3],
+                col_totals[4],
+                col_totals.iter().sum::<usize>()
+            ));
+            lines.push(String::new());
+            lines.push(format!(
+                "Selected: {} x {} ({} issue(s))",
+                INSIGHTS_HEATMAP_DEPTH_LABELS[row],
+                INSIGHTS_HEATMAP_SCORE_LABELS[col],
+                cell_issue_ids.len()
+            ));
+            if let Some(issue_id) = cell_issue_ids.first() {
+                let issue_title = self
+                    .analyzer
+                    .issues
+                    .iter()
+                    .find(|issue| issue.id == *issue_id)
+                    .map_or("", |issue| issue.title.as_str());
+                lines.push(format!(
+                    "Lead issue: {issue_id} {}",
+                    truncate_str(issue_title, 34)
+                ));
+            } else {
+                lines.push("Lead issue: none in selected cell".to_string());
+            }
+
+            return lines.join("\n");
+        }
+
         let insights = self.analyzer.insights();
 
         let mut lines = vec![format!(
-            "[{}] s/S cycles panel | e explanations | x calc-proof | / search",
+            "[{}] s/S cycles panel | e explanations | x calc-proof | / search | m heatmap",
             self.insights_panel.label()
         )];
         if self.insights_search_active {
@@ -3993,6 +4530,27 @@ impl BvrApp {
         }
     }
 
+    fn board_detail_render_state(&self, visible_height: usize) -> (String, usize, usize) {
+        let full_text = self.board_detail_text();
+        let total_lines = full_text.lines().count();
+        if visible_height == 0 {
+            return (String::new(), 0, total_lines);
+        }
+
+        let max_offset = total_lines.saturating_sub(visible_height);
+        let offset = self.board_detail_scroll_offset.min(max_offset);
+        if offset == 0 {
+            return (full_text, 0, total_lines);
+        }
+
+        let visible = full_text
+            .lines()
+            .skip(offset)
+            .collect::<Vec<_>>()
+            .join("\n");
+        (visible, offset, total_lines)
+    }
+
     fn issue_detail_text(&self) -> String {
         if self.analyzer.issues.is_empty() {
             return "No issues to display. Create or load a .beads/*.jsonl dataset.".to_string();
@@ -4004,7 +4562,48 @@ impl BvrApp {
         let blockers = self.analyzer.graph.blockers(&issue.id);
         let open_blockers = self.analyzer.graph.open_blockers(&issue.id);
         let dependents = self.analyzer.graph.dependents(&issue.id);
-
+        let betweenness = self
+            .analyzer
+            .metrics
+            .betweenness
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let eigenvector = self
+            .analyzer
+            .metrics
+            .eigenvector
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let hubs = self
+            .analyzer
+            .metrics
+            .hubs
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let authorities = self
+            .analyzer
+            .metrics
+            .authorities
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let k_core = self
+            .analyzer
+            .metrics
+            .k_core
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let slack = self
+            .analyzer
+            .metrics
+            .slack
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
         let pagerank = self
             .analyzer
             .metrics
@@ -4019,31 +4618,147 @@ impl BvrApp {
             .get(&issue.id)
             .copied()
             .unwrap_or_default();
+        let articulation = self
+            .analyzer
+            .metrics
+            .articulation_points
+            .contains(&issue.id);
+        let history = self.analyzer.history(Some(&issue.id), 1).into_iter().next();
+
+        let pr_rank = metric_rank(&self.analyzer.metrics.pagerank, &issue.id);
+        let bw_rank = metric_rank(&self.analyzer.metrics.betweenness, &issue.id);
+        let ev_rank = metric_rank(&self.analyzer.metrics.eigenvector, &issue.id);
+        let hub_rank = metric_rank(&self.analyzer.metrics.hubs, &issue.id);
+        let auth_rank = metric_rank(&self.analyzer.metrics.authorities, &issue.id);
+        let pr_max = max_metric_value(&self.analyzer.metrics.pagerank);
+        let bw_max = max_metric_value(&self.analyzer.metrics.betweenness);
+        let ev_max = max_metric_value(&self.analyzer.metrics.eigenvector);
+        let hub_max = max_metric_value(&self.analyzer.metrics.hubs);
+        let auth_max = max_metric_value(&self.analyzer.metrics.authorities);
+        let action_state = if issue.is_closed_like() {
+            "closed"
+        } else if open_blockers.is_empty() {
+            "ready"
+        } else {
+            "blocked"
+        };
+        let closed_display = if issue.is_closed_like() {
+            format_compact_timestamp(issue.closed_at.as_deref().or(issue.updated_at.as_deref()))
+        } else {
+            "n/a".to_string()
+        };
 
         let mut lines = vec![
-            format!("ID: {}", issue.id),
-            format!("Title: {}", issue.title),
-            format!("Status: {}", issue.status),
-            format!("Priority: {}", issue.priority),
-            format!("Type: {}", issue.issue_type),
-            format!("Assignee: {}", issue.assignee),
-            format!("Labels: {}", issue.labels.join(", ")),
-            format!("PageRank: {:.4}", pagerank),
-            format!("Critical depth: {}", depth),
-            format!("Depends on: {}", join_or_none(&blockers)),
-            format!("Open blockers: {}", join_or_none(&open_blockers)),
-            format!("Direct dependents: {}", join_or_none(&dependents)),
+            format!(
+                "{} {}  {}",
+                type_icon(&issue.issue_type),
+                issue.id,
+                issue.title
+            ),
+            format!(
+                "Status: {} | Priority: p{} | Type: {} | State: {}",
+                issue.status,
+                issue.priority,
+                display_or_fallback(&issue.issue_type, "unknown"),
+                action_state
+            ),
+            format!(
+                "Assignee: {} | Repo: {} | Estimate: {}",
+                display_or_fallback(&issue.assignee, "unassigned"),
+                display_or_fallback(&issue.source_repo, "local"),
+                issue
+                    .estimated_minutes
+                    .map_or_else(|| "n/a".to_string(), |minutes| format!("{minutes}m"))
+            ),
+            format!(
+                "Created: {} | Updated: {} | Due: {}",
+                format_compact_timestamp(issue.created_at.as_deref()),
+                format_compact_timestamp(issue.updated_at.as_deref()),
+                format_compact_timestamp(issue.due_date.as_deref())
+            ),
+            format!(
+                "Closed: {} | Labels: {}",
+                closed_display,
+                join_display_values(&issue.labels, 4)
+            ),
             String::new(),
-            "Description:".to_string(),
-            issue.description.clone(),
+            "Triage Snapshot:".to_string(),
+            format!(
+                "  open blockers: {} ({})",
+                open_blockers.len(),
+                join_display_values(&open_blockers, 4)
+            ),
+            format!(
+                "  unblocks: {} ({})",
+                dependents.len(),
+                join_display_values(&dependents, 4)
+            ),
+            format!(
+                "  dependency pressure: {} upstream | {} downstream",
+                blockers.len(),
+                dependents.len()
+            ),
         ];
 
-        if !issue.acceptance_criteria.trim().is_empty() {
-            lines.push(String::new());
-            lines.push("Acceptance Criteria:".to_string());
-            lines.push(issue.acceptance_criteria.clone());
+        if let (Some(created), Some(closed)) = (
+            parse_timestamp(issue.created_at.as_deref()),
+            parse_timestamp(issue.closed_at.as_deref()),
+        ) {
+            let duration = closed - created;
+            lines.push(format!(
+                "  cycle time: {}d {}h",
+                duration.num_days(),
+                duration.num_hours() - duration.num_days() * 24
+            ));
         }
 
+        lines.push(String::new());
+        lines.push("Graph Signals:".to_string());
+        lines.push(format!(
+            "  Critical depth: {depth} | k-core: {k_core} | slack: {slack:.4} | cut-point: {}",
+            if articulation { "YES" } else { "no" }
+        ));
+        lines.push(format!(
+            "  PageRank:     {pagerank:>8.4}  {}  #{pr_rank}",
+            mini_bar(pagerank, pr_max)
+        ));
+        lines.push(format!(
+            "  Betweenness:  {betweenness:>8.4}  {}  #{bw_rank}",
+            mini_bar(betweenness, bw_max)
+        ));
+        lines.push(format!(
+            "  Eigenvector:  {eigenvector:>8.4}  {}  #{ev_rank}",
+            mini_bar(eigenvector, ev_max)
+        ));
+        lines.push(format!(
+            "  HITS: hub {hubs:.4} {} #{hub_rank} | auth {authorities:.4} {} #{auth_rank}",
+            mini_bar(hubs, hub_max),
+            mini_bar(authorities, auth_max)
+        ));
+
+        push_text_section(&mut lines, "Description", &issue.description);
+        push_text_section(&mut lines, "Design Notes", &issue.design);
+        push_text_section(
+            &mut lines,
+            "Acceptance Criteria",
+            &issue.acceptance_criteria,
+        );
+        push_text_section(&mut lines, "Notes", &issue.notes);
+
+        lines.push(String::new());
+        lines.push("Dependency Map:".to_string());
+        lines.push(format!("  upstream: {}", join_display_values(&blockers, 4)));
+        lines.push(format!(
+            "  open gate: {}",
+            join_display_values(&open_blockers, 4)
+        ));
+        lines.push(format!(
+            "  downstream: {}",
+            join_display_values(&dependents, 4)
+        ));
+
+        push_comment_section(&mut lines, issue);
+        push_history_section(&mut lines, history.as_ref());
         lines.join("\n")
     }
 
@@ -4167,11 +4882,58 @@ impl BvrApp {
     }
 
     fn insights_detail_text(&self) -> String {
+        let heatmap_context = self.insights_heatmap.as_ref().map(|state| {
+            let data = self.insights_heatmap_data();
+            let row = state
+                .row
+                .min(INSIGHTS_HEATMAP_DEPTH_LABELS.len().saturating_sub(1));
+            let col = state
+                .col
+                .min(INSIGHTS_HEATMAP_SCORE_LABELS.len().saturating_sub(1));
+            let cell_issue_ids = data.issue_ids[row][col].clone();
+
+            let mut context = vec![format!(
+                "Heatmap: {} x {} ({} issue(s))",
+                INSIGHTS_HEATMAP_DEPTH_LABELS[row],
+                INSIGHTS_HEATMAP_SCORE_LABELS[col],
+                cell_issue_ids.len()
+            )];
+            if state.drill_active {
+                let position = if cell_issue_ids.is_empty() {
+                    0
+                } else {
+                    state
+                        .drill_cursor
+                        .min(cell_issue_ids.len().saturating_sub(1))
+                        + 1
+                };
+                context.push(format!(
+                    "Drill selection: {position}/{}",
+                    cell_issue_ids.len()
+                ));
+            }
+
+            (context, cell_issue_ids)
+        });
+
         if self.analyzer.issues.is_empty() {
             return "No insights available.".to_string();
         }
 
+        if let Some((mut context, cell_issue_ids)) = heatmap_context.clone()
+            && cell_issue_ids.is_empty()
+        {
+            context.push(String::new());
+            context.push("No issues in the selected heatmap cell.".to_string());
+            return context.join("\n");
+        }
+
         let Some(issue) = self.selected_issue() else {
+            if let Some((mut context, _)) = heatmap_context {
+                context.push(String::new());
+                context.push(self.no_filtered_issues_text("insights mode"));
+                return context.join("\n");
+            }
             return self.no_filtered_issues_text("insights mode");
         };
         let insights = self.analyzer.insights();
@@ -4362,6 +5124,12 @@ impl BvrApp {
                     dep_index += 1;
                 }
             }
+        }
+
+        if let Some((mut context, _)) = heatmap_context {
+            context.push(String::new());
+            context.append(&mut lines);
+            return context.join("\n");
         }
 
         lines.join("\n")
@@ -5125,11 +5893,100 @@ fn author_initials(name: &str) -> String {
         .collect::<String>()
 }
 
-fn join_or_none(values: &[String]) -> String {
-    if values.is_empty() {
-        "none".to_string()
+fn display_or_fallback(value: &str, fallback: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        fallback.to_string()
     } else {
-        values.join(", ")
+        trimmed.to_string()
+    }
+}
+
+fn format_compact_timestamp(raw: Option<&str>) -> String {
+    raw.map_or_else(
+        || "n/a".to_string(),
+        |value| {
+            parse_timestamp(Some(value)).map_or_else(
+                || value.to_string(),
+                |timestamp| timestamp.format("%Y-%m-%d").to_string(),
+            )
+        },
+    )
+}
+
+fn join_display_values(values: &[String], limit: usize) -> String {
+    if values.is_empty() {
+        return "none".to_string();
+    }
+
+    let mut parts = values.iter().take(limit).cloned().collect::<Vec<_>>();
+    if values.len() > limit {
+        parts.push(format!("+{} more", values.len() - limit));
+    }
+    parts.join(", ")
+}
+
+fn push_text_section(lines: &mut Vec<String>, title: &str, body: &str) {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    lines.push(String::new());
+    lines.push(format!("{title}:"));
+    for line in trimmed.lines() {
+        let content = line.trim_end();
+        if content.is_empty() {
+            lines.push("  ".to_string());
+        } else {
+            lines.push(format!("  {content}"));
+        }
+    }
+}
+
+fn push_comment_section(lines: &mut Vec<String>, issue: &Issue) {
+    if issue.comments.is_empty() {
+        return;
+    }
+
+    lines.push(String::new());
+    lines.push(format!("Recent Comments ({}):", issue.comments.len()));
+    for comment in issue.comments.iter().rev().take(3) {
+        lines.push(format!(
+            "  - {} @ {}",
+            display_or_fallback(&comment.author, "unknown"),
+            format_compact_timestamp(comment.created_at.as_deref())
+        ));
+        for line in comment.text.lines().take(3) {
+            lines.push(format!("      {}", line.trim_end()));
+        }
+        if comment.text.lines().count() > 3 {
+            lines.push("      ...".to_string());
+        }
+    }
+}
+
+fn push_history_section(lines: &mut Vec<String>, history: Option<&IssueHistory>) {
+    let Some(history) = history else {
+        return;
+    };
+    if history.events.is_empty() {
+        return;
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "History Summary ({} events):",
+        history.events.len()
+    ));
+    let start = history.events.len().saturating_sub(4);
+    for event in history.events.iter().skip(start) {
+        lines.push(format!(
+            "  {} {} {}",
+            lifecycle_icon(&event.kind),
+            format_compact_timestamp(event.timestamp.as_deref()),
+            event.details
+        ));
     }
 }
 
@@ -5259,6 +6116,7 @@ fn new_app_with_background(
         board_search_active: false,
         board_search_query: String::new(),
         board_search_match_cursor: 0,
+        board_detail_scroll_offset: 0,
         graph_search_active: false,
         graph_search_query: String::new(),
         graph_search_match_cursor: 0,
@@ -5266,6 +6124,7 @@ fn new_app_with_background(
         insights_search_query: String::new(),
         insights_search_match_cursor: 0,
         insights_panel: InsightsPanel::Bottlenecks,
+        insights_heatmap: None,
         insights_show_explanations: true,
         insights_show_calc_proof: false,
         detail_dep_cursor: 0,
@@ -5366,7 +6225,7 @@ mod tests {
         should_apply_background_reload,
     };
     use crate::analysis::Analyzer;
-    use crate::model::{Dependency, Issue};
+    use crate::model::{Comment, Dependency, Issue};
     use ftui::core::event::{KeyCode, Modifiers};
     use ftui::runtime::{Cmd, Model};
 
@@ -5377,8 +6236,38 @@ mod tests {
                 title: "Root".to_string(),
                 status: "open".to_string(),
                 issue_type: "task".to_string(),
+                description: "Top-level issue that unblocks downstream work once the shared baseline is solid."
+                    .to_string(),
+                design: "Keep the main flow lean, surface the most important context first, and let supporting sections trail after the summary."
+                    .to_string(),
+                acceptance_criteria:
+                    "- Detail summary shows triage and graph context.\n- Rich body sections stay readable across narrow and wide panes."
+                        .to_string(),
+                notes: "Fixture used to exercise the richer main detail pane.".to_string(),
+                assignee: "alice".to_string(),
+                estimated_minutes: Some(90),
                 created_at: Some("2026-01-01T00:00:00Z".to_string()),
                 updated_at: Some("2026-01-02T00:00:00Z".to_string()),
+                labels: vec!["core".to_string(), "parity".to_string()],
+                comments: vec![
+                    Comment {
+                        id: 1,
+                        issue_id: "A".to_string(),
+                        author: "alice".to_string(),
+                        text: "Need this baseline before the dependent slice can land."
+                            .to_string(),
+                        created_at: Some("2026-01-01T08:00:00Z".to_string()),
+                    },
+                    Comment {
+                        id: 2,
+                        issue_id: "A".to_string(),
+                        author: "bob".to_string(),
+                        text: "Verify the detail pane still reads well at narrow widths."
+                            .to_string(),
+                        created_at: Some("2026-01-02T09:30:00Z".to_string()),
+                    },
+                ],
+                source_repo: "viewer".to_string(),
                 ..Issue::default()
             },
             Issue {
@@ -5386,6 +6275,7 @@ mod tests {
                 title: "Dependent".to_string(),
                 status: "open".to_string(),
                 issue_type: "task".to_string(),
+                description: "Depends on A and should report blocked state clearly.".to_string(),
                 created_at: Some("2026-01-03T00:00:00Z".to_string()),
                 updated_at: Some("2026-01-04T00:00:00Z".to_string()),
                 dependencies: vec![Dependency {
@@ -5574,6 +6464,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -5581,12 +6472,20 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
             #[cfg(test)]
             key_trace: Vec::new(),
         }
+    }
+
+    fn new_app_with_issues(mode: ViewMode, selected: usize, issues: Vec<Issue>) -> BvrApp {
+        let mut app = new_app(mode, selected);
+        app.analyzer = Analyzer::new(issues);
+        app.selected = selected;
+        app
     }
 
     fn key(code: KeyCode) -> Msg {
@@ -5974,6 +6873,85 @@ mod tests {
     }
 
     #[test]
+    fn insights_heatmap_toggle_and_escape_drill_preserve_mode() {
+        let mut app = new_app(ViewMode::Insights, 0);
+
+        assert!(app.insights_heatmap.is_none());
+        app.update(key(KeyCode::Char('m')));
+        assert!(app.insights_heatmap.is_some());
+        assert!(app.list_panel_text().contains("Priority heatmap |"));
+
+        app.update(key(KeyCode::Enter));
+        assert!(
+            app.insights_heatmap
+                .as_ref()
+                .is_some_and(|state| state.drill_active)
+        );
+        assert!(app.list_panel_text().contains("Priority heatmap drill"));
+
+        app.update(key(KeyCode::Escape));
+        assert!(
+            app.insights_heatmap
+                .as_ref()
+                .is_some_and(|state| !state.drill_active)
+        );
+        assert!(matches!(app.mode, ViewMode::Insights));
+    }
+
+    #[test]
+    fn insights_heatmap_empty_grid_renders_without_panic() {
+        let issues = vec![Issue {
+            id: "CLS-1".to_string(),
+            title: "Closed".to_string(),
+            status: "closed".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let mut app = new_app_with_issues(ViewMode::Insights, 0, issues);
+
+        app.update(key(KeyCode::Char('m')));
+        assert!(
+            app.list_panel_text()
+                .contains("no open, filter-matching issues")
+        );
+        assert!(
+            app.detail_panel_text()
+                .contains("No issues in the selected heatmap cell.")
+        );
+    }
+
+    #[test]
+    fn insights_heatmap_drill_selection_syncs_detail_context() {
+        let mut app = new_app(ViewMode::Insights, 0);
+
+        app.update(key(KeyCode::Char('m')));
+        let selected = selected_issue_id(&app);
+        let detail = app.detail_panel_text();
+        assert!(detail.contains("Heatmap:"));
+        assert!(detail.contains(&format!("Focus: {selected}")));
+
+        app.update(key(KeyCode::Enter));
+        let drilled = app.detail_panel_text();
+        assert!(drilled.contains("Drill selection:"));
+        assert!(drilled.contains(&format!("Focus: {selected}")));
+    }
+
+    #[test]
+    fn insights_heatmap_list_keys_stay_in_list_focus() {
+        let mut app = new_app(ViewMode::Insights, 0);
+
+        app.update(key(KeyCode::Char('m')));
+        assert_eq!(app.focus, FocusPane::List);
+
+        app.update(key(KeyCode::Char('l')));
+        assert_eq!(app.focus, FocusPane::List);
+
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(app.focus, FocusPane::List);
+        assert!(app.list_panel_text().contains("Priority heatmap"));
+    }
+
+    #[test]
     fn graph_mode_h_l_and_ctrl_paging_move_selection() {
         let mut app = new_app(ViewMode::Graph, 0);
 
@@ -6336,6 +7314,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6343,6 +7322,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6403,6 +7383,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6410,6 +7391,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6464,6 +7446,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6471,6 +7454,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6543,6 +7527,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6550,6 +7535,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6606,6 +7592,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6613,6 +7600,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6670,6 +7658,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6677,6 +7666,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6735,6 +7725,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6742,6 +7733,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6795,6 +7787,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6802,6 +7795,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6870,6 +7864,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6877,6 +7872,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6931,6 +7927,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -6938,6 +7935,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -6976,6 +7974,47 @@ mod tests {
         app.update(key(KeyCode::Char('n')));
         assert_eq!(selected_issue_id(&app), "OPEN-2");
         assert_eq!(app.focus, FocusPane::Detail);
+    }
+
+    #[test]
+    fn board_detail_scroll_shortcuts_reset_when_selection_changes() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+
+        app.update(key_ctrl(KeyCode::Char('j')));
+        assert_eq!(app.board_detail_scroll_offset, 3);
+
+        app.update(key_ctrl(KeyCode::Char('d')));
+        assert_eq!(app.board_detail_scroll_offset, 13);
+
+        app.focus = FocusPane::List;
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(selected_issue_id(&app), "B");
+        assert_eq!(app.board_detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn board_detail_render_state_applies_scroll_offset() {
+        let mut app = new_app(ViewMode::Board, 1);
+        app.board_detail_scroll_offset = 4;
+
+        let full = app.board_detail_text();
+        let total_lines = full.lines().count();
+        let visible_height = 6;
+        let expected_offset = 4.min(total_lines.saturating_sub(visible_height));
+        let expected = if expected_offset == 0 {
+            full
+        } else {
+            full.lines()
+                .skip(expected_offset)
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let (visible, offset, reported_total) = app.board_detail_render_state(visible_height);
+        assert_eq!(reported_total, total_lines);
+        assert_eq!(offset, expected_offset);
+        assert_eq!(visible, expected);
     }
 
     #[test]
@@ -7022,6 +8061,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -7029,6 +8069,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -7089,6 +8130,7 @@ mod tests {
             board_search_active: false,
             board_search_query: String::new(),
             board_search_match_cursor: 0,
+            board_detail_scroll_offset: 0,
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -7096,6 +8138,7 @@ mod tests {
             insights_search_query: String::new(),
             insights_search_match_cursor: 0,
             insights_panel: InsightsPanel::Bottlenecks,
+            insights_heatmap: None,
             insights_show_explanations: true,
             insights_show_calc_proof: false,
             detail_dep_cursor: 0,
@@ -7406,6 +8449,29 @@ mod tests {
         let app = new_app(ViewMode::Main, 0);
         let text = app.detail_panel_text();
         assert!(!text.is_empty(), "detail should have content");
+    }
+
+    #[test]
+    fn main_detail_includes_rich_sections() {
+        let app = new_app(ViewMode::Main, 0);
+        let text = app.detail_panel_text();
+
+        assert!(text.contains("Triage Snapshot:"));
+        assert!(text.contains("Graph Signals:"));
+        assert!(text.contains("Design Notes:"));
+        assert!(text.contains("Recent Comments (2):"));
+        assert!(text.contains("History Summary"));
+    }
+
+    #[test]
+    fn main_detail_marks_blocked_issue_and_dependency_map() {
+        let app = new_app(ViewMode::Main, 1);
+        let text = app.detail_panel_text();
+
+        assert!(text.contains("State: blocked"));
+        assert!(text.contains("Dependency Map:"));
+        assert!(text.contains("upstream: A"));
+        assert!(text.contains("open gate: A"));
     }
 
     #[test]

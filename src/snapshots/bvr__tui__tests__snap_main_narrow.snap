@@ -5,29 +5,29 @@ expression: text
 bvr Main | 3/3 | all
 ┌Issues [focus]─────┐┌Details──────────────────────────────┐
 │                   ││                                     │
-│ > A               ││ ID: A                               │
-│   B               ││ Title: Root                         │
-│   C               ││ Status: open                        │
-│                   ││ Priority: 0                         │
-│                   ││ Type: task                          │
-│                   ││ Assignee:                           │
-│                   ││ Labels:                             │
-│                   ││ PageRank: 0.4805                    │
-│                   ││ Critical depth: 2                   │
-│                   ││ Depends on: none                    │
-│                   ││ Open blockers: none                 │
-│                   ││ Direct dependents: B                │
+│ > A               ││ T A  Root                           │
+│   B               ││ Status: open | Priority: p0 | Type: │
+│   C               ││ Assignee: alice | Repo: viewer | Es │
+│                   ││ Created: 2026-01-01 | Updated: 2026 │
+│                   ││ Closed: n/a | Labels: core, parity  │
+│                   ││                                     │
+│                   ││ Triage Snapshot:                    │
+│                   ││   open blockers: 0 (none)           │
+│                   ││   unblocks: 1 (B)                   │
+│                   ││   dependency pressure: 0 upstream | │
+│                   ││                                     │
+│                   ││ Graph Signals:                      │
+│                   ││   Critical depth: 2 | k-core: 1 | s │
+│                   ││   PageRank:       0.4805  ██████  # │
+│                   ││   Betweenness:    0.0000  ░░░░░░  # │
+│                   ││   Eigenvector:    1.0000  ██████  # │
+│                   ││   HITS: hub 0.0000 ░░░░░░ #2 | auth │
 │                   ││                                     │
 │                   ││ Description:                        │
+│                   ││   Top-level issue that unblocks dow │
 │                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
+│                   ││ Design Notes:                       │
+│                   ││   Keep the main flow lean, surface  │
 │                   ││                                     │
 │                   ││                                     │
 └───────────────────┘└─────────────────────────────────────┘

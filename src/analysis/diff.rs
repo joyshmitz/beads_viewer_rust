@@ -420,7 +420,9 @@ fn to_diff_issue(issue: &Issue) -> DiffIssue {
         assignee: non_empty(&issue.assignee),
         created_at: dt_or_zero(issue.created_at),
         updated_at: dt_or_zero(issue.updated_at),
-        closed_at: issue.closed_at.map(|dt| dt.to_rfc3339()),
+        closed_at: issue
+            .closed_at
+            .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
         labels: issue.labels.clone(),
         dependencies: issue.dependencies.iter().map(to_diff_dependency).collect(),
         comments: issue.comments.iter().map(to_diff_comment).collect(),
@@ -448,7 +450,10 @@ fn to_diff_comment(comment: &Comment) -> DiffComment {
 }
 
 fn dt_or_zero(dt: Option<chrono::DateTime<chrono::Utc>>) -> String {
-    dt.map_or_else(|| ZERO_TIME_RFC3339.to_string(), |d| d.to_rfc3339())
+    dt.map_or_else(
+        || ZERO_TIME_RFC3339.to_string(),
+        |d| d.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    )
 }
 
 fn non_empty(value: &str) -> Option<String> {

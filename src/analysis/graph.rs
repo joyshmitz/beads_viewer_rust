@@ -501,11 +501,17 @@ impl IssueGraph {
         };
 
         // blocks_count and blocked_by_count are always computed (cheap: O(V)).
-        let mut blocks_count = HashMap::new();
-        let mut blocked_by_count = HashMap::new();
+        let mut blocks_count = HashMap::with_capacity(self.issues.len());
+        let mut blocked_by_count = HashMap::with_capacity(self.issues.len());
         for id in self.issue_ids_sorted() {
-            blocks_count.insert(id.clone(), self.dependents(&id).len());
-            blocked_by_count.insert(id.clone(), self.blockers(&id).len());
+            blocks_count.insert(
+                id.clone(),
+                self.dependents_by_issue.get(&id).map_or(0, Vec::len),
+            );
+            blocked_by_count.insert(
+                id.clone(),
+                self.blockers_by_issue.get(&id).map_or(0, Vec::len),
+            );
         }
 
         let critical_depth = if config.enable_critical_path {

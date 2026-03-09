@@ -384,12 +384,6 @@ fn compute_median_estimated_minutes(issues: &[Issue]) -> i64 {
     }
 }
 
-fn parse_rfc3339_utc(value: &str) -> Option<DateTime<Utc>> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|value| value.with_timezone(&Utc))
-}
-
 fn duration_days(days: f64) -> Duration {
     if days <= 0.0 || !days.is_finite() {
         return Duration::zero();
@@ -516,5 +510,345 @@ mod tests {
 
         assert_eq!(samples, 2);
         assert!((velocity - 6.0).abs() < 0.001);
+    }
+
+    // ── compute_median_estimated_minutes ─────────────────────────────
+
+    #[test]
+    fn median_odd_count() {
+        let issues = vec![
+            Issue {
+                estimated_minutes: Some(30),
+                ..Issue::default()
+            },
+            Issue {
+                estimated_minutes: Some(60),
+                ..Issue::default()
+            },
+            Issue {
+                estimated_minutes: Some(120),
+                ..Issue::default()
+            },
+        ];
+        assert_eq!(super::compute_median_estimated_minutes(&issues), 60);
+    }
+
+    #[test]
+    fn median_even_count() {
+        let issues = vec![
+            Issue {
+                estimated_minutes: Some(30),
+                ..Issue::default()
+            },
+            Issue {
+                estimated_minutes: Some(90),
+                ..Issue::default()
+            },
+        ];
+        // (30 + 90) / 2 = 60
+        assert_eq!(super::compute_median_estimated_minutes(&issues), 60);
+    }
+
+    #[test]
+    fn median_empty_returns_default() {
+        assert_eq!(
+            super::compute_median_estimated_minutes(&[]),
+            super::DEFAULT_ESTIMATED_MINUTES
+        );
+    }
+
+    #[test]
+    fn median_filters_zero_and_none() {
+        let issues = vec![
+            Issue {
+                estimated_minutes: Some(0),
+                ..Issue::default()
+            },
+            Issue {
+                estimated_minutes: None,
+                ..Issue::default()
+            },
+            Issue {
+                estimated_minutes: Some(120),
+                ..Issue::default()
+            },
+        ];
+        assert_eq!(super::compute_median_estimated_minutes(&issues), 120);
+    }
+
+    // ── estimate_complexity_minutes ──────────────────────────────────
+
+    #[test]
+    fn complexity_uses_explicit_estimate() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let issue = Issue {
+            id: "A".to_string(),
+            estimated_minutes: Some(120),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let (minutes, factors) = super::estimate_complexity_minutes(&issue, &metrics, 60);
+        // task type_weight=1.0, depth=0 → depth_factor=1.0, empty desc → desc_factor=1.0
+        // 120 * 1.0 * 1.0 * 1.0 = 120
+        assert_eq!(minutes, 120);
+        assert!(factors.iter().any(|f| f.contains("explicit")));
+    }
+
+    #[test]
+    fn complexity_uses_median_fallback() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let issue = Issue {
+            id: "A".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let (minutes, factors) = super::estimate_complexity_minutes(&issue, &metrics, 90);
+        // No explicit estimate → uses median=90, task×1.0, depth=0, empty desc
+        assert_eq!(minutes, 90);
+        assert!(factors.iter().any(|f| f.contains("median")));
+    }
+
+    #[test]
+    fn complexity_type_weight_feature() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let issue = Issue {
+            id: "A".to_string(),
+            estimated_minutes: Some(100),
+            issue_type: "feature".to_string(),
+            ..Issue::default()
+        };
+        let (minutes, _) = super::estimate_complexity_minutes(&issue, &metrics, 60);
+        // 100 * 1.3 (feature) * 1.0 * 1.0 = 130
+        assert_eq!(minutes, 130);
+    }
+
+    #[test]
+    fn complexity_type_weight_epic() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let issue = Issue {
+            id: "A".to_string(),
+            estimated_minutes: Some(100),
+            issue_type: "epic".to_string(),
+            ..Issue::default()
+        };
+        let (minutes, _) = super::estimate_complexity_minutes(&issue, &metrics, 60);
+        // 100 * 2.0 (epic) * 1.0 * 1.0 = 200
+        assert_eq!(minutes, 200);
+    }
+
+    #[test]
+    fn complexity_description_scales_estimate() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let long_desc = "x".repeat(2000);
+        let issue = Issue {
+            id: "A".to_string(),
+            estimated_minutes: Some(100),
+            issue_type: "task".to_string(),
+            description: long_desc,
+            ..Issue::default()
+        };
+        let (minutes, _) = super::estimate_complexity_minutes(&issue, &metrics, 60);
+        // 100 * 1.0 * 1.0 * (1.0 + 2000/2000) = 100 * 2.0 = 200
+        assert_eq!(minutes, 200);
+    }
+
+    // ── estimate_eta_confidence ──────────────────────────────────────
+
+    #[test]
+    fn confidence_base_no_estimate_no_velocity() {
+        let issue = Issue { ..Issue::default() };
+        let confidence = super::estimate_eta_confidence(&issue, 0);
+        // 0.25 (base) + (-0.05) (no velocity) + (-0.05) (no labels) = 0.15
+        assert!((confidence - 0.15).abs() < 0.01);
+    }
+
+    #[test]
+    fn confidence_with_explicit_estimate() {
+        let issue = Issue {
+            estimated_minutes: Some(60),
+            ..Issue::default()
+        };
+        let confidence = super::estimate_eta_confidence(&issue, 0);
+        // 0.25 + 0.25 (estimate) + (-0.05) (no velocity) + (-0.05) (no labels) = 0.40
+        assert!((confidence - 0.40).abs() < 0.01);
+    }
+
+    #[test]
+    fn confidence_high_velocity_samples() {
+        let issue = Issue {
+            estimated_minutes: Some(60),
+            labels: vec!["backend".to_string()],
+            ..Issue::default()
+        };
+        let confidence = super::estimate_eta_confidence(&issue, 20);
+        // 0.25 + 0.25 (estimate) + 0.30 (>=15 samples) + 0.0 (has labels) = 0.80
+        assert!((confidence - 0.80).abs() < 0.01);
+    }
+
+    // ── velocity with label filter ──────────────────────────────────
+
+    #[test]
+    fn velocity_label_filter() {
+        let now = Utc::now();
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                status: "closed".to_string(),
+                labels: vec!["backend".to_string()],
+                estimated_minutes: Some(120),
+                closed_at: Some(now - chrono::Duration::days(5)),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                status: "closed".to_string(),
+                labels: vec!["frontend".to_string()],
+                estimated_minutes: Some(60),
+                closed_at: Some(now - chrono::Duration::days(3)),
+                ..Issue::default()
+            },
+        ];
+
+        let (vel_backend, samples_backend) = velocity_minutes_per_day_for_label(
+            &issues,
+            Some("backend"),
+            now - chrono::Duration::days(30),
+            60,
+        );
+        assert_eq!(samples_backend, 1);
+        assert!((vel_backend - 4.0).abs() < 0.01); // 120/30
+
+        let (vel_frontend, samples_frontend) = velocity_minutes_per_day_for_label(
+            &issues,
+            Some("frontend"),
+            now - chrono::Duration::days(30),
+            60,
+        );
+        assert_eq!(samples_frontend, 1);
+        assert!((vel_frontend - 2.0).abs() < 0.01); // 60/30
+    }
+
+    #[test]
+    fn velocity_ignores_old_closures() {
+        let now = Utc::now();
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            status: "closed".to_string(),
+            estimated_minutes: Some(120),
+            closed_at: Some(now - chrono::Duration::days(60)),
+            ..Issue::default()
+        }];
+        let (velocity, samples) =
+            velocity_minutes_per_day_for_label(&issues, None, now - chrono::Duration::days(30), 60);
+        assert_eq!(samples, 0);
+        assert_eq!(velocity, 0.0);
+    }
+
+    // ── agents scaling ──────────────────────────────────────────────
+
+    #[test]
+    fn more_agents_reduces_eta() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            estimated_minutes: Some(240),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now();
+
+        let eta1 = estimate_eta_for_issue(&issues, &graph, &metrics, "A", 1, now).unwrap();
+        let eta3 = estimate_eta_for_issue(&issues, &graph, &metrics, "A", 3, now).unwrap();
+        assert!(
+            eta3.estimated_days < eta1.estimated_days || eta1.estimated_days == 0.0,
+            "3 agents should complete faster than 1"
+        );
+    }
+
+    // ── forecast label filter ───────────────────────────────────────
+
+    #[test]
+    fn forecast_respects_label_filter() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                labels: vec!["backend".to_string()],
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                labels: vec!["frontend".to_string()],
+                ..Issue::default()
+            },
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let output = estimate_forecast(&issues, &graph, &metrics, "all", Some("backend"), 1);
+        assert_eq!(output.summary.count, 1);
+        assert_eq!(output.forecasts[0].id, "A");
+    }
+
+    // ── edge case helpers ───────────────────────────────────────────
+
+    #[test]
+    fn duration_days_handles_zero_and_negative() {
+        assert_eq!(super::duration_days(0.0), chrono::Duration::zero());
+        assert_eq!(super::duration_days(-5.0), chrono::Duration::zero());
+    }
+
+    #[test]
+    fn truncate_f64_to_i64_edge_cases() {
+        assert_eq!(super::truncate_f64_to_i64(f64::NAN), None);
+        assert_eq!(super::truncate_f64_to_i64(f64::INFINITY), None);
+        assert_eq!(super::truncate_f64_to_i64(42.9), Some(42));
+        assert_eq!(super::truncate_f64_to_i64(-3.7), Some(-3));
+        assert_eq!(super::truncate_f64_to_i64(1e19), Some(i64::MAX));
+        assert_eq!(super::truncate_f64_to_i64(-1e19), Some(i64::MIN));
+    }
+
+    #[test]
+    fn clamp_works_correctly() {
+        assert_eq!(super::clamp(0.5, 0.1, 0.9), 0.5);
+        assert_eq!(super::clamp(-0.5, 0.1, 0.9), 0.1);
+        assert_eq!(super::clamp(1.5, 0.1, 0.9), 0.9);
+    }
+
+    #[test]
+    fn forecast_single_issue_by_id() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let output = estimate_forecast(&issues, &graph, &metrics, "B", None, 1);
+        assert_eq!(output.summary.count, 1);
+        assert_eq!(output.forecasts[0].id, "B");
     }
 }

@@ -184,15 +184,6 @@ fn health_level(score: i32) -> &'static str {
     }
 }
 
-fn parse_datetime(s: &str) -> Option<DateTime<Utc>> {
-    if s.is_empty() {
-        return None;
-    }
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc))
-}
-
 fn compute_velocity(labeled_issues: &[&Issue], now: DateTime<Utc>) -> VelocityMetrics {
     let week_ago = now - chrono::Duration::days(7);
     let month_ago = now - chrono::Duration::days(30);
@@ -1048,5 +1039,247 @@ mod tests {
         let result = compute_label_attention(&issues, &metrics, 2);
         assert_eq!(result.labels.len(), 2);
         assert_eq!(result.total_labels, 3);
+    }
+
+    // ── compute_velocity ────────────────────────────────────────────
+
+    #[test]
+    fn velocity_counts_recent_closures() {
+        let now = chrono::Utc::now();
+        let closed_3_days_ago = now - chrono::Duration::days(3);
+        let created = now - chrono::Duration::days(10);
+
+        let mut i1 = make_issue("A", &["backend"], "closed");
+        i1.closed_at = Some(closed_3_days_ago);
+        i1.created_at = Some(created);
+        i1.updated_at = Some(closed_3_days_ago);
+
+        let vel = compute_velocity(&[&i1], now);
+        assert_eq!(vel.closed_last_7_days, 1);
+        assert_eq!(vel.closed_last_30_days, 1);
+        assert!(vel.avg_days_to_close > 0.0);
+    }
+
+    #[test]
+    fn velocity_zero_when_no_closures() {
+        let now = chrono::Utc::now();
+        let i1 = make_issue("A", &["backend"], "open");
+        let vel = compute_velocity(&[&i1], now);
+        assert_eq!(vel.closed_last_7_days, 0);
+        assert_eq!(vel.closed_last_30_days, 0);
+        assert_eq!(vel.velocity_score, 0);
+    }
+
+    #[test]
+    fn velocity_trend_improving_when_current_higher() {
+        let now = chrono::Utc::now();
+        // Issue closed this week
+        let mut recent = make_issue("A", &["x"], "closed");
+        recent.closed_at = Some(now - chrono::Duration::days(2));
+        recent.created_at = Some(now - chrono::Duration::days(5));
+        recent.updated_at = Some(now - chrono::Duration::days(2));
+
+        // Issue closed last week (but not this week)
+        let mut older = make_issue("B", &["x"], "closed");
+        let last_week = now - chrono::Duration::days(10);
+        older.closed_at = Some(last_week);
+        older.created_at = Some(now - chrono::Duration::days(20));
+        older.updated_at = Some(last_week);
+
+        let vel = compute_velocity(&[&recent, &older], now);
+        assert_eq!(vel.closed_last_7_days, 1);
+        assert_eq!(vel.closed_last_30_days, 2);
+    }
+
+    // ── compute_freshness ───────────────────────────────────────────
+
+    #[test]
+    fn freshness_tracks_most_recent_and_oldest_open() {
+        let now = chrono::Utc::now();
+        let recent = now - chrono::Duration::days(1);
+        let old = now - chrono::Duration::days(30);
+
+        let mut i1 = make_issue("A", &["x"], "open");
+        i1.updated_at = Some(recent);
+        i1.created_at = Some(old);
+
+        let mut i2 = make_issue("B", &["x"], "open");
+        i2.updated_at = Some(old);
+        i2.created_at = Some(old);
+
+        let fresh = compute_freshness(&[&i1, &i2], now, DEFAULT_STALE_THRESHOLD_DAYS);
+        assert_eq!(fresh.most_recent_update, Some(recent));
+        assert_eq!(fresh.oldest_open_issue, Some(old));
+        assert!(fresh.avg_days_since_update > 0.0);
+    }
+
+    #[test]
+    fn freshness_stale_count() {
+        let now = chrono::Utc::now();
+        let stale = now - chrono::Duration::days(20); // > 14 day threshold
+        let fresh = now - chrono::Duration::days(5); // < 14 day threshold
+
+        let mut i1 = make_issue("A", &["x"], "open");
+        i1.updated_at = Some(stale);
+        let mut i2 = make_issue("B", &["x"], "open");
+        i2.updated_at = Some(fresh);
+
+        let result = compute_freshness(&[&i1, &i2], now, DEFAULT_STALE_THRESHOLD_DAYS);
+        assert_eq!(result.stale_count, 1);
+    }
+
+    #[test]
+    fn freshness_high_score_for_fresh_issues() {
+        let now = chrono::Utc::now();
+        let very_recent = now - chrono::Duration::hours(12);
+
+        let mut i1 = make_issue("A", &["x"], "open");
+        i1.updated_at = Some(very_recent);
+
+        let result = compute_freshness(&[&i1], now, DEFAULT_STALE_THRESHOLD_DAYS);
+        assert!(result.freshness_score >= 90, "very fresh issue should score high");
+        assert_eq!(result.stale_count, 0);
+    }
+
+    #[test]
+    fn freshness_empty_issues() {
+        let now = chrono::Utc::now();
+        let result = compute_freshness(&[], now, DEFAULT_STALE_THRESHOLD_DAYS);
+        assert_eq!(result.avg_days_since_update, 0.0);
+        assert!(result.most_recent_update.is_none());
+        assert!(result.oldest_open_issue.is_none());
+    }
+
+    // ── compute_flow ────────────────────────────────────────────────
+
+    #[test]
+    fn flow_counts_cross_label_deps() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let i2 = make_issue_with_dep("B", &["frontend"], "open", "A");
+
+        // compute_flow for "frontend" — B depends on A (backend)
+        let flow = compute_flow("frontend", &[&i2], &[i1.clone(), i2.clone()]);
+        assert!(flow.incoming_deps > 0);
+        assert!(flow.incoming_labels.contains(&"backend".to_string()));
+    }
+
+    #[test]
+    fn flow_no_deps_scores_100() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let flow = compute_flow("backend", &[&i1], &[i1.clone()]);
+        assert_eq!(flow.incoming_deps, 0);
+        assert_eq!(flow.outgoing_deps, 0);
+        assert_eq!(flow.flow_score, 100);
+    }
+
+    // ── compute_criticality ─────────────────────────────────────────
+
+    #[test]
+    fn criticality_zero_with_no_graph() {
+        let graph = super::super::graph::IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let i1 = make_issue("A", &["x"], "open");
+        let crit = compute_criticality(&[&i1], &metrics);
+        assert_eq!(crit.avg_pagerank, 0.0);
+        assert_eq!(crit.avg_betweenness, 0.0);
+        assert_eq!(crit.criticality_score, 0);
+    }
+
+    #[test]
+    fn criticality_nonzero_with_dependencies() {
+        let i1 = make_issue("A", &["x"], "open");
+        let i2 = make_issue_with_dep("B", &["x"], "open", "A");
+        let i3 = make_issue_with_dep("C", &["x"], "open", "A");
+
+        let all = vec![i1, i2, i3];
+        let graph = super::super::graph::IssueGraph::build(&all);
+        let metrics = graph.compute_metrics();
+
+        let labeled: Vec<&Issue> = all.iter().collect();
+        let crit = compute_criticality(&labeled, &metrics);
+        assert!(crit.avg_pagerank > 0.0);
+    }
+
+    // ── composite_health ────────────────────────────────────────────
+
+    #[test]
+    fn composite_health_equal_weights() {
+        // All scores 80 → composite = 80
+        assert_eq!(composite_health(80, 80, 80, 80), 80);
+    }
+
+    #[test]
+    fn composite_health_clamped_to_0_100() {
+        assert_eq!(composite_health(0, 0, 0, 0), 0);
+        assert_eq!(composite_health(100, 100, 100, 100), 100);
+    }
+
+    #[test]
+    fn composite_health_mixed() {
+        // 100*0.25 + 0*0.25 + 50*0.25 + 50*0.25 = 25 + 0 + 12.5 + 12.5 = 50
+        assert_eq!(composite_health(100, 0, 50, 50), 50);
+    }
+
+    // ── clamp_score ─────────────────────────────────────────────────
+
+    #[test]
+    fn clamp_score_boundaries() {
+        assert_eq!(clamp_score(-10), 0);
+        assert_eq!(clamp_score(0), 0);
+        assert_eq!(clamp_score(50), 50);
+        assert_eq!(clamp_score(100), 100);
+        assert_eq!(clamp_score(150), 100);
+    }
+
+    // ── single label health ─────────────────────────────────────────
+
+    #[test]
+    fn single_label_health_integrates_all_metrics() {
+        let now = chrono::Utc::now();
+        let recent = now - chrono::Duration::days(2);
+
+        let mut i1 = make_issue("A", &["backend"], "open");
+        i1.updated_at = Some(recent);
+        i1.created_at = Some(recent);
+
+        let mut i2 = make_issue("B", &["backend"], "closed");
+        i2.closed_at = Some(recent);
+        i2.updated_at = Some(recent);
+        i2.created_at = Some(now - chrono::Duration::days(10));
+
+        let graph = super::super::graph::IssueGraph::build(&[i1.clone(), i2.clone()]);
+        let metrics = graph.compute_metrics();
+        let health = compute_single_label_health("backend", &[i1, i2], &metrics);
+
+        assert_eq!(health.label, "backend");
+        assert_eq!(health.issue_count, 2);
+        assert_eq!(health.open_count, 1);
+        assert_eq!(health.closed_count, 1);
+        assert!(health.health >= 0 && health.health <= 100);
+        assert!(!health.health_level.is_empty());
+        // Velocity should reflect the recent closure
+        assert_eq!(health.velocity.closed_last_7_days, 1);
+    }
+
+    #[test]
+    fn label_health_no_matching_issues() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let graph = super::super::graph::IssueGraph::build(&[i1.clone()]);
+        let metrics = graph.compute_metrics();
+        let health = compute_single_label_health("nonexistent", &[i1], &metrics);
+        assert_eq!(health.issue_count, 0);
+        assert_eq!(health.health, 0);
+        assert_eq!(health.health_level, "critical");
+    }
+
+    // ── cross_label_flow multi-label ────────────────────────────────
+
+    #[test]
+    fn cross_label_flow_multi_label_issue() {
+        let i1 = make_issue("A", &["backend", "api"], "open");
+        let i2 = make_issue_with_dep("B", &["frontend"], "open", "A");
+        let flow = compute_cross_label_flow(&[i1, i2]);
+        // frontend depends on backend+api → at least 2 cross-label deps
+        assert!(flow.total_cross_label_deps >= 2);
     }
 }

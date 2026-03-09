@@ -8,7 +8,7 @@ use bvr::analysis::graph::AnalysisConfig;
 use bvr::analysis::suggest::SuggestOptions;
 use bvr::analysis::triage::TriageOptions;
 use bvr::loader;
-use bvr::model::{Dependency, Issue};
+use bvr::model::{Dependency, Issue, ts};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 // =========================================================================
@@ -35,7 +35,7 @@ fn make_issue(id: usize, deps: &[usize], status: &str) -> Issue {
         estimated_minutes: Some(30 + i32::try_from(id % 120).unwrap_or(0)),
         labels: vec![format!("area-{}", id % 8), format!("team-{}", id % 3)],
         dependencies: dep_list,
-        created_at: Some("2026-01-15T10:00:00Z".to_string()),
+        created_at: ts("2026-01-15T10:00:00Z"),
         ..Default::default()
     }
 }
@@ -117,6 +117,13 @@ fn bench_triage(c: &mut Criterion) {
         let issues = gen_dense(size);
         let analyzer = Analyzer::new(issues);
         group.bench_with_input(BenchmarkId::new("dense", size), &analyzer, |b, a| {
+            b.iter(|| black_box(a.triage(opts.clone())));
+        });
+    }
+    for &size in &[100, 500, 1000] {
+        let issues = gen_cyclic(size);
+        let analyzer = Analyzer::new(issues);
+        group.bench_with_input(BenchmarkId::new("cyclic", size), &analyzer, |b, a| {
             b.iter(|| black_box(a.triage(opts.clone())));
         });
     }

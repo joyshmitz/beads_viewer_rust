@@ -161,8 +161,7 @@ fn detect_stale_issues(issues: &[Issue], now: DateTime<Utc>, alerts: &mut Vec<Al
             continue;
         }
 
-        let Some(last_active) = issue.updated_at.or(issue.created_at)
-        else {
+        let Some(last_active) = issue.updated_at.or(issue.created_at) else {
             continue;
         };
 
@@ -335,18 +334,11 @@ fn summarize_alerts(alerts: &[Alert]) -> AlertSummary {
     summary
 }
 
-fn parse_timestamp(raw: Option<&str>) -> Option<DateTime<Utc>> {
-    raw.and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        .map(|ts| ts.with_timezone(&Utc))
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::Duration;
 
-    use super::{
-        AlertOptions, AlertSeverity, AlertType, generate_robot_alerts_output, parse_timestamp,
-    };
+    use super::{AlertOptions, AlertSeverity, AlertType, generate_robot_alerts_output};
     use crate::analysis::graph::IssueGraph;
     use crate::model::{Dependency, Issue};
 
@@ -584,10 +576,376 @@ mod tests {
         );
     }
 
+    // ── detect_stale_issues ─────────────────────────────────────────
+
     #[test]
-    fn parse_timestamp_handles_rfc3339() {
-        let ts = parse_timestamp(Some("2026-02-18T01:00:00Z"));
-        assert!(ts.is_some());
-        assert!(parse_timestamp(Some("not-a-timestamp")).is_none());
+    fn stale_warning_at_14_days() {
+        let now = chrono::Utc::now();
+        let at_15_days = now - Duration::days(15);
+        let mut alerts = Vec::new();
+        let mut i = issue("A", "open");
+        i.updated_at = Some(at_15_days);
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].severity, AlertSeverity::Warning);
+    }
+
+    #[test]
+    fn stale_critical_at_30_days() {
+        let now = chrono::Utc::now();
+        let at_31_days = now - Duration::days(31);
+        let mut alerts = Vec::new();
+        let mut i = issue("A", "open");
+        i.updated_at = Some(at_31_days);
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].severity, AlertSeverity::Critical);
+    }
+
+    #[test]
+    fn stale_not_triggered_for_fresh_issue() {
+        let now = chrono::Utc::now();
+        let fresh = now - Duration::days(5);
+        let mut alerts = Vec::new();
+        let mut i = issue("A", "open");
+        i.updated_at = Some(fresh);
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn stale_skips_closed_and_tombstone() {
+        let now = chrono::Utc::now();
+        let old = now - Duration::days(60);
+        let mut alerts = Vec::new();
+        let mut closed = issue("A", "closed");
+        closed.updated_at = Some(old);
+        let mut tomb = issue("B", "tombstone");
+        tomb.updated_at = Some(old);
+        super::detect_stale_issues(&[closed, tomb], now, &mut alerts);
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn in_progress_stale_multiplier_halves_thresholds() {
+        let now = chrono::Utc::now();
+        // in_progress: 14 * 0.5 = 7 day warning threshold, so 8 days triggers warning
+        let at_8_days = now - Duration::days(8);
+        let mut alerts = Vec::new();
+        let mut i = issue("A", "in_progress");
+        i.updated_at = Some(at_8_days);
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].severity, AlertSeverity::Warning);
+        assert!(alerts[0].message.contains("A"));
+    }
+
+    #[test]
+    fn in_progress_critical_at_half_threshold() {
+        let now = chrono::Utc::now();
+        // 30 * 0.5 = 15 days critical threshold for in_progress
+        let at_16_days = now - Duration::days(16);
+        let mut alerts = Vec::new();
+        let mut i = issue("A", "in_progress");
+        i.updated_at = Some(at_16_days);
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].severity, AlertSeverity::Critical);
+    }
+
+    #[test]
+    fn stale_falls_back_to_created_at() {
+        let now = chrono::Utc::now();
+        let old = now - Duration::days(20);
+        let mut alerts = Vec::new();
+        let mut i = issue("A", "open");
+        i.updated_at = None;
+        i.created_at = Some(old);
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].issue_id.as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn stale_skips_no_timestamps() {
+        let now = chrono::Utc::now();
+        let mut alerts = Vec::new();
+        let i = issue("A", "open");
+        super::detect_stale_issues(&[i], now, &mut alerts);
+        assert!(alerts.is_empty());
+    }
+
+    // ── detect_new_cycles ───────────────────────────────────────────
+
+    #[test]
+    fn cycle_alert_severity_is_critical() {
+        let graph = IssueGraph::build(&[]);
+        let mut metrics = graph.compute_metrics();
+        metrics
+            .cycles
+            .push(vec!["A".to_string(), "B".to_string()]);
+
+        let now = chrono::Utc::now();
+        let mut alerts = Vec::new();
+        super::detect_new_cycles(&metrics, now, &mut alerts);
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].severity, AlertSeverity::Critical);
+        assert_eq!(alerts[0].alert_type, AlertType::NewCycle);
+        assert_eq!(alerts[0].current_value, Some(1.0));
+    }
+
+    #[test]
+    fn cycle_alert_empty_cycles() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let mut alerts = Vec::new();
+        super::detect_new_cycles(&metrics, chrono::Utc::now(), &mut alerts);
+        assert!(alerts.is_empty());
+    }
+
+    // ── detect_blocking_cascades ────────────────────────────────────
+
+    #[test]
+    fn cascade_info_at_3_dependents() {
+        let now = chrono::Utc::now();
+        let fresh = now - Duration::days(1);
+
+        let mut root = issue("ROOT", "open");
+        root.updated_at = Some(fresh);
+
+        let mut deps = Vec::new();
+        for i in 1..=3 {
+            let mut d = issue(&format!("D{i}"), "open");
+            d.updated_at = Some(fresh);
+            d.dependencies.push(Dependency {
+                issue_id: d.id.clone(),
+                depends_on_id: "ROOT".to_string(),
+                dep_type: "blocks".to_string(),
+                ..Dependency::default()
+            });
+            deps.push(d);
+        }
+
+        let mut issues = vec![root];
+        issues.extend(deps);
+        let graph = IssueGraph::build(&issues);
+
+        let mut alerts = Vec::new();
+        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        assert!(!alerts.is_empty());
+        let cascade = alerts
+            .iter()
+            .find(|a| a.alert_type == AlertType::BlockingCascade)
+            .unwrap();
+        assert_eq!(cascade.severity, AlertSeverity::Info);
+        assert_eq!(cascade.unblocks_count, Some(3));
+    }
+
+    #[test]
+    fn cascade_warning_at_5_dependents() {
+        let now = chrono::Utc::now();
+        let fresh = now - Duration::days(1);
+
+        let mut root = issue("ROOT", "open");
+        root.updated_at = Some(fresh);
+
+        let mut deps = Vec::new();
+        for i in 1..=5 {
+            let mut d = issue(&format!("D{i}"), "open");
+            d.updated_at = Some(fresh);
+            d.dependencies.push(Dependency {
+                issue_id: d.id.clone(),
+                depends_on_id: "ROOT".to_string(),
+                dep_type: "blocks".to_string(),
+                ..Dependency::default()
+            });
+            deps.push(d);
+        }
+
+        let mut issues = vec![root];
+        issues.extend(deps);
+        let graph = IssueGraph::build(&issues);
+
+        let mut alerts = Vec::new();
+        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        let cascade = alerts
+            .iter()
+            .find(|a| a.alert_type == AlertType::BlockingCascade)
+            .unwrap();
+        assert_eq!(cascade.severity, AlertSeverity::Warning);
+        assert_eq!(cascade.unblocks_count, Some(5));
+    }
+
+    #[test]
+    fn cascade_not_triggered_below_threshold() {
+        let now = chrono::Utc::now();
+        let fresh = now - Duration::days(1);
+
+        let mut root = issue("ROOT", "open");
+        root.updated_at = Some(fresh);
+
+        let mut d1 = issue("D1", "open");
+        d1.updated_at = Some(fresh);
+        d1.dependencies.push(Dependency {
+            issue_id: "D1".to_string(),
+            depends_on_id: "ROOT".to_string(),
+            dep_type: "blocks".to_string(),
+            ..Dependency::default()
+        });
+
+        let issues = vec![root, d1];
+        let graph = IssueGraph::build(&issues);
+
+        let mut alerts = Vec::new();
+        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        assert!(alerts.is_empty(), "1 dependent < threshold of 3");
+    }
+
+    #[test]
+    fn cascade_downstream_priority_sum() {
+        let now = chrono::Utc::now();
+        let fresh = now - Duration::days(1);
+
+        let mut root = issue("ROOT", "open");
+        root.updated_at = Some(fresh);
+
+        let mut deps = Vec::new();
+        for i in 1..=3 {
+            let mut d = issue(&format!("D{i}"), "open");
+            d.updated_at = Some(fresh);
+            d.priority = i as i32; // priorities 1, 2, 3
+            d.dependencies.push(Dependency {
+                issue_id: d.id.clone(),
+                depends_on_id: "ROOT".to_string(),
+                dep_type: "blocks".to_string(),
+                ..Dependency::default()
+            });
+            deps.push(d);
+        }
+
+        let mut issues = vec![root];
+        issues.extend(deps);
+        let graph = IssueGraph::build(&issues);
+
+        let mut alerts = Vec::new();
+        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        let cascade = alerts
+            .iter()
+            .find(|a| a.alert_type == AlertType::BlockingCascade)
+            .unwrap();
+        assert_eq!(cascade.downstream_priority_sum, Some(6)); // 1+2+3
+    }
+
+    // ── summarize_alerts ────────────────────────────────────────────
+
+    #[test]
+    fn summarize_counts_by_severity() {
+        let now_str = chrono::Utc::now().to_rfc3339();
+        let mk = |severity, alert_type| super::Alert {
+            alert_type,
+            severity,
+            message: String::new(),
+            baseline_value: None,
+            current_value: None,
+            delta: None,
+            details: Vec::new(),
+            issue_id: None,
+            label: None,
+            detected_at: now_str.clone(),
+            unblocks_count: None,
+            downstream_priority_sum: None,
+        };
+
+        let alerts = vec![
+            mk(AlertSeverity::Critical, AlertType::NewCycle),
+            mk(AlertSeverity::Warning, AlertType::StaleIssue),
+            mk(AlertSeverity::Warning, AlertType::StaleIssue),
+            mk(AlertSeverity::Info, AlertType::BlockingCascade),
+        ];
+        let summary = super::summarize_alerts(&alerts);
+        assert_eq!(summary.total, 4);
+        assert_eq!(summary.critical, 1);
+        assert_eq!(summary.warning, 2);
+        assert_eq!(summary.info, 1);
+    }
+
+    #[test]
+    fn summarize_empty() {
+        let summary = super::summarize_alerts(&[]);
+        assert_eq!(summary.total, 0);
+        assert_eq!(summary.critical, 0);
+    }
+
+    // ── matches_alert_filters ───────────────────────────────────────
+
+    #[test]
+    fn filter_no_options_matches_all() {
+        let alert = super::Alert {
+            alert_type: AlertType::StaleIssue,
+            severity: AlertSeverity::Warning,
+            message: String::new(),
+            baseline_value: None,
+            current_value: None,
+            delta: None,
+            details: Vec::new(),
+            issue_id: None,
+            label: None,
+            detected_at: String::new(),
+            unblocks_count: None,
+            downstream_priority_sum: None,
+        };
+        assert!(super::matches_alert_filters(&alert, &AlertOptions::default()));
+    }
+
+    #[test]
+    fn filter_label_in_details() {
+        let alert = super::Alert {
+            alert_type: AlertType::BlockingCascade,
+            severity: AlertSeverity::Info,
+            message: String::new(),
+            baseline_value: None,
+            current_value: None,
+            delta: None,
+            details: vec!["D1".to_string(), "D2".to_string()],
+            issue_id: None,
+            label: None,
+            detected_at: String::new(),
+            unblocks_count: None,
+            downstream_priority_sum: None,
+        };
+        let opts = AlertOptions {
+            alert_label: Some("d1".to_string()),
+            ..AlertOptions::default()
+        };
+        assert!(super::matches_alert_filters(&alert, &opts));
+
+        let no_match = AlertOptions {
+            alert_label: Some("xyz".to_string()),
+            ..AlertOptions::default()
+        };
+        assert!(!super::matches_alert_filters(&alert, &no_match));
+    }
+
+    #[test]
+    fn filter_label_field_match() {
+        let alert = super::Alert {
+            alert_type: AlertType::StaleIssue,
+            severity: AlertSeverity::Warning,
+            message: String::new(),
+            baseline_value: None,
+            current_value: None,
+            delta: None,
+            details: Vec::new(),
+            issue_id: None,
+            label: Some("Backend".to_string()),
+            detected_at: String::new(),
+            unblocks_count: None,
+            downstream_priority_sum: None,
+        };
+        let opts = AlertOptions {
+            alert_label: Some("backend".to_string()),
+            ..AlertOptions::default()
+        };
+        assert!(super::matches_alert_filters(&alert, &opts));
     }
 }

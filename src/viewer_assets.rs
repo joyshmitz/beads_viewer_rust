@@ -375,4 +375,228 @@ mod tests {
         // CSP meta tag restricts sources to self for offline-safe deployment
         assert!(html.contains("Content-Security-Policy"));
     }
+
+    #[test]
+    fn csp_directives_enforce_offline_safety() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        // Extract CSP content attribute value
+        let csp_marker = "Content-Security-Policy";
+        let csp_pos = html.find(csp_marker).expect("CSP meta tag must exist");
+        let after_marker = &html[csp_pos..];
+        let content_start = after_marker
+            .find("content=\"")
+            .expect("CSP must have content attribute");
+        let content_value = &after_marker[content_start + 9..];
+        let content_end = content_value.find('"').expect("CSP content must close");
+        let csp = &content_value[..content_end];
+
+        // All directives must use 'self' as the base origin
+        let required_directives = [
+            "default-src",
+            "script-src",
+            "style-src",
+            "font-src",
+            "img-src",
+            "connect-src",
+            "worker-src",
+        ];
+        for directive in &required_directives {
+            assert!(
+                csp.contains(directive),
+                "CSP must include {directive} directive"
+            );
+        }
+
+        // connect-src must be self-only (no external fetch allowed for offline)
+        let connect_idx = csp.find("connect-src").unwrap();
+        let connect_val = &csp[connect_idx..];
+        let connect_end = connect_val.find(';').unwrap_or(connect_val.len());
+        let connect_directive = &connect_val[..connect_end];
+        assert!(
+            !connect_directive.contains("http:") && !connect_directive.contains("https:"),
+            "connect-src must not allow external URLs: {connect_directive}"
+        );
+
+        // font-src must be self-only (vendored fonts)
+        let font_idx = csp.find("font-src").unwrap();
+        let font_val = &csp[font_idx..];
+        let font_end = font_val.find(';').unwrap_or(font_val.len());
+        let font_directive = &font_val[..font_end];
+        assert!(
+            !font_directive.contains("http:") && !font_directive.contains("https:"),
+            "font-src must not allow external URLs: {font_directive}"
+        );
+
+        // worker-src must include blob: (for WASM workers)
+        let worker_idx = csp.find("worker-src").unwrap();
+        let worker_val = &csp[worker_idx..];
+        let worker_end = worker_val.find(';').unwrap_or(worker_val.len());
+        let worker_directive = &worker_val[..worker_end];
+        assert!(
+            worker_directive.contains("blob:"),
+            "worker-src must allow blob: for WASM workers: {worker_directive}"
+        );
+    }
+
+    #[test]
+    fn coi_service_worker_is_present_and_versioned() {
+        let sw = lookup_asset("coi-serviceworker.js").expect("coi-serviceworker.js");
+        let js = std::str::from_utf8(sw.bytes).expect("valid utf8");
+
+        // Must define a versioned cache name
+        assert!(
+            js.contains("CACHE_NAME") || js.contains("cache"),
+            "service worker must use a cache"
+        );
+
+        // Must inject cross-origin isolation headers
+        assert!(
+            js.contains("Cross-Origin-Embedder-Policy"),
+            "service worker must set COEP header"
+        );
+        assert!(
+            js.contains("Cross-Origin-Opener-Policy"),
+            "service worker must set COOP header"
+        );
+
+        // Must handle fetch events
+        assert!(
+            js.contains("fetch"),
+            "service worker must intercept fetch events"
+        );
+    }
+
+    #[test]
+    fn index_html_registers_service_worker() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        // Must register the COI service worker
+        assert!(
+            html.contains("coi-serviceworker.js"),
+            "index.html must reference the COI service worker"
+        );
+        assert!(
+            html.contains("serviceWorker.register"),
+            "index.html must register the service worker"
+        );
+
+        // Must have infinite-reload prevention (check for crossOriginIsolated)
+        assert!(
+            html.contains("crossOriginIsolated"),
+            "index.html must check crossOriginIsolated to prevent reload loops"
+        );
+    }
+
+    #[test]
+    fn script_loading_order_preserves_dependencies() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        // Tailwind must load before body content (in <head>)
+        let tailwind_pos = html
+            .find("tailwindcss.js")
+            .expect("tailwind must be present");
+        let body_pos = html.find("<body").expect("body tag must exist");
+        assert!(
+            tailwind_pos < body_pos,
+            "Tailwind CSS must load in <head> before <body>"
+        );
+
+        // Alpine must use defer (executes after non-deferred scripts like DOMPurify)
+        let alpine_pos = html
+            .find("alpine.min.js")
+            .expect("Alpine.js must be present");
+        // Find the <script tag that contains alpine.min.js
+        let before_alpine = &html[..alpine_pos];
+        let script_start = before_alpine.rfind("<script").expect("alpine script tag");
+        let script_tag = &html[script_start..alpine_pos + 20];
+        assert!(
+            script_tag.contains("defer"),
+            "Alpine.js must use defer attribute for correct load ordering"
+        );
+        // DOMPurify must be present (non-deferred, executes before Alpine)
+        assert!(
+            html.contains("dompurify.min.js"),
+            "DOMPurify must be present"
+        );
+
+        // viewer.js (main app) must be last application script
+        let viewer_pos = html.find("viewer.js").expect("viewer.js must be present");
+        let charts_pos = html.find("charts.js").expect("charts.js must be present");
+        assert!(
+            viewer_pos > charts_pos,
+            "viewer.js must load after charts.js"
+        );
+
+        // WASM assets must have loaders
+        let wasm_loader_pos = html
+            .find("wasm_loader.js")
+            .expect("wasm_loader.js must be present");
+        assert!(
+            viewer_pos > wasm_loader_pos,
+            "viewer.js must load after WASM loader"
+        );
+    }
+
+    #[test]
+    fn wasm_runtime_assets_are_paired() {
+        // sql-wasm requires both .js and .wasm
+        assert!(
+            lookup_asset("vendor/sql-wasm.js").is_some(),
+            "sql-wasm.js must be in inventory"
+        );
+        assert!(
+            lookup_asset("vendor/sql-wasm.wasm").is_some(),
+            "sql-wasm.wasm must be in inventory"
+        );
+
+        // bv_graph requires both .js and .wasm
+        assert!(
+            lookup_asset("vendor/bv_graph.js").is_some(),
+            "bv_graph.js must be in inventory"
+        );
+        assert!(
+            lookup_asset("vendor/bv_graph_bg.wasm").is_some(),
+            "bv_graph_bg.wasm must be in inventory"
+        );
+    }
+
+    #[test]
+    fn asset_content_types_are_consistent() {
+        for entry in ASSET_INVENTORY {
+            // Every entry must have a non-empty content type
+            assert!(
+                !entry.content_type.is_empty(),
+                "asset {} must have a content type",
+                entry.path
+            );
+            // Verify extension-to-type consistency
+            if entry.path.ends_with(".woff2") {
+                assert_eq!(
+                    entry.content_type, "font/woff2",
+                    "WOFF2 files must have font/woff2 content type: {}",
+                    entry.path
+                );
+            }
+            if entry.path.ends_with(".css") {
+                assert!(
+                    entry.content_type.starts_with("text/css"),
+                    "CSS files must have text/css content type: {} has {}",
+                    entry.path,
+                    entry.content_type
+                );
+            }
+            if entry.path.ends_with(".html") {
+                assert!(
+                    entry.content_type.starts_with("text/html"),
+                    "HTML files must have text/html content type: {} has {}",
+                    entry.path,
+                    entry.content_type
+                );
+            }
+        }
+    }
 }

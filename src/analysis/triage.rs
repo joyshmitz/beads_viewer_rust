@@ -741,10 +741,18 @@ fn compute_recommendations_by_label(
 mod tests {
     use std::collections::HashMap;
 
-    use crate::analysis::graph::IssueGraph;
+    use crate::analysis::graph::{GraphMetrics, IssueGraph};
     use crate::model::Issue;
 
     use super::{TriageOptions, TriageScoringOptions, compute_triage};
+
+    fn test_lookups<'a>(
+        issues: &'a [Issue],
+        graph: &IssueGraph,
+        metrics: &'a GraphMetrics,
+    ) -> super::TriageLookupCache<'a> {
+        super::TriageLookupCache::new(issues, graph, metrics)
+    }
 
     #[test]
     fn triage_produces_recommendations() {
@@ -1052,8 +1060,9 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
+        let lookups = test_lookups(&issues, &graph, &metrics);
         let score =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &HashMap::new());
 
         assert_eq!(score.breakdown.len(), 8);
         assert_eq!(score.breakdown[0].name, "PageRank");
@@ -1114,9 +1123,11 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
+        let lookups = test_lookups(&issues, &graph, &metrics);
 
         for issue in &issues {
-            let score = super::compute_impact_score(issue, &metrics, &graph, &ctx, &HashMap::new());
+            let score =
+                super::compute_impact_score(issue, &metrics, &ctx, &lookups, &HashMap::new());
             assert!(
                 score.score >= 0.0 && score.score <= 1.0,
                 "score for {} should be in [0,1], got {}",
@@ -1157,8 +1168,9 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
+        let lookups = test_lookups(&issues, &graph, &metrics);
         let score =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &HashMap::new());
 
         // Single node: PageRank=1.0 (normalized to 1.0), no blockers, no risk.
         assert!(score.score > 0.0);
@@ -1193,11 +1205,12 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
+        let lookups = test_lookups(&issues, &graph, &metrics);
 
         let score_a =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &HashMap::new());
         let score_b =
-            super::compute_impact_score(&issues[1], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[1], &metrics, &ctx, &lookups, &HashMap::new());
 
         assert!(
             score_a.score > score_b.score,
@@ -1269,8 +1282,9 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
+        let lookups = test_lookups(&issues, &graph, &metrics);
         let score =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &HashMap::new());
 
         // Risk component should be non-zero (cycle detected).
         let risk = &score.breakdown[7];
@@ -1308,9 +1322,11 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, issues.len());
+        let lookups = test_lookups(&issues, &graph, &metrics);
 
         for issue in &issues {
-            let score = super::compute_impact_score(issue, &metrics, &graph, &ctx, &HashMap::new());
+            let score =
+                super::compute_impact_score(issue, &metrics, &ctx, &lookups, &HashMap::new());
             assert!(
                 score.score >= 0.0 && score.score <= 1.0,
                 "score for {} out of range: {}",
@@ -1573,15 +1589,17 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 2);
+        let lookups = test_lookups(&issues, &graph, &metrics);
 
         // Baseline: no adjustments
         let baseline =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &HashMap::new());
 
         // With PageRank boosted to 2x
         let mut adjustments = HashMap::new();
         adjustments.insert("PageRank".to_string(), 2.0);
-        let boosted = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &adjustments);
+        let boosted =
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &adjustments);
 
         // The PageRank component weight should be higher in the boosted version.
         let baseline_pr_weight = baseline.breakdown[0].weight;
@@ -1608,12 +1626,13 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
+        let lookups = test_lookups(&issues, &graph, &metrics);
 
         let no_adj =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &HashMap::new());
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &HashMap::new());
         let empty_map: HashMap<String, f64> = HashMap::new();
         let with_empty =
-            super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &empty_map);
+            super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &empty_map);
 
         assert!(
             (no_adj.score - with_empty.score).abs() < 1e-12,
@@ -1634,6 +1653,7 @@ mod tests {
         let graph = IssueGraph::build(&issues);
         let metrics = graph.compute_metrics();
         let ctx = super::ScoringContext::from_metrics(&metrics, 1);
+        let lookups = test_lookups(&issues, &graph, &metrics);
 
         // All weights doubled → should renormalize to sum=1.0
         let mut adjustments = HashMap::new();
@@ -1649,7 +1669,7 @@ mod tests {
         ] {
             adjustments.insert(name.to_string(), 2.0);
         }
-        let score = super::compute_impact_score(&issues[0], &metrics, &graph, &ctx, &adjustments);
+        let score = super::compute_impact_score(&issues[0], &metrics, &ctx, &lookups, &adjustments);
 
         let weight_sum: f64 = score.breakdown.iter().map(|c| c.weight).sum();
         assert!(

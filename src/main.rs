@@ -1924,14 +1924,9 @@ fn format_path_list(paths: &[PathBuf]) -> String {
         .join("\n")
 }
 
-fn discover_workspace_config_for_cli(cli: &Cli) -> bvr::Result<Option<PathBuf>> {
-    if cli.workspace.is_some() || cli.beads_file.is_some() {
-        return Ok(None);
-    }
-
-    let starts = workspace_discovery_start_points(cli);
+fn discover_workspace_config_from_starts(starts: &[PathBuf]) -> bvr::Result<Option<PathBuf>> {
     let mut candidates = Vec::<PathBuf>::new();
-    for start in &starts {
+    for start in starts {
         if let Some(candidate) = loader::find_workspace_config_from(start)
             && !candidates.iter().any(|existing| existing == &candidate)
         {
@@ -1954,6 +1949,15 @@ fn discover_workspace_config_for_cli(cli: &Cli) -> bvr::Result<Option<PathBuf>> 
     }
 
     Ok(candidates.into_iter().next())
+}
+
+fn discover_workspace_config_for_cli(cli: &Cli) -> bvr::Result<Option<PathBuf>> {
+    if cli.workspace.is_some() || cli.beads_file.is_some() {
+        return Ok(None);
+    }
+
+    let starts = workspace_discovery_start_points(cli);
+    discover_workspace_config_from_starts(&starts)
 }
 
 fn resolve_issue_load_target(cli: &Cli) -> bvr::Result<IssueLoadTarget> {
@@ -5206,10 +5210,11 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        BackgroundModeSource, Cli, IssueLoadTarget, build_background_mode_config, filter_by_repo,
-        generate_daily_burndown_points, handle_operational_commands, parse_background_mode_bool,
-        parse_scope_git_header_line, resolve_background_mode, resolve_git_toplevel,
-        resolve_issue_load_target, resolve_reference_file_path, resolve_workspace_config_path,
+        BackgroundModeSource, Cli, IssueLoadTarget, build_background_mode_config,
+        discover_workspace_config_from_starts, filter_by_repo, generate_daily_burndown_points,
+        handle_operational_commands, parse_background_mode_bool, parse_scope_git_header_line,
+        resolve_background_mode, resolve_git_toplevel, resolve_issue_load_target,
+        resolve_reference_file_path, resolve_workspace_config_path,
     };
 
     #[test]
@@ -5374,6 +5379,37 @@ mod tests {
             target,
             IssueLoadTarget::WorkspaceConfig(explicit_workspace.join("workspace.yaml"))
         );
+    }
+
+    #[test]
+    fn discover_workspace_config_from_starts_reports_ambiguous_candidates() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let alpha_root = root.join("alpha");
+        let beta_root = root.join("beta");
+        let alpha_workspace = alpha_root.join(".bv/workspace.yaml");
+        let beta_workspace = beta_root.join(".bv/workspace.yaml");
+        let starts = vec![alpha_root.join("services/api"), beta_root.join("apps/web")];
+
+        fs::create_dir_all(alpha_workspace.parent().expect("alpha workspace parent"))
+            .expect("create alpha .bv");
+        fs::create_dir_all(beta_workspace.parent().expect("beta workspace parent"))
+            .expect("create beta .bv");
+        fs::create_dir_all(&starts[0]).expect("create alpha nested");
+        fs::create_dir_all(&starts[1]).expect("create beta nested");
+        fs::write(&alpha_workspace, "repos:\n  - path: services/api\n").expect("write alpha");
+        fs::write(&beta_workspace, "repos:\n  - path: apps/web\n").expect("write beta");
+
+        let error =
+            discover_workspace_config_from_starts(&starts).expect_err("ambiguous discovery");
+        let message = error.to_string();
+        assert!(message.contains("workspace auto-discovery is ambiguous"));
+        assert!(message.contains(&starts[0].display().to_string()));
+        assert!(message.contains(&starts[1].display().to_string()));
+        assert!(message.contains(&alpha_workspace.display().to_string()));
+        assert!(message.contains(&beta_workspace.display().to_string()));
+        assert!(message.contains("--workspace"));
+        assert!(message.contains("--beads-file"));
     }
 
     #[test]

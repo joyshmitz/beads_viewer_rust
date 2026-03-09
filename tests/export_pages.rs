@@ -390,8 +390,8 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "deploy-readme",
-        class: LegacyExportParityClass::ExplicitlyDeferredParity,
-        description: "Full parity still requires a deploy-facing README.md in the exported bundle.",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle emits a deploy-facing README.md with quickstart and generation metadata.",
         rationale: "Legacy export writes operator-oriented deployment context into the bundle itself for GitHub Pages workflows.",
         provenance: &[
             "legacy_beads_viewer_code/beads_viewer/cmd/bv/main.go::generateREADME",
@@ -401,8 +401,8 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "cloudflare-headers",
-        class: LegacyExportParityClass::ExplicitlyDeferredParity,
-        description: "Full parity still requires Cloudflare/static-host header metadata such as _headers.",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle emits _headers with COOP/COEP, MIME, and cache directives for static hosts.",
         rationale: "Legacy Cloudflare export flow emits host-specific cache and content-type guidance as export artifacts.",
         provenance: &[
             "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_cloudflare_test.go::TestCloudflare_HeadersFileGenerated",

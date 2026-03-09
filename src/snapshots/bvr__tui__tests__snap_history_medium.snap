@@ -1,6 +1,5 @@
 ---
 source: src/tui.rs
-assertion_line: 9897
 expression: text
 ---
 bvr | mode=History | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus | Esc
@@ -14,8 +13,8 @@ bvr | mode=History | focus=list | issues=3/3 | filter=all | sort=default | ? hel
 │                                        ││ Created/Updated/Closed: 2026-01-01 / 2026-01-02 / n/a  │
 │                                        ││                                                        │
 │                                        ││ LIFECYCLE:                                             │
-│                                        ││   │ + created    2026-01-01T00:00:00+00:00  Issue A cr │
-│                                        ││   └ . updated    2026-01-02T00:00:00+00:00  Current st │
+│                                        ││   │ + created    2026-01-01T00:00:00Z  Issue A created │
+│                                        ││   └ . updated    2026-01-02T00:00:00Z  Current status: │
 │                                        ││                                                        │
 │                                        ││ v: switch to git timeline | J/K: cycle commits         │
 │                                        ││ y: copy bead ID | o: open commit | f: file tree        │

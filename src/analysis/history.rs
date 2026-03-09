@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::model::Issue;
@@ -81,7 +80,6 @@ pub fn build_histories(
 
     histories
 }
-
 
 #[cfg(test)]
 mod tests {

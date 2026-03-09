@@ -14,6 +14,17 @@ const PREFERRED_JSONL_NAMES: &[&str] = &["beads.jsonl", "issues.jsonl", "beads.b
 const MAX_LINE_BYTES: usize = 10 * 1024 * 1024;
 pub const SPRINTS_FILE_NAME: &str = "sprints.jsonl";
 pub const WORKSPACE_CONFIG_PATH: &str = ".bv/workspace.yaml";
+const DEFAULT_WORKSPACE_DISCOVERY_PATTERNS: &[&str] = &[
+    "*",
+    "packages/*",
+    "apps/*",
+    "services/*",
+    "libs/*",
+    "modules/*",
+];
+const DEFAULT_WORKSPACE_EXCLUDE_PATTERNS: &[&str] =
+    &["node_modules", "vendor", ".git", "dist", "build", "target"];
+const DEFAULT_WORKSPACE_DISCOVERY_MAX_DEPTH: usize = 2;
 
 #[must_use]
 pub fn is_robot_mode() -> bool {
@@ -26,6 +37,10 @@ pub struct WorkspaceConfig {
     pub name: String,
     #[serde(default)]
     pub repos: Vec<WorkspaceRepoConfig>,
+    #[serde(default)]
+    pub discovery: WorkspaceDiscoveryConfig,
+    #[serde(default)]
+    pub defaults: WorkspaceDefaultsConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -40,6 +55,24 @@ pub struct WorkspaceRepoConfig {
     pub beads_path: String,
     #[serde(default)]
     pub enabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct WorkspaceDiscoveryConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub patterns: Vec<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub max_depth: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct WorkspaceDefaultsConfig {
+    #[serde(default)]
+    pub beads_path: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -86,16 +119,80 @@ impl WorkspaceRepoConfig {
         format!("{}-", fallback.to_ascii_lowercase())
     }
 
-    fn effective_beads_path(&self) -> String {
-        if self.beads_path.trim().is_empty() {
-            ".beads".to_string()
-        } else {
+    fn effective_beads_path(&self, defaults: Option<&WorkspaceDefaultsConfig>) -> String {
+        if !self.beads_path.trim().is_empty() {
             self.beads_path.trim().to_string()
+        } else if let Some(defaults) = defaults
+            && !defaults.beads_path.trim().is_empty()
+        {
+            defaults.beads_path.trim().to_string()
+        } else {
+            ".beads".to_string()
         }
     }
 }
 
 impl WorkspaceConfig {
+    fn apply_defaults(&mut self) {
+        if self.discovery.enabled {
+            if self.discovery.patterns.is_empty() {
+                self.discovery.patterns = DEFAULT_WORKSPACE_DISCOVERY_PATTERNS
+                    .iter()
+                    .map(|pattern| (*pattern).to_string())
+                    .collect();
+            }
+            if self.discovery.exclude.is_empty() {
+                self.discovery.exclude = DEFAULT_WORKSPACE_EXCLUDE_PATTERNS
+                    .iter()
+                    .map(|pattern| (*pattern).to_string())
+                    .collect();
+            }
+            if self.discovery.max_depth == 0 {
+                self.discovery.max_depth = DEFAULT_WORKSPACE_DISCOVERY_MAX_DEPTH;
+            }
+        }
+    }
+
+    fn resolve_repos(
+        &self,
+        workspace_root: &Path,
+        config_path: &Path,
+    ) -> Result<Vec<WorkspaceRepoConfig>> {
+        let mut repos = self.repos.clone();
+        if self.discovery.enabled {
+            repos.extend(discover_workspace_repos(
+                workspace_root,
+                &self.discovery,
+                &self.defaults,
+                &repos,
+            )?);
+
+            if repos.is_empty() {
+                let searched_patterns = self.discovery.patterns.join(", ");
+                let excludes = self.discovery.exclude.join(", ");
+                return Err(BvrError::InvalidArgument(format!(
+                    "workspace discovery found no repositories for {}.\n\
+                     Searched root: {}\n\
+                     Patterns: [{}]\n\
+                     Exclude: [{}]\n\
+                     Max depth: {}\n\
+                     Remediation:\n\
+                       1. Add explicit repos: entries to {}.\n\
+                       2. Adjust discovery.patterns or defaults.beads_path to match your layout.\n\
+                       3. Or rerun with --workspace <path-to-.bv/workspace.yaml> pointing at a config with explicit repos.",
+                    config_path.display(),
+                    workspace_root.display(),
+                    searched_patterns,
+                    excludes,
+                    self.discovery.max_depth,
+                    config_path.display(),
+                )));
+            }
+        }
+
+        Ok(repos)
+    }
+
     fn validate(&self) -> Result<()> {
         if self.repos.is_empty() {
             return Err(BvrError::InvalidArgument(
@@ -147,6 +244,127 @@ fn resolve_workspace_root(config_path: &Path) -> PathBuf {
         },
         PathBuf::from,
     )
+}
+
+fn normalize_path_for_display(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn relative_path_matches_pattern(relative_path: &Path, pattern: &str) -> bool {
+    let path_segments = relative_path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    let pattern_segments = pattern
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+
+    if path_segments.len() != pattern_segments.len() {
+        return false;
+    }
+
+    pattern_segments
+        .iter()
+        .zip(&path_segments)
+        .all(|(pattern_segment, path_segment)| {
+            *pattern_segment == "*" || *pattern_segment == path_segment
+        })
+}
+
+fn is_excluded_workspace_path(relative_path: &Path, exclude_patterns: &[String]) -> bool {
+    let components = relative_path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    exclude_patterns.iter().any(|pattern| {
+        if pattern.contains('/') || pattern.contains('*') {
+            relative_path_matches_pattern(relative_path, pattern)
+        } else {
+            components.iter().any(|component| component == pattern)
+        }
+    })
+}
+
+fn repo_identity_key(repo_path: &Path, workspace_root: &Path) -> String {
+    let resolved = if repo_path.is_absolute() {
+        repo_path.to_path_buf()
+    } else {
+        workspace_root.join(repo_path)
+    };
+    normalize_path_for_display(&resolved)
+}
+
+fn discover_workspace_repos(
+    workspace_root: &Path,
+    discovery: &WorkspaceDiscoveryConfig,
+    defaults: &WorkspaceDefaultsConfig,
+    explicit_repos: &[WorkspaceRepoConfig],
+) -> Result<Vec<WorkspaceRepoConfig>> {
+    let mut discovered = Vec::<WorkspaceRepoConfig>::new();
+    let mut seen_repo_paths = explicit_repos
+        .iter()
+        .map(|repo| repo_identity_key(Path::new(repo.path.trim()), workspace_root))
+        .collect::<HashSet<_>>();
+    let mut stack = vec![(workspace_root.to_path_buf(), 0usize)];
+
+    while let Some((current_dir, depth)) = stack.pop() {
+        if depth >= discovery.max_depth {
+            continue;
+        }
+
+        let mut child_dirs = Vec::<PathBuf>::new();
+        for entry in std::fs::read_dir(&current_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                child_dirs.push(path);
+            }
+        }
+        child_dirs.sort();
+
+        for child_dir in child_dirs {
+            let relative = child_dir
+                .strip_prefix(workspace_root)
+                .unwrap_or(child_dir.as_path());
+            if is_excluded_workspace_path(relative, &discovery.exclude) {
+                continue;
+            }
+
+            let next_depth = depth.saturating_add(1);
+            if next_depth <= discovery.max_depth {
+                stack.push((child_dir.clone(), next_depth));
+            }
+
+            if !discovery
+                .patterns
+                .iter()
+                .any(|pattern| relative_path_matches_pattern(relative, pattern))
+            {
+                continue;
+            }
+
+            let identity = repo_identity_key(relative, workspace_root);
+            if !seen_repo_paths.insert(identity) {
+                continue;
+            }
+
+            let beads_dir =
+                child_dir.join(WorkspaceRepoConfig::default().effective_beads_path(Some(defaults)));
+            if !beads_dir.is_dir() {
+                continue;
+            }
+
+            discovered.push(WorkspaceRepoConfig {
+                path: normalize_path_for_display(relative),
+                ..WorkspaceRepoConfig::default()
+            });
+        }
+    }
+
+    discovered.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(discovered)
 }
 
 fn qualify_id(local_id: &str, prefix: &str) -> String {
@@ -312,13 +530,16 @@ pub fn load_issues(repo_path: Option<&Path>) -> Result<Vec<Issue>> {
 
 pub fn load_workspace_config(path: &Path) -> Result<WorkspaceConfig> {
     let config_text = std::fs::read_to_string(path)?;
-    let config = serde_yaml::from_str::<WorkspaceConfig>(&config_text).map_err(|error| {
+    let mut config = serde_yaml::from_str::<WorkspaceConfig>(&config_text).map_err(|error| {
         BvrError::InvalidArgument(format!(
             "invalid workspace config {}: {error}",
             path.display()
         ))
     })?;
 
+    config.apply_defaults();
+    let workspace_root = resolve_workspace_root(path);
+    config.repos = config.resolve_repos(&workspace_root, path)?;
     config.validate()?;
     Ok(config)
 }
@@ -340,7 +561,7 @@ pub fn find_workspace_issue_paths(path: &Path) -> Result<Vec<PathBuf>> {
         } else {
             workspace_root.join(repo.path.trim())
         };
-        let beads_dir = repo_path.join(repo.effective_beads_path());
+        let beads_dir = repo_path.join(repo.effective_beads_path(Some(&config.defaults)));
 
         match find_jsonl_path(&beads_dir) {
             Ok(jsonl_path) => paths.push(jsonl_path),
@@ -389,7 +610,7 @@ pub fn load_workspace_issues_with_summary(
         } else {
             workspace_root.join(repo.path.trim())
         };
-        let beads_dir = repo_path.join(repo.effective_beads_path());
+        let beads_dir = repo_path.join(repo.effective_beads_path(Some(&config.defaults)));
 
         let repo_result = (|| -> Result<Vec<Issue>> {
             let jsonl_path = find_jsonl_path(&beads_dir)?;
@@ -713,6 +934,141 @@ mod tests {
 
         let found = find_workspace_config_from(&nested).expect("find workspace config");
         assert_eq!(found, config_path);
+    }
+
+    #[test]
+    fn load_workspace_config_applies_discovery_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("apps/web/.beads")).expect("create web beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            "discovery:\n  enabled: true\n",
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join("apps/web/.beads/issues.jsonl"),
+            "{\"id\":\"UI-1\",\"title\":\"UI\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write web issues");
+
+        let config =
+            load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
+
+        assert!(config.discovery.enabled);
+        assert!(
+            config
+                .discovery
+                .patterns
+                .iter()
+                .any(|pattern| pattern == "packages/*")
+        );
+        assert!(
+            config
+                .discovery
+                .exclude
+                .iter()
+                .any(|pattern| pattern == "node_modules")
+        );
+        assert_eq!(config.discovery.max_depth, 2);
+        assert_eq!(config.repos.len(), 1);
+        assert_eq!(config.repos[0].path, "apps/web");
+        assert_eq!(config.repos[0].effective_prefix(), "web-");
+    }
+
+    #[test]
+    fn load_workspace_config_reports_empty_discovery_with_guidance() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        let config_path = root.join(".bv/workspace.yaml");
+        std::fs::write(&config_path, "discovery:\n  enabled: true\n").expect("write config");
+
+        let error = load_workspace_config(&config_path).expect_err("missing discovery repos");
+        let message = error.to_string();
+        assert!(message.contains("workspace discovery found no repositories"));
+        assert!(message.contains("Patterns: ["));
+        assert!(message.contains("defaults.beads_path"));
+    }
+
+    #[test]
+    fn load_workspace_issues_discovers_repos_from_common_layouts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("services/api/.beads")).expect("create api .beads");
+        std::fs::create_dir_all(root.join("apps/web/.beads")).expect("create web .beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            "discovery:\n  enabled: true\n",
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join("services/api/.beads/issues.jsonl"),
+            "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api issues");
+        std::fs::write(
+            root.join("apps/web/.beads/issues.jsonl"),
+            "{\"id\":\"UI-1\",\"title\":\"Web UI\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write web issues");
+
+        let (issues, summary) =
+            load_workspace_issues_with_summary(&root.join(".bv/workspace.yaml"))
+                .expect("load workspace issues");
+
+        assert_eq!(summary.total_repos, 2);
+        assert_eq!(summary.successful_repos, 2);
+        assert_eq!(issues.len(), 2);
+        assert!(issues.iter().any(|issue| issue.id == "api-AUTH-1"));
+        assert!(issues.iter().any(|issue| issue.id == "web-UI-1"));
+    }
+
+    #[test]
+    fn load_workspace_issues_applies_default_beads_path_to_explicit_and_discovered_repos() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("services/api/trackers")).expect("create api trackers");
+        std::fs::create_dir_all(root.join("apps/web/trackers")).expect("create web trackers");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            concat!(
+                "defaults:\n",
+                "  beads_path: trackers\n",
+                "discovery:\n",
+                "  enabled: true\n",
+                "repos:\n",
+                "  - name: api\n",
+                "    path: services/api\n",
+            ),
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join("services/api/trackers/issues.jsonl"),
+            "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api issues");
+        std::fs::write(
+            root.join("apps/web/trackers/issues.jsonl"),
+            "{\"id\":\"UI-1\",\"title\":\"Web UI\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write web issues");
+
+        let mut paths =
+            find_workspace_issue_paths(&root.join(".bv/workspace.yaml")).expect("watch paths");
+        paths.sort();
+        assert!(paths[0].ends_with("apps/web/trackers/issues.jsonl"));
+        assert!(paths[1].ends_with("services/api/trackers/issues.jsonl"));
+
+        let (issues, summary) =
+            load_workspace_issues_with_summary(&root.join(".bv/workspace.yaml"))
+                .expect("load workspace issues");
+        assert_eq!(summary.total_repos, 2);
+        assert!(issues.iter().any(|issue| issue.id == "api-AUTH-1"));
+        assert!(issues.iter().any(|issue| issue.id == "web-UI-1"));
     }
 
     #[test]

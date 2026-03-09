@@ -14,8 +14,8 @@ bvr | mode=History | focus=list | issues=3/3 | filter=all | sort=default | ? hel
 │                                                   ││ Created/Updated/Closed: 2026-01-01 / 2026-01-02 / n/a                               │
 │                                                   ││                                                                                     │
 │                                                   ││ LIFECYCLE:                                                                          │
-│                                                   ││   │ + created    2026-01-01T00:00:00+00:00  Issue A created                         │
-│                                                   ││   └ . updated    2026-01-02T00:00:00+00:00  Current status: open                    │
+│                                                   ││   │ + created    2026-01-01T00:00:00Z  Issue A created                              │
+│                                                   ││   └ . updated    2026-01-02T00:00:00Z  Current status: open                         │
 │                                                   ││                                                                                     │
 │                                                   ││ v: switch to git timeline | J/K: cycle commits                                      │
 │                                                   ││ y: copy bead ID | o: open commit | f: file tree                                     │

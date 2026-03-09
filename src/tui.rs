@@ -1104,71 +1104,17 @@ impl Model for BvrApp {
             }
         }
 
-        // -- Body: two-pane split with breakpoint-aware widths ---------------
+        // -- Body: mode-aware panes with breakpoint-aware widths --------------
         let body = rows[1];
-        let panes = Flex::horizontal()
-            .constraints([
-                Constraint::Percentage(bp.list_pct()),
-                Constraint::Percentage(bp.detail_pct()),
-            ])
-            .split(body);
+        let graph_single_pane =
+            matches!(self.mode, ViewMode::Graph) && matches!(bp, Breakpoint::Narrow);
+        let mut detail_viewport_height = body.height.saturating_sub(2) as usize;
+        let mut board_detail_line = None;
 
-        let list_text = self.list_panel_text();
-        let list_title = match self.mode {
-            ViewMode::Board => "Board Lanes",
-            ViewMode::Insights => "Insight Queue",
-            ViewMode::Graph => "Graph Nodes",
-            ViewMode::History => {
-                if matches!(self.history_view_mode, HistoryViewMode::Git) {
-                    "History Events"
-                } else {
-                    "History Beads"
-                }
-            }
-            ViewMode::Actionable => "Execution Tracks",
-            ViewMode::Attention => "Label Attention",
-            ViewMode::Tree => "Dependency Tree",
-            ViewMode::LabelDashboard => "Label Health",
-            ViewMode::FlowMatrix => "Flow Matrix",
-            ViewMode::Main => "Issues",
-        };
-        let list_focused = self.focus == FocusPane::List;
-        let list_title = if list_focused {
-            format!("{list_title} [focus]")
-        } else {
-            list_title.to_string()
-        };
-
-        let list_border = if list_focused {
-            tokens::panel_border_focused()
-        } else {
-            tokens::panel_border()
-        };
-        let list_title_style = if list_focused {
-            tokens::panel_title_focused()
-        } else {
-            tokens::panel_title()
-        };
-        Paragraph::new(list_text)
-            .block(
-                Block::bordered()
-                    .title(&list_title)
-                    .border_style(list_border)
-                    .style(list_title_style),
-            )
-            .render(panes[0], frame);
-
-        let detail_viewport_height = panes[1].height.saturating_sub(2) as usize;
-        let (detail_text, board_detail_line) = if matches!(self.mode, ViewMode::Board) {
-            let (text, offset, total_lines) =
-                self.board_detail_render_state(detail_viewport_height);
-            (text, Some((offset, total_lines)))
-        } else {
-            (self.detail_panel_text(), None)
-        };
         let detail_title = match self.mode {
             ViewMode::Board => "Board Focus",
             ViewMode::Insights => "Insight Detail",
+            ViewMode::Graph if graph_single_pane => "Graph View",
             ViewMode::Graph => "Graph Focus",
             ViewMode::History => "History Timeline",
             ViewMode::Actionable => "Track Detail",
@@ -1178,7 +1124,7 @@ impl Model for BvrApp {
             ViewMode::FlowMatrix => "Flow Detail",
             ViewMode::Main => "Details",
         };
-        let detail_focused = self.focus == FocusPane::Detail;
+        let detail_focused = self.focus == FocusPane::Detail || graph_single_pane;
         let detail_title = if detail_focused {
             format!("{detail_title} [focus]")
         } else {
@@ -1194,14 +1140,89 @@ impl Model for BvrApp {
         } else {
             tokens::panel_title()
         };
-        Paragraph::new(detail_text)
-            .block(
-                Block::bordered()
-                    .title(&detail_title)
-                    .border_style(detail_border)
-                    .style(detail_title_style),
-            )
-            .render(panes[1], frame);
+
+        if graph_single_pane {
+            Paragraph::new(self.graph_detail_text())
+                .block(
+                    Block::bordered()
+                        .title(&detail_title)
+                        .border_style(detail_border)
+                        .style(detail_title_style),
+                )
+                .render(body, frame);
+        } else {
+            let panes = Flex::horizontal()
+                .constraints([
+                    Constraint::Percentage(bp.list_pct()),
+                    Constraint::Percentage(bp.detail_pct()),
+                ])
+                .split(body);
+
+            let list_text = self.list_panel_text();
+            let list_title = match self.mode {
+                ViewMode::Board => "Board Lanes",
+                ViewMode::Insights => "Insight Queue",
+                ViewMode::Graph => "Graph Nodes",
+                ViewMode::History => {
+                    if matches!(self.history_view_mode, HistoryViewMode::Git) {
+                        "History Events"
+                    } else {
+                        "History Beads"
+                    }
+                }
+                ViewMode::Actionable => "Execution Tracks",
+                ViewMode::Attention => "Label Attention",
+                ViewMode::Tree => "Dependency Tree",
+                ViewMode::LabelDashboard => "Label Health",
+                ViewMode::FlowMatrix => "Flow Matrix",
+                ViewMode::Main => "Issues",
+            };
+            let list_focused = self.focus == FocusPane::List;
+            let list_title = if list_focused {
+                format!("{list_title} [focus]")
+            } else {
+                list_title.to_string()
+            };
+
+            let list_border = if list_focused {
+                tokens::panel_border_focused()
+            } else {
+                tokens::panel_border()
+            };
+            let list_title_style = if list_focused {
+                tokens::panel_title_focused()
+            } else {
+                tokens::panel_title()
+            };
+            Paragraph::new(list_text)
+                .block(
+                    Block::bordered()
+                        .title(&list_title)
+                        .border_style(list_border)
+                        .style(list_title_style),
+                )
+                .render(panes[0], frame);
+
+            detail_viewport_height = panes[1].height.saturating_sub(2) as usize;
+            let detail_text = if matches!(self.mode, ViewMode::Board) {
+                let (text, offset, total_lines) =
+                    self.board_detail_render_state(detail_viewport_height);
+                board_detail_line = Some((offset, total_lines));
+                text
+            } else if matches!(self.mode, ViewMode::Graph) {
+                self.graph_detail_text()
+            } else {
+                self.detail_panel_text()
+            };
+            Paragraph::new(detail_text)
+                .block(
+                    Block::bordered()
+                        .title(&detail_title)
+                        .border_style(detail_border)
+                        .style(detail_title_style),
+                )
+                .render(panes[1], frame);
+        }
 
         // -- Footer ----------------------------------------------------------
         let footer_text = match self.mode {
@@ -1253,9 +1274,7 @@ impl Model for BvrApp {
                     }
                 )
             }
-            ViewMode::Graph => {
-                "Graph mode: centrality ranks, blockers/dependents, cycle membership.".to_string()
-            }
+            ViewMode::Graph => "Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back".to_string(),
             ViewMode::History => {
                 if self.history_search_active {
                     format!(
@@ -3288,7 +3307,10 @@ impl BvrApp {
                     || event.event_details.to_ascii_lowercase().contains(&query)
                     || event
                         .event_timestamp
-                        .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true).to_ascii_lowercase())
+                        .map(|dt| {
+                            dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+                                .to_ascii_lowercase()
+                        })
                         .is_some_and(|timestamp| timestamp.contains(&query))
             })
             .collect()
@@ -4025,6 +4047,13 @@ impl BvrApp {
             .selected_visible_slot(&visible)
             .map_or(visible[0], |_| self.selected);
         self.analyzer.issues.get(index)
+    }
+
+    fn issue_by_id(&self, issue_id: &str) -> Option<&Issue> {
+        self.analyzer
+            .issues
+            .iter()
+            .find(|issue| issue.id == issue_id)
     }
 
     fn select_issue_by_id(&mut self, issue_id: &str) {
@@ -4779,21 +4808,10 @@ impl BvrApp {
     }
 
     fn graph_list_text(&self) -> String {
-        let mut visible = self.visible_issue_indices();
+        let visible = self.graph_visible_issue_indices();
         if visible.is_empty() {
             return format!("(no issues match filter: {})", self.list_filter.label());
         }
-
-        // Sort by critical path score (descending), then by ID for stability.
-        visible.sort_by(|&left_idx, &right_idx| {
-            let left = &self.analyzer.issues[left_idx];
-            let right = &self.analyzer.issues[right_idx];
-            let left_score = self.graph_node_score(&left.id);
-            let right_score = self.graph_node_score(&right.id);
-            right_score
-                .total_cmp(&left_score)
-                .then_with(|| left.id.cmp(&right.id))
-        });
 
         let total = visible.len();
         let mut lines = vec![format!(
@@ -4853,6 +4871,20 @@ impl BvrApp {
                 }),
         );
         lines.join("\n")
+    }
+
+    fn graph_visible_issue_indices(&self) -> Vec<usize> {
+        let mut visible = self.visible_issue_indices();
+        visible.sort_by(|&left_idx, &right_idx| {
+            let left = &self.analyzer.issues[left_idx];
+            let right = &self.analyzer.issues[right_idx];
+            let left_score = self.graph_node_score(&left.id);
+            let right_score = self.graph_node_score(&right.id);
+            right_score
+                .total_cmp(&left_score)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        visible
     }
 
     fn history_list_text(&self) -> String {
@@ -6617,7 +6649,152 @@ impl BvrApp {
         lines.join("\n")
     }
 
+    fn graph_relationship_box_width(&self, width: usize, count: usize) -> usize {
+        let count = count.clamp(1, 5);
+        let spacing = count.saturating_sub(1);
+        let max_fit = width.saturating_sub(spacing) / count;
+        if max_fit >= 20 {
+            20
+        } else if max_fit >= 12 {
+            max_fit
+        } else {
+            max_fit.max(8)
+        }
+    }
+
+    fn graph_relationship_box(
+        &self,
+        target_id: &str,
+        box_width: usize,
+        focused: bool,
+    ) -> Vec<String> {
+        let inner = box_width.saturating_sub(2).max(1);
+        let (top_left, horizontal, top_right, vertical, bottom_left, bottom_right) = if focused {
+            ('╔', '═', '╗', '║', '╚', '╝')
+        } else {
+            ('┌', '─', '┐', '│', '└', '┘')
+        };
+        let border = std::iter::repeat_n(horizontal, inner).collect::<String>();
+
+        let (header, title) = self.issue_by_id(target_id).map_or_else(
+            || (format!("[?] {target_id}"), "(not in filter)".to_string()),
+            |candidate| {
+                let prefix = if focused { ">" } else { " " };
+                (
+                    format!(
+                        "{prefix}[{}] {}",
+                        status_icon(&candidate.status),
+                        candidate.id
+                    ),
+                    display_or_fallback(&candidate.title, "(untitled)"),
+                )
+            },
+        );
+
+        vec![
+            format!("{top_left}{border}{top_right}"),
+            format!("{vertical}{}{vertical}", fit_display(&header, inner)),
+            format!(
+                "{vertical}{}{vertical}",
+                fit_display(&truncate_str(&title, inner), inner)
+            ),
+            format!("{bottom_left}{border}{bottom_right}"),
+        ]
+    }
+
+    fn graph_ego_box(&self, issue: &crate::model::Issue, width: usize) -> Vec<String> {
+        let box_width = (width / 2)
+            .clamp(22, 38)
+            .min(width.saturating_sub(4).max(12));
+        let inner = box_width.saturating_sub(2).max(1);
+        let border = std::iter::repeat_n('═', inner).collect::<String>();
+        let si = status_icon(&issue.status);
+        let ti = type_icon(&issue.issue_type);
+        let header = format!("[{si} {ti} p{}] {}", issue.priority, issue.id);
+        let title = display_or_fallback(&issue.title, "(untitled)");
+        let counts = format!(
+            "up:{} down:{}",
+            self.analyzer.graph.blockers(&issue.id).len(),
+            self.analyzer.graph.dependents(&issue.id).len()
+        );
+
+        vec![
+            center_display(&format!("╔{border}╗"), width),
+            center_display(&format!("║{}║", fit_display(&header, inner)), width),
+            center_display(
+                &format!("║{}║", fit_display(&truncate_str(&title, inner), inner)),
+                width,
+            ),
+            center_display(&format!("║{}║", fit_display(&counts, inner)), width),
+            center_display(&format!("╚{border}╝"), width),
+        ]
+    }
+
+    fn graph_connector_rows(&self, count: usize, width: usize) -> Vec<String> {
+        let display_count = count.clamp(0, 5);
+        if display_count == 0 {
+            return Vec::new();
+        }
+        if display_count == 1 {
+            return ["│", "│", "▼"]
+                .into_iter()
+                .map(|line| center_display(line, width))
+                .collect();
+        }
+
+        let mut fan = String::from("├");
+        for idx in 0..display_count {
+            if idx > 0 {
+                fan.push('┼');
+            }
+            fan.push('─');
+        }
+        fan.push('┤');
+
+        ["│".to_string(), fan, "▼".to_string()]
+            .into_iter()
+            .map(|line| center_display(&line, width))
+            .collect()
+    }
+
+    fn graph_relationship_rows(
+        &self,
+        ids: &[String],
+        width: usize,
+        show_cursor: bool,
+        dep_index: &mut usize,
+    ) -> Vec<String> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+
+        let display_count = ids.len().min(5);
+        let box_width = self.graph_relationship_box_width(width, display_count);
+        let boxes = ids
+            .iter()
+            .take(display_count)
+            .map(|target_id| {
+                let focused = show_cursor && *dep_index == self.detail_dep_cursor;
+                *dep_index += 1;
+                self.graph_relationship_box(target_id, box_width, focused)
+            })
+            .collect::<Vec<_>>();
+
+        let mut lines = center_box_rows(&boxes, width);
+        if ids.len() > display_count {
+            lines.push(center_display(
+                &format!("+{} more", ids.len() - display_count),
+                width,
+            ));
+        }
+        lines
+    }
+
     fn graph_detail_text(&self) -> String {
+        self.graph_detail_text_for_width(72)
+    }
+
+    fn graph_detail_text_for_width(&self, width: usize) -> String {
         if self.analyzer.issues.is_empty() {
             return "No graph data available.".to_string();
         }
@@ -6625,6 +6802,7 @@ impl BvrApp {
         let Some(issue) = self.selected_issue() else {
             return self.no_filtered_issues_text("graph mode");
         };
+        let render_width = width.max(24);
         let blockers = self.analyzer.graph.blockers(&issue.id);
         let dependents = self.analyzer.graph.dependents(&issue.id);
         let pagerank = self
@@ -6697,99 +6875,140 @@ impl BvrApp {
             .cloned()
             .collect::<Vec<_>>();
 
-        let si = status_icon(&issue.status);
-        let ti = type_icon(&issue.issue_type);
-
-        let mut lines = vec![format!(
-            "Graph: nodes={} edges={} cycles={} actionable={}",
-            self.analyzer.graph.node_count(),
-            self.analyzer.graph.edge_count(),
-            self.analyzer.metrics.cycles.len(),
-            self.analyzer.graph.actionable_ids().len()
-        )];
-
-        // ASCII ego-node visualization with detail cursor
-        let show_cursor = self.focus == FocusPane::Detail;
-        let mut dep_index = 0usize;
-        lines.push(String::new());
-        if !blockers.is_empty() {
-            lines.push("  BLOCKED BY:".to_string());
-            for bid in blockers.iter().take(5) {
-                let bsi = self
-                    .analyzer
+        let visible = self.graph_visible_issue_indices();
+        let focus_position = visible
+            .iter()
+            .position(|&index| {
+                self.analyzer
                     .issues
-                    .iter()
-                    .find(|i| i.id == *bid)
-                    .map_or("?", |i| status_icon(&i.status));
-                let prefix = if show_cursor && dep_index == self.detail_dep_cursor {
-                    ">"
+                    .get(index)
+                    .is_some_and(|candidate| candidate.id == issue.id)
+            })
+            .map_or(1, |position| position + 1);
+        let total_focusable = visible.len().max(1);
+        let focus_summary = match self.focus {
+            FocusPane::Detail => {
+                let total_edges = blockers.len() + dependents.len();
+                if total_edges == 0 {
+                    "Focused edge: none (isolated node)".to_string()
+                } else if self.detail_dep_cursor < blockers.len() {
+                    let target = &blockers[self.detail_dep_cursor];
+                    let title = self
+                        .issue_by_id(target)
+                        .map(|candidate| candidate.title.as_str())
+                        .unwrap_or("?");
+                    format!(
+                        "Focused edge: depends on [{}/{}] {} -> {} ({})",
+                        self.detail_dep_cursor + 1,
+                        total_edges,
+                        issue.id,
+                        target,
+                        title
+                    )
                 } else {
-                    " "
-                };
-                lines.push(format!("  {prefix} [{bsi}] {bid}"));
-                dep_index += 1;
+                    let dep_index = self.detail_dep_cursor - blockers.len();
+                    let target = &dependents[dep_index];
+                    let title = self
+                        .issue_by_id(target)
+                        .map(|candidate| candidate.title.as_str())
+                        .unwrap_or("?");
+                    format!(
+                        "Focused edge: unblocks [{}/{}] {} -> {} ({})",
+                        self.detail_dep_cursor + 1,
+                        total_edges,
+                        issue.id,
+                        target,
+                        title
+                    )
+                }
             }
-            if blockers.len() > 5 {
-                lines.push(format!("    +{} more", blockers.len() - 5));
+            FocusPane::List => {
+                "Focused edge: list focus (Tab to inspect relationships)".to_string()
             }
-            lines.push("        |".to_string());
-            lines.push("        v".to_string());
-        }
+        };
 
-        lines.push(format!("  +---[{si} {ti} p{}]---+", issue.priority));
-        lines.push(format!("  | {:<17} |", &issue.id));
-        lines.push(format!("  | {:<17} |", truncate_str(&issue.title, 17)));
-        lines.push(format!(
-            "  | up:{} down:{:<8} |",
-            blockers.len(),
-            dependents.len()
-        ));
-        lines.push("  +-------------------+".to_string());
-
-        if !dependents.is_empty() {
-            lines.push("        |".to_string());
-            lines.push("        v".to_string());
-            lines.push("  BLOCKS (waiting):".to_string());
-            for did in dependents.iter().take(5) {
-                let dsi = self
-                    .analyzer
-                    .issues
-                    .iter()
-                    .find(|i| i.id == *did)
-                    .map_or("?", |i| status_icon(&i.status));
-                let prefix = if show_cursor && dep_index == self.detail_dep_cursor {
-                    ">"
-                } else {
-                    " "
-                };
-                lines.push(format!("  {prefix} [{dsi}] {did}"));
-                dep_index += 1;
-            }
-            if dependents.len() > 5 {
-                lines.push(format!("    +{} more", dependents.len() - 5));
-            }
-        }
-
-        // Metrics panel with mini-bars and rank badges (Go parity)
-        lines.push(String::new());
-        lines.push("GRAPH METRICS".to_string());
-        lines.push("Importance:".to_string());
         let total = self.analyzer.issues.len();
+        let cp_rank = self
+            .analyzer
+            .metrics
+            .critical_depth
+            .values()
+            .filter(|&&value| value > depth)
+            .count()
+            + 1;
         let pr_rank = metric_rank(&self.analyzer.metrics.pagerank, &issue.id);
         let bw_rank = metric_rank(&self.analyzer.metrics.betweenness, &issue.id);
         let ev_rank = metric_rank(&self.analyzer.metrics.eigenvector, &issue.id);
         let hub_rank = metric_rank(&self.analyzer.metrics.hubs, &issue.id);
         let auth_rank = metric_rank(&self.analyzer.metrics.authorities, &issue.id);
+        let cp_max = self
+            .analyzer
+            .metrics
+            .critical_depth
+            .values()
+            .copied()
+            .max()
+            .unwrap_or_default()
+            .max(1) as f64;
         let pr_max = max_metric_value(&self.analyzer.metrics.pagerank);
         let bw_max = max_metric_value(&self.analyzer.metrics.betweenness);
         let ev_max = max_metric_value(&self.analyzer.metrics.eigenvector);
         let hub_max = max_metric_value(&self.analyzer.metrics.hubs);
         let auth_max = max_metric_value(&self.analyzer.metrics.authorities);
+
+        let show_cursor = self.focus == FocusPane::Detail;
+        let mut dep_index = 0usize;
+        let mut lines = vec![
+            format!(
+                "Graph: nodes={} edges={} cycles={} actionable={}",
+                self.analyzer.graph.node_count(),
+                self.analyzer.graph.edge_count(),
+                self.analyzer.metrics.cycles.len(),
+                self.analyzer.graph.actionable_ids().len()
+            ),
+            format!(
+                "Focus: node {focus_position}/{total_focusable} -> {} ({})",
+                issue.id, issue.title
+            ),
+            focus_summary,
+            String::new(),
+        ];
+
+        if !blockers.is_empty() {
+            lines.push(center_display(
+                "▲ BLOCKED BY (must complete first) ▲",
+                render_width,
+            ));
+            lines.extend(self.graph_relationship_rows(
+                &blockers,
+                render_width,
+                show_cursor,
+                &mut dep_index,
+            ));
+            lines.extend(self.graph_connector_rows(blockers.len().min(5), render_width));
+        }
+
+        lines.extend(self.graph_ego_box(issue, render_width));
+
+        if !dependents.is_empty() {
+            lines.extend(self.graph_connector_rows(dependents.len().min(5), render_width));
+            lines.push(center_display("▼ BLOCKS (waiting on this) ▼", render_width));
+            lines.extend(self.graph_relationship_rows(
+                &dependents,
+                render_width,
+                show_cursor,
+                &mut dep_index,
+            ));
+        }
+
+        lines.push(String::new());
+        lines.push("GRAPH METRICS".to_string());
+        lines.push("Importance:".to_string());
         lines.push(format!(
             "  Critical Path  {:>8}  {}  #{}",
             depth,
-            mini_bar(depth as f64, self.analyzer.graph.node_count() as f64),
-            pr_rank
+            mini_bar(depth as f64, cp_max),
+            cp_rank
         ));
         lines.push(format!(
             "  PageRank       {:>8.4}  {}  #{}",
@@ -6833,8 +7052,10 @@ impl BvrApp {
             dependents.len(),
             mini_bar(dependents.len() as f64, total as f64)
         ));
-        let cut = if articulation { "YES" } else { "no" };
-        lines.push(format!("  K-core: {k_core}  Slack: {slack:.4}  Cut: {cut}"));
+        lines.push(format!(
+            "  K-core: {k_core}  Slack: {slack:.4}  Cut: {}",
+            if articulation { "YES" } else { "no" }
+        ));
 
         if cycle_hits.is_empty() {
             lines.push("  Cycles: none".to_string());
@@ -6855,8 +7076,20 @@ impl BvrApp {
                 .into_iter()
                 .map(|(id, value)| format!("  {id:<12} {value:.4}")),
         );
+        lines.push(String::new());
+        lines.push(format!(
+            "Legend: █ relative score | #N rank of {total} issues"
+        ));
+        lines.push(
+            "Nav: h/l nodes | j/k nodes or focused edges | Tab node/edge focus | Enter open details"
+                .to_string(),
+        );
 
-        lines.join("\n")
+        lines
+            .into_iter()
+            .map(|line| truncate_display(&line, render_width))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn history_detail_text(&self) -> String {
@@ -7480,6 +7713,71 @@ fn top_metric_entries(
     });
     entries.truncate(limit);
     entries
+}
+
+fn truncate_display(value: &str, max_len: usize) -> String {
+    if max_len == 0 {
+        return String::new();
+    }
+
+    let chars = value.chars().collect::<Vec<_>>();
+    if chars.len() <= max_len {
+        return value.to_string();
+    }
+    if max_len == 1 {
+        return chars[..1].iter().collect();
+    }
+
+    let mut out = chars[..max_len - 1].iter().collect::<String>();
+    out.push('…');
+    out
+}
+
+fn fit_display(value: &str, width: usize) -> String {
+    let mut out = truncate_display(value, width);
+    let visible = out.chars().count();
+    if visible < width {
+        out.push_str(&" ".repeat(width - visible));
+    }
+    out
+}
+
+fn center_display(value: &str, width: usize) -> String {
+    let text = truncate_display(value, width);
+    let visible = text.chars().count();
+    if visible >= width {
+        return text;
+    }
+
+    let left = (width - visible) / 2;
+    let right = width - visible - left;
+    format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
+}
+
+fn center_box_rows(boxes: &[Vec<String>], width: usize) -> Vec<String> {
+    if boxes.is_empty() {
+        return Vec::new();
+    }
+
+    let height = boxes.iter().map(Vec::len).max().unwrap_or(0);
+    (0..height)
+        .map(|row| {
+            let joined = boxes
+                .iter()
+                .map(|box_lines| {
+                    if let Some(line) = box_lines.get(row) {
+                        line.clone()
+                    } else {
+                        let fallback_width =
+                            box_lines.first().map_or(0, |line| line.chars().count());
+                        " ".repeat(fallback_width)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            center_display(&joined, width)
+        })
+        .collect()
 }
 
 fn cmp_opt_datetime(
@@ -8119,6 +8417,15 @@ mod tests {
     }
 
     #[test]
+    fn graph_mode_narrow_uses_single_detail_pane_layout() {
+        let text = render_frame(ViewMode::Graph, 60, 30);
+        assert!(text.contains("Graph View [focus]"));
+        assert!(!text.contains("Graph Nodes"));
+        assert!(text.contains("Focus: node 1/3 -> A (Root)"));
+        assert!(text.contains("Focused edge: list focus"));
+    }
+
+    #[test]
     fn board_mode_renders_lane_summary() {
         let mut app = new_app(ViewMode::Board, 1);
         app.mode = ViewMode::Board;
@@ -8245,6 +8552,39 @@ mod tests {
         assert!(lines.first().is_some_and(|line| line.starts_with("Graph:")));
         assert!(lines.iter().any(|line| line.contains('A')));
         assert!(lines.iter().any(|line| line.contains("Top PageRank:")));
+    }
+
+    #[test]
+    fn graph_detail_text_uses_legacy_relationship_headers_and_legend() {
+        let mut blocker_view = new_app(ViewMode::Graph, 1);
+        blocker_view.mode = ViewMode::Graph;
+        let blocker_text = blocker_view.detail_panel_text();
+        assert!(blocker_text.contains("▲ BLOCKED BY (must complete first) ▲"));
+        assert!(blocker_text.contains("┌"));
+        assert!(blocker_text.contains("[o] A"));
+        assert!(blocker_text.contains("Root"));
+
+        let mut dependent_view = new_app(ViewMode::Graph, 0);
+        dependent_view.mode = ViewMode::Graph;
+        let dependent_text = dependent_view.detail_panel_text();
+        assert!(dependent_text.contains("▼ BLOCKS (waiting on this) ▼"));
+        assert!(dependent_text.contains("┌"));
+        assert!(dependent_text.contains("[o] B"));
+        assert!(dependent_text.contains("Dependent"));
+        assert!(dependent_text.contains("Legend: █ relative score | #N rank of 3 issues"));
+        assert!(dependent_text.contains("Nav: h/l nodes | j/k nodes or focused edges"));
+    }
+
+    #[test]
+    fn graph_detail_text_for_width_renders_visual_graph_boxes() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.mode = ViewMode::Graph;
+
+        let text = app.graph_detail_text_for_width(58);
+        assert!(text.contains("╔"));
+        assert!(text.contains("▼ BLOCKS (waiting on this) ▼"));
+        assert!(text.contains("│ [o] B      │"));
+        assert!(text.lines().all(|line| line.chars().count() <= 58));
     }
 
     #[test]
@@ -8711,6 +9051,57 @@ mod tests {
         assert_eq!(selected_issue_id(&app), "A");
         app.update(key(KeyCode::Char('j')));
         assert_eq!(selected_issue_id(&app), "B");
+    }
+
+    #[test]
+    fn history_mode_search_zero_results_show_explicit_message() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('h')));
+        assert!(matches!(app.mode, ViewMode::History));
+        assert!(matches!(app.history_view_mode, HistoryViewMode::Bead));
+
+        app.update(key(KeyCode::Char('/')));
+        for ch in "zzzz".chars() {
+            app.update(key(KeyCode::Char(ch)));
+        }
+
+        assert!(app.history_visible_issue_indices().is_empty());
+        let text = app.history_list_text();
+        assert!(text.contains("(no issues match history search: /zzzz)"));
+
+        app.update(key(KeyCode::Enter));
+        assert!(!app.history_search_active);
+        assert_eq!(app.history_search_query, "zzzz");
+        assert!(
+            app.history_list_text()
+                .contains("(no issues match history search: /zzzz)")
+        );
+    }
+
+    #[test]
+    fn history_git_search_zero_results_show_explicit_message() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('h')));
+        app.update(key(KeyCode::Char('v')));
+        assert!(matches!(app.mode, ViewMode::History));
+        assert!(matches!(app.history_view_mode, HistoryViewMode::Git));
+
+        app.update(key(KeyCode::Char('/')));
+        for ch in "zzzz".chars() {
+            app.update(key(KeyCode::Char(ch)));
+        }
+
+        assert!(app.history_search_matches().is_empty());
+        let text = app.history_list_text();
+        assert!(text.contains("(no commits match search: /zzzz)"));
+
+        app.update(key(KeyCode::Enter));
+        assert!(!app.history_search_active);
+        assert_eq!(app.history_search_query, "zzzz");
+        assert!(
+            app.history_list_text()
+                .contains("(no commits match search: /zzzz)")
+        );
     }
 
     #[test]
@@ -9941,6 +10332,21 @@ mod tests {
             detail.contains('>'),
             "graph detail should show cursor marker"
         );
+    }
+
+    #[test]
+    fn graph_detail_text_surfaces_focus_context_for_node_and_edge() {
+        let mut app = new_app(ViewMode::Graph, 1);
+        app.mode = ViewMode::Graph;
+
+        let list_focus = app.detail_panel_text();
+        assert!(list_focus.contains("Focus: node"));
+        assert!(list_focus.contains("Focused edge: list focus"));
+
+        app.update(key(KeyCode::Tab));
+        let detail_focus = app.detail_panel_text();
+        assert!(detail_focus.contains("Focused edge: depends on"));
+        assert!(detail_focus.contains("B -> A"));
     }
 
     #[test]

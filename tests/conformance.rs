@@ -1949,6 +1949,54 @@ fn workspace_robot_triage_namespaces_colliding_ids() {
 }
 
 #[test]
+fn workspace_robot_triage_auto_discovers_workspace_and_repo_sources() {
+    let dir = tempdir().expect("tempdir");
+    let root = dir.path();
+    let workspace_dir = root.join(".bv");
+    let api_beads = root.join("services/api/trackers");
+    let web_beads = root.join("apps/web/trackers");
+    fs::create_dir_all(&workspace_dir).expect("create .bv");
+    fs::create_dir_all(&api_beads).expect("create api trackers");
+    fs::create_dir_all(&web_beads).expect("create web trackers");
+
+    fs::write(
+        workspace_dir.join("workspace.yaml"),
+        concat!(
+            "defaults:\n",
+            "  beads_path: trackers\n",
+            "discovery:\n",
+            "  enabled: true\n",
+            "repos:\n",
+            "  - name: api\n",
+            "    path: services/api\n",
+        ),
+    )
+    .expect("write workspace config");
+    fs::write(
+        api_beads.join("issues.jsonl"),
+        "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write api issues");
+    fs::write(
+        web_beads.join("issues.jsonl"),
+        "{\"id\":\"UI-1\",\"title\":\"Web UI\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write web issues");
+
+    let output = run_bvr_json_in_dir(&["--robot-triage"], &root.join("services/api"));
+
+    assert_eq!(output["triage"]["quick_ref"]["total_open"], 2);
+    let recommendation_ids = output["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations")
+        .iter()
+        .filter_map(|value| value["id"].as_str().map(ToOwned::to_owned))
+        .collect::<BTreeSet<_>>();
+    assert!(recommendation_ids.contains("api-AUTH-1"));
+    assert!(recommendation_ids.contains("web-UI-1"));
+}
+
+#[test]
 fn workspace_repo_filter_supports_prefix_and_source_repo_matching() {
     let dir = tempdir().expect("tempdir");
     let root = dir.path();

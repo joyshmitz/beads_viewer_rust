@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::Deserialize;
 
 use crate::model::Issue;
@@ -665,14 +665,6 @@ fn compare_issues_for_markdown(left: &Issue, right: &Issue) -> Ordering {
     }
 
     left.id.cmp(&right.id)
-}
-
-fn parse_issue_datetime(raw: Option<&str>) -> Option<DateTime<Utc>> {
-    raw.and_then(|value| {
-        DateTime::parse_from_rfc3339(value)
-            .ok()
-            .map(|date| date.with_timezone(&Utc))
-    })
 }
 
 fn is_closed_like_status(status: &str) -> bool {

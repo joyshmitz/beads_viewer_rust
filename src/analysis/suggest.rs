@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::Serialize;
 use serde_json::json;
 
@@ -905,12 +905,6 @@ fn usize_to_f64(value: usize) -> f64 {
     f64::from(u32::try_from(value).unwrap_or(u32::MAX))
 }
 
-fn parse_timestamp(value: Option<&str>) -> Option<DateTime<Utc>> {
-    value
-        .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
-        .map(|parsed| parsed.with_timezone(&Utc))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1063,5 +1057,703 @@ mod tests {
 
         let results = detect_stale_cleanup(&issues, &metrics, &now);
         assert!(results.is_empty());
+    }
+
+    // ── detect_potential_duplicates ──────────────────────────────────
+
+    fn make_issue(id: &str, title: &str, description: &str, status: &str) -> Issue {
+        Issue {
+            id: id.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            status: status.to_string(),
+            issue_type: "task".to_string(),
+            priority: 2,
+            ..Issue::default()
+        }
+    }
+
+    #[test]
+    fn duplicates_detected_for_high_keyword_overlap() {
+        // Need high Jaccard similarity (>= 0.7) with at least 2 keywords each.
+        // Use nearly identical keywords so intersection/union ratio is high.
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "database migration schema upgrade rollback",
+                "database migration schema upgrade rollback procedure",
+                "open",
+            ),
+            make_issue(
+                "bd-2",
+                "database migration schema upgrade rollback",
+                "database migration schema upgrade rollback implementation",
+                "open",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_potential_duplicates(&issues, &now);
+        assert!(
+            !results.is_empty(),
+            "highly similar issues should be flagged as duplicates"
+        );
+        assert_eq!(
+            results[0].suggestion_type,
+            SuggestionType::PotentialDuplicate
+        );
+        assert!(results[0].related_bead.is_some());
+        assert!(results[0].action_command.is_some());
+        assert_eq!(
+            results[0].metadata.get("method").and_then(|v| v.as_str()),
+            Some("jaccard")
+        );
+    }
+
+    #[test]
+    fn duplicates_not_detected_for_dissimilar_issues() {
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "Database migration system",
+                "Handle schema changes",
+                "open",
+            ),
+            make_issue(
+                "bd-2",
+                "Frontend styling improvements",
+                "Update CSS grid layout for responsive design",
+                "open",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_potential_duplicates(&issues, &now);
+        assert!(
+            results.is_empty(),
+            "dissimilar issues should not be flagged"
+        );
+    }
+
+    #[test]
+    fn duplicates_skip_tombstone_issues() {
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "Database migration system upgrade",
+                "Schema migration for database upgrades",
+                "tombstone",
+            ),
+            make_issue(
+                "bd-2",
+                "Database migration system upgrade needed",
+                "Schema migration for database upgrade process",
+                "open",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_potential_duplicates(&issues, &now);
+        assert!(results.is_empty(), "tombstone issues should be skipped");
+    }
+
+    #[test]
+    fn duplicates_skip_mixed_open_closed_status() {
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "Database migration system upgrade",
+                "Schema migration for database upgrades",
+                "open",
+            ),
+            make_issue(
+                "bd-2",
+                "Database migration system upgrade needed",
+                "Schema migration for database upgrade process",
+                "closed",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_potential_duplicates(&issues, &now);
+        assert!(
+            results.is_empty(),
+            "one open + one closed should not be flagged"
+        );
+    }
+
+    #[test]
+    fn duplicates_single_issue_returns_empty() {
+        let issues = vec![make_issue(
+            "bd-1",
+            "Something important",
+            "Details here",
+            "open",
+        )];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_potential_duplicates(&issues, &now);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn duplicates_empty_issues_returns_empty() {
+        let results = detect_potential_duplicates(&[], &Utc::now().to_rfc3339());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn duplicates_both_closed_still_detected() {
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "Database migration system upgrade",
+                "Schema migration for database upgrades process",
+                "closed",
+            ),
+            make_issue(
+                "bd-2",
+                "Database migration system upgrade needed",
+                "Schema migration for database upgrade process",
+                "closed",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_potential_duplicates(&issues, &now);
+        // Both closed → same is_closed_like → should be detected
+        assert!(
+            !results.is_empty(),
+            "two closed issues with high overlap should still be flagged"
+        );
+    }
+
+    // ── detect_missing_dependencies ─────────────────────────────────
+
+    #[test]
+    fn missing_deps_detected_for_keyword_overlap() {
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "Implement authentication service",
+                "Build the authentication backend service layer",
+                "open",
+            ),
+            make_issue(
+                "bd-2",
+                "Authentication integration testing",
+                "Test the authentication service integration bd-1",
+                "open",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_missing_dependencies(&issues, &now);
+        assert!(
+            !results.is_empty(),
+            "issues with shared keywords + ID mention should suggest dependency"
+        );
+        assert_eq!(
+            results[0].suggestion_type,
+            SuggestionType::MissingDependency
+        );
+        assert!(results[0].related_bead.is_some());
+        assert!(
+            results[0]
+                .action_command
+                .as_deref()
+                .unwrap()
+                .starts_with("br dep add")
+        );
+    }
+
+    #[test]
+    fn missing_deps_skip_closed_issues() {
+        let issues = vec![
+            make_issue(
+                "bd-1",
+                "Authentication service implementation",
+                "Build authentication backend service",
+                "closed",
+            ),
+            make_issue(
+                "bd-2",
+                "Authentication integration testing",
+                "Test authentication service integration",
+                "open",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_missing_dependencies(&issues, &now);
+        assert!(
+            results.is_empty(),
+            "closed issues should not get dep suggestions"
+        );
+    }
+
+    #[test]
+    fn missing_deps_skip_existing_dependency() {
+        use crate::model::Dependency;
+
+        let mut issue1 = make_issue(
+            "bd-1",
+            "Authentication service implementation",
+            "Build authentication backend service",
+            "open",
+        );
+        issue1.dependencies.push(Dependency {
+            depends_on_id: "bd-2".to_string(),
+            ..Dependency::default()
+        });
+        let issue2 = make_issue(
+            "bd-2",
+            "Authentication service testing",
+            "Test authentication backend service",
+            "open",
+        );
+        let now = Utc::now().to_rfc3339();
+        let results = detect_missing_dependencies(&[issue1, issue2], &now);
+        assert!(
+            results.is_empty(),
+            "issues with existing dep should not be suggested"
+        );
+    }
+
+    #[test]
+    fn missing_deps_shared_labels_boost_confidence() {
+        let mut issue1 = make_issue(
+            "bd-1",
+            "Authentication service implementation",
+            "Build authentication backend service layer",
+            "open",
+        );
+        issue1.labels = vec!["backend".to_string(), "auth".to_string()];
+
+        let mut issue2 = make_issue(
+            "bd-2",
+            "Authentication endpoint testing",
+            "Test authentication backend endpoints layer",
+            "open",
+        );
+        issue2.labels = vec!["backend".to_string(), "auth".to_string()];
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_missing_dependencies(&[issue1, issue2], &now);
+        if !results.is_empty() {
+            // Shared labels should appear in metadata
+            assert!(
+                results[0].metadata.get("shared_labels").is_some(),
+                "shared labels should be in metadata"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_deps_empty_and_single_return_empty() {
+        let now = Utc::now().to_rfc3339();
+        assert!(detect_missing_dependencies(&[], &now).is_empty());
+        assert!(
+            detect_missing_dependencies(
+                &[make_issue("bd-1", "Something", "Details", "open")],
+                &now
+            )
+            .is_empty()
+        );
+    }
+
+    // ── detect_label_suggestions ────────────────────────────────────
+
+    #[test]
+    fn label_suggestion_from_builtin_mapping() {
+        // Issue has "database" keyword; project has "database" label on another issue
+        let mut labeled = make_issue(
+            "bd-1",
+            "Old database work",
+            "Previous db migration",
+            "closed",
+        );
+        labeled.labels = vec!["database".to_string()];
+
+        let unlabeled = make_issue(
+            "bd-2",
+            "New database migration needed",
+            "Handle the database schema changes",
+            "open",
+        );
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_label_suggestions(&[labeled, unlabeled], &now);
+        assert!(
+            !results.is_empty(),
+            "should suggest 'database' label for issue with database keyword"
+        );
+        assert_eq!(results[0].suggestion_type, SuggestionType::LabelSuggestion);
+        assert_eq!(results[0].target_bead, "bd-2");
+        let suggested = results[0]
+            .metadata
+            .get("suggested_label")
+            .and_then(|v| v.as_str());
+        assert_eq!(suggested, Some("database"));
+    }
+
+    #[test]
+    fn label_suggestion_skips_already_labeled() {
+        let mut issue1 = make_issue(
+            "bd-1",
+            "Database migration work",
+            "Previous effort",
+            "closed",
+        );
+        issue1.labels = vec!["database".to_string()];
+
+        let mut issue2 = make_issue(
+            "bd-2",
+            "New database migration",
+            "Database schema changes",
+            "open",
+        );
+        issue2.labels = vec!["database".to_string()]; // already has it
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_label_suggestions(&[issue1, issue2], &now);
+        // Should not suggest "database" since bd-2 already has it
+        let db_suggestions: Vec<_> = results
+            .iter()
+            .filter(|s| {
+                s.target_bead == "bd-2"
+                    && s.metadata.get("suggested_label").and_then(|v| v.as_str())
+                        == Some("database")
+            })
+            .collect();
+        assert!(
+            db_suggestions.is_empty(),
+            "should not suggest label the issue already has"
+        );
+    }
+
+    #[test]
+    fn label_suggestion_skips_closed_issues() {
+        let mut issue1 = make_issue("bd-1", "Database work", "DB migration", "open");
+        issue1.labels = vec!["database".to_string()];
+
+        let issue2 = make_issue(
+            "bd-2",
+            "Database migration",
+            "Database schema changes",
+            "closed",
+        );
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_label_suggestions(&[issue1, issue2], &now);
+        let closed_suggestions: Vec<_> =
+            results.iter().filter(|s| s.target_bead == "bd-2").collect();
+        assert!(
+            closed_suggestions.is_empty(),
+            "closed issues should not get label suggestions"
+        );
+    }
+
+    #[test]
+    fn label_suggestion_empty_labels_returns_empty() {
+        // No issue has any label → no labels in the project → no suggestions
+        let issues = vec![
+            make_issue("bd-1", "Database migration", "Schema changes", "open"),
+            make_issue(
+                "bd-2",
+                "Another database task",
+                "More database work",
+                "open",
+            ),
+        ];
+        let now = Utc::now().to_rfc3339();
+        let results = detect_label_suggestions(&issues, &now);
+        assert!(
+            results.is_empty(),
+            "no labels in project means no suggestions"
+        );
+    }
+
+    #[test]
+    fn label_suggestion_empty_issues() {
+        let results = detect_label_suggestions(&[], &Utc::now().to_rfc3339());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn label_suggestion_learned_mapping() {
+        // Multiple shared keywords between closed labeled issues and the open target.
+        // Each keyword contributes learned_bonus = 0.1 + count*0.05.
+        // Need total score >= LABEL_MIN_CONFIDENCE (0.5).
+        // 4 keywords each seen 2x → bonus = 4 * (0.1 + 2*0.05) = 4 * 0.2 = 0.8 ≥ 0.5
+        let mut i1 = make_issue(
+            "bd-1",
+            "webhook handler retry payload",
+            "Process webhook retry payload events",
+            "closed",
+        );
+        i1.labels = vec!["integration".to_string()];
+        let mut i2 = make_issue(
+            "bd-2",
+            "webhook handler retry payload",
+            "Retry failed webhook payload handler",
+            "closed",
+        );
+        i2.labels = vec!["integration".to_string()];
+        let i3 = make_issue(
+            "bd-3",
+            "webhook handler retry payload",
+            "Validate incoming webhook handler retry payload",
+            "open",
+        );
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_label_suggestions(&[i1, i2, i3], &now);
+        let integration_suggestions: Vec<_> = results
+            .iter()
+            .filter(|s| {
+                s.target_bead == "bd-3"
+                    && s.metadata.get("suggested_label").and_then(|v| v.as_str())
+                        == Some("integration")
+            })
+            .collect();
+        assert!(
+            !integration_suggestions.is_empty(),
+            "learned mapping from multiple shared keywords should suggest label"
+        );
+    }
+
+    // ── detect_cycle_warnings ───────────────────────────────────────
+
+    fn empty_metrics() -> GraphMetrics {
+        use crate::analysis::graph::IssueGraph;
+        let graph = IssueGraph::build(&[]);
+        graph.compute_metrics()
+    }
+
+    #[test]
+    fn cycle_warning_self_loop() {
+        let mut metrics = empty_metrics();
+        metrics.cycles.push(vec!["bd-1".to_string()]);
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_cycle_warnings(&metrics, &now);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].suggestion_type, SuggestionType::CycleWarning);
+        assert!(results[0].summary.contains("Self-loop"));
+        assert_eq!(results[0].target_bead, "bd-1");
+        // Self-loop has no action_command (need cycle_length >= 2)
+        assert!(results[0].action_command.is_none());
+    }
+
+    #[test]
+    fn cycle_warning_two_node_cycle() {
+        let mut metrics = empty_metrics();
+        metrics
+            .cycles
+            .push(vec!["bd-1".to_string(), "bd-2".to_string()]);
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_cycle_warnings(&metrics, &now);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].summary.contains("Direct cycle"));
+        assert!(results[0].summary.contains("bd-1"));
+        assert!(results[0].summary.contains("bd-2"));
+        assert_eq!(results[0].related_bead.as_deref(), Some("bd-2"));
+        // Action suggests removing the edge from last→first
+        assert_eq!(
+            results[0].action_command.as_deref(),
+            Some("br dep remove bd-2 bd-1")
+        );
+        assert_eq!(
+            results[0]
+                .metadata
+                .get("cycle_length")
+                .and_then(|v| v.as_u64()),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn cycle_warning_large_cycle() {
+        let mut metrics = empty_metrics();
+        metrics.cycles.push(vec![
+            "bd-1".to_string(),
+            "bd-2".to_string(),
+            "bd-3".to_string(),
+            "bd-4".to_string(),
+        ]);
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_cycle_warnings(&metrics, &now);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].summary.contains("4 issues"));
+        // Longer cycles get lower confidence
+        assert!(results[0].confidence < 1.0);
+        assert!(results[0].confidence >= 0.5);
+        // Reason should contain cycle path
+        assert!(
+            results[0]
+                .reason
+                .contains("bd-1 -> bd-2 -> bd-3 -> bd-4 -> bd-1")
+        );
+    }
+
+    #[test]
+    fn cycle_warning_empty_cycles() {
+        let metrics = empty_metrics();
+        let results = detect_cycle_warnings(&metrics, &Utc::now().to_rfc3339());
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn cycle_warning_skips_empty_cycle_vec() {
+        let mut metrics = empty_metrics();
+        metrics.cycles.push(vec![]); // empty cycle should be skipped
+        metrics
+            .cycles
+            .push(vec!["bd-1".to_string(), "bd-2".to_string()]);
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_cycle_warnings(&metrics, &now);
+        assert_eq!(results.len(), 1, "empty cycle should be skipped");
+        assert!(results[0].summary.contains("Direct cycle"));
+    }
+
+    #[test]
+    fn cycle_warning_capped_at_max() {
+        let mut metrics = empty_metrics();
+        for i in 0..15 {
+            metrics
+                .cycles
+                .push(vec![format!("bd-{i}a"), format!("bd-{i}b")]);
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_cycle_warnings(&metrics, &now);
+        assert_eq!(
+            results.len(),
+            CYCLE_MAX,
+            "should cap at CYCLE_MAX={CYCLE_MAX}"
+        );
+    }
+
+    // ── extract_keywords / helpers ──────────────────────────────────
+
+    #[test]
+    fn extract_keywords_filters_stop_words_and_short() {
+        let keywords = extract_keywords("The quick fix", "and the bug was not here");
+        // "the", "and", "was", "not" are stop words; "fix" and "bug" are 3 chars (kept)
+        assert!(!keywords.contains(&"the".to_string()));
+        assert!(!keywords.contains(&"and".to_string()));
+        assert!(!keywords.contains(&"was".to_string()));
+        assert!(keywords.contains(&"quick".to_string()));
+        assert!(keywords.contains(&"fix".to_string()));
+        assert!(keywords.contains(&"bug".to_string()));
+    }
+
+    #[test]
+    fn extract_keywords_normalizes_case_and_punctuation() {
+        let keywords = extract_keywords("Database-Migration", "Schema_Upgrade!");
+        assert!(keywords.contains(&"database".to_string()));
+        assert!(keywords.contains(&"migration".to_string()));
+        assert!(keywords.contains(&"schema".to_string()));
+        assert!(keywords.contains(&"upgrade".to_string()));
+    }
+
+    #[test]
+    fn intersect_keywords_returns_common() {
+        let left = vec![
+            "database".to_string(),
+            "migration".to_string(),
+            "schema".to_string(),
+        ];
+        let right = vec![
+            "migration".to_string(),
+            "testing".to_string(),
+            "schema".to_string(),
+        ];
+        let common = intersect_keywords(&left, &right);
+        assert!(common.contains(&"migration".to_string()));
+        assert!(common.contains(&"schema".to_string()));
+        assert!(!common.contains(&"database".to_string()));
+        assert!(!common.contains(&"testing".to_string()));
+    }
+
+    #[test]
+    fn ratio_handles_zero_denominator() {
+        assert_eq!(ratio(5, 0), 0.0);
+        assert!((ratio(3, 4) - 0.75).abs() < 0.001);
+    }
+
+    // ── compute_stats ───────────────────────────────────────────────
+
+    #[test]
+    fn compute_stats_counts_correctly() {
+        let suggestions = vec![
+            make_suggestion(SuggestionType::PotentialDuplicate, 0.9, "bd-1"),
+            make_suggestion(SuggestionType::CycleWarning, 0.3, "bd-2"),
+            make_suggestion(SuggestionType::MissingDependency, 0.6, "bd-3"),
+        ];
+        let stats = compute_stats(&suggestions);
+        assert_eq!(stats.total, 3);
+        assert_eq!(stats.by_type.get("potential_duplicate"), Some(&1));
+        assert_eq!(stats.by_type.get("cycle_warning"), Some(&1));
+        assert_eq!(stats.by_type.get("missing_dependency"), Some(&1));
+        assert_eq!(stats.high_confidence_count, 1); // only 0.9 >= 0.7
+        assert_eq!(stats.by_confidence.get("high"), Some(&1));
+        assert_eq!(stats.by_confidence.get("medium"), Some(&1)); // 0.6
+        assert_eq!(stats.by_confidence.get("low"), Some(&1)); // 0.3
+    }
+
+    #[test]
+    fn compute_stats_empty() {
+        let stats = compute_stats(&[]);
+        assert_eq!(stats.total, 0);
+        assert!(stats.by_type.is_empty());
+        assert_eq!(stats.high_confidence_count, 0);
+        assert_eq!(stats.actionable_count, 0);
+    }
+
+    // ── matches_filters ─────────────────────────────────────────────
+
+    #[test]
+    fn matches_filters_by_min_confidence() {
+        let suggestion = make_suggestion(SuggestionType::CycleWarning, 0.5, "bd-1");
+        let mut options = SuggestOptions::default();
+        options.min_confidence = 0.3;
+        assert!(matches_filters(&suggestion, &options));
+        options.min_confidence = 0.8;
+        assert!(!matches_filters(&suggestion, &options));
+    }
+
+    #[test]
+    fn matches_filters_by_type() {
+        let suggestion = make_suggestion(SuggestionType::CycleWarning, 0.8, "bd-1");
+        let mut options = SuggestOptions::default();
+        options.filter_type = Some(SuggestionType::CycleWarning);
+        assert!(matches_filters(&suggestion, &options));
+        options.filter_type = Some(SuggestionType::PotentialDuplicate);
+        assert!(!matches_filters(&suggestion, &options));
+    }
+
+    #[test]
+    fn matches_filters_by_bead_id() {
+        let mut suggestion = make_suggestion(SuggestionType::MissingDependency, 0.7, "bd-1");
+        suggestion.related_bead = Some("bd-2".to_string());
+        let mut options = SuggestOptions::default();
+
+        options.filter_bead = Some("bd-1".to_string());
+        assert!(matches_filters(&suggestion, &options), "target match");
+
+        options.filter_bead = Some("bd-2".to_string());
+        assert!(matches_filters(&suggestion, &options), "related match");
+
+        options.filter_bead = Some("bd-99".to_string());
+        assert!(!matches_filters(&suggestion, &options), "no match");
+    }
+
+    // ── confidence_level ────────────────────────────────────────────
+
+    #[test]
+    fn confidence_level_boundaries() {
+        assert_eq!(confidence_level(0.0).as_str(), "low");
+        assert_eq!(confidence_level(0.39).as_str(), "low");
+        assert_eq!(confidence_level(0.4).as_str(), "medium");
+        assert_eq!(confidence_level(0.69).as_str(), "medium");
+        assert_eq!(confidence_level(0.7).as_str(), "high");
+        assert_eq!(confidence_level(1.0).as_str(), "high");
     }
 }

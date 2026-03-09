@@ -1,5 +1,6 @@
 ---
 source: src/tui.rs
+assertion_line: 11234
 expression: text
 ---
 bvr Graph | 3/3 | all

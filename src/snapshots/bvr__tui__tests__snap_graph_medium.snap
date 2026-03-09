@@ -6,16 +6,18 @@ bvr | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 ┌Graph Nodes [focus]─────────────────────┐┌Graph Focus─────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ Nodes (3) by critical-path score | h/l ││ Graph: nodes=3 edges=1 cycles=0 actionable=1           │
-│                                        ││                                                        │
-│ > o A            in: 0 out: 1 pr:0.481 ││   +---[o T p0]---+                                     │
-│   o B            in: 1 out: 0 pr:0.260 ││   | A                 |                                │
-│   x C            in: 0 out: 0 pr:0.260 ││   | Root              |                                │
+│                                        ││ Focus: node 1/3 -> A (Root)                            │
+│ > o A            in: 0 out: 1 pr:0.481 ││ Focused edge: list focus (Tab to inspect relationships │
+│   o B            in: 1 out: 0 pr:0.260 ││                                                        │
+│   x C            in: 0 out: 0 pr:0.260 ││   +---[o T p0]---+                                     │
+│                                        ││   | A                 |                                │
+│                                        ││   | Root              |                                │
 │                                        ││   | up:0 down:1        |                               │
 │                                        ││   +-------------------+                                │
 │                                        ││         |                                              │
 │                                        ││         v                                              │
-│                                        ││   BLOCKS (waiting):                                    │
-│                                        ││     [o] B                                              │
+│                                        ││   ▼ BLOCKS (waiting on this) ▼                         │
+│                                        ││     [o] B            Dependent                         │
 │                                        ││                                                        │
 │                                        ││ GRAPH METRICS                                          │
 │                                        ││ Importance:                                            │
@@ -27,8 +29,6 @@ bvr | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                        ││   Hub Score        0.0000  ░░░░░░  #2                  │
 │                                        ││   Authority        1.0000  ██████  #1                  │
 │                                        ││ Connections:                                           │
-│                                        ││   In-Degree             0  ░░░░░░                      │
-│                                        ││   Out-Degree            1  ██░░░░                      │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Graph mode: centrality ranks, blockers/dependents, cycle membership.
+Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open 

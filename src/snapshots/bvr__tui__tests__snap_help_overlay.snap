@@ -1,6 +1,6 @@
 ---
 source: src/tui.rs
-assertion_line: 10439
+assertion_line: 11132
 expression: text
 ---
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus | Esc bac
@@ -25,11 +25,11 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │   g            Toggle graph mode                 |   y            Copy SHA/ID                    │
 │   h            Toggle history mode               |   o            Open commit in browser         │
 │   !            Toggle attention mode             |   f            Toggle file tree               │
-│   v            History: bead/git toggle          |                                               │
-│                                                  | [Board]                                       │
-│ [Filters]                                        |   1-4          Jump to lane                   │
-│   o            Filter: open only                 |   H/L          First/last lane                │
-│   c            Filter: closed only               |   0/$          First/last in lane             │
+│   T            Toggle tree view                  |                                               │
+│   [            Toggle label dashboard            | [Board]                                       │
+│   v            History: bead/git toggle          |   1-4          Jump to lane                   │
+│                                                  |   H/L          First/last lane                │
+│ [Filters]                                        |   0/$          First/last in lane             │
 │                                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ? or Esc close | j/k scroll | Ctrl+d/u page | line 1/37

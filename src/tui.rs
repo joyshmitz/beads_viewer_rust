@@ -350,6 +350,7 @@ enum ViewMode {
     Attention,
     Tree,
     LabelDashboard,
+    FlowMatrix,
 }
 
 impl ViewMode {
@@ -364,6 +365,7 @@ impl ViewMode {
             Self::Attention => "Attention",
             Self::Tree => "Tree",
             Self::LabelDashboard => "Labels",
+            Self::FlowMatrix => "Flow",
         }
     }
 }
@@ -869,6 +871,9 @@ struct BvrApp {
     tree_collapsed: std::collections::HashSet<String>,
     label_dashboard: Option<crate::analysis::label_intel::LabelHealthResult>,
     label_dashboard_cursor: usize,
+    flow_matrix: Option<crate::analysis::label_intel::CrossLabelFlow>,
+    flow_matrix_row_cursor: usize,
+    flow_matrix_col_cursor: usize,
     priority_hints_visible: bool,
     status_msg: String,
     #[cfg(not(test))]
@@ -2683,7 +2688,7 @@ impl BvrApp {
         let text = if matches!(self.history_view_mode, HistoryViewMode::Git) {
             self.selected_history_git_commit_sha()
         } else {
-            Some(self.analyzer.issues[self.selected].id.clone())
+            self.selected_issue().map(|issue| issue.id.clone())
         };
 
         if let Some(text) = text {
@@ -2710,7 +2715,10 @@ impl BvrApp {
             self.selected_history_git_commit_sha()
         } else {
             // In bead mode, try to get commit SHA from bead's history
-            let issue = &self.analyzer.issues[self.selected];
+            let Some(issue) = self.selected_issue() else {
+                self.history_status_msg = "No item selected".into();
+                return;
+            };
             self.history_git_cache.as_ref().and_then(|cache| {
                 cache
                     .commit_bead_confidence

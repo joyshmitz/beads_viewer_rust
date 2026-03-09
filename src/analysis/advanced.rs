@@ -263,8 +263,9 @@ fn compute_k_paths(graph: &IssueGraph, metrics: &GraphMetrics, k: usize) -> KPat
 
     // DFS from each source to find all maximal paths.
     let mut all_paths: Vec<Vec<String>> = Vec::new();
+    let path_cap = (10 * k).min(10_000);
 
-    for source in &sources {
+    'outer: for source in &sources {
         let mut stack: Vec<(String, Vec<String>)> = vec![(source.clone(), vec![source.clone()])];
         let mut visited_from_source = HashSet::new();
 
@@ -279,6 +280,9 @@ fn compute_k_paths(graph: &IssueGraph, metrics: &GraphMetrics, k: usize) -> KPat
                 // Leaf path — only keep non-trivial paths.
                 if path.len() > 1 {
                     all_paths.push(path);
+                    if all_paths.len() >= path_cap {
+                        break 'outer;
+                    }
                 }
             } else {
                 for dep in deps {

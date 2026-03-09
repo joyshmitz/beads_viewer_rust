@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::DiGraph;
@@ -128,6 +128,41 @@ pub struct GraphMetrics {
     pub cycles: Vec<Vec<String>>,
     pub skipped_metrics: Vec<SkippedMetric>,
     pub config: AnalysisConfig,
+}
+
+struct BetweennessScratch {
+    stack: Vec<usize>,
+    pred: Vec<Vec<usize>>,
+    sigma: Vec<f64>,
+    dist: Vec<i32>,
+    delta: Vec<f64>,
+    queue: Vec<usize>,
+}
+
+impl BetweennessScratch {
+    fn new(node_count: usize) -> Self {
+        Self {
+            stack: Vec::with_capacity(node_count),
+            pred: (0..node_count)
+                .map(|_| Vec::with_capacity(4))
+                .collect::<Vec<_>>(),
+            sigma: vec![0.0; node_count],
+            dist: vec![-1; node_count],
+            delta: vec![0.0; node_count],
+            queue: Vec::with_capacity(node_count),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.stack.clear();
+        self.queue.clear();
+        self.sigma.fill(0.0);
+        self.dist.fill(-1);
+        self.delta.fill(0.0);
+        for preds in &mut self.pred {
+            preds.clear();
+        }
+    }
 }
 
 impl IssueGraph {
@@ -581,8 +616,9 @@ impl IssueGraph {
         }
 
         let mut bc = vec![0.0_f64; n];
+        let mut scratch = BetweennessScratch::new(n);
         for source in 0..n {
-            self.single_source_betweenness(source, &mut bc);
+            self.single_source_betweenness(source, &mut bc, &mut scratch);
         }
 
         self.map_from_f64_scores(&bc)
@@ -608,8 +644,9 @@ impl IssueGraph {
         }
 
         let mut bc = vec![0.0_f64; n];
+        let mut scratch = BetweennessScratch::new(n);
         for pivot in pivots {
-            self.single_source_betweenness(pivot, &mut bc);
+            self.single_source_betweenness(pivot, &mut bc, &mut scratch);
         }
 
         let scale = n as f64 / pivot_count.max(1) as f64;
@@ -620,46 +657,47 @@ impl IssueGraph {
         self.map_from_f64_scores(&bc)
     }
 
-    fn single_source_betweenness(&self, source: usize, bc: &mut [f64]) {
-        let n = self.node_to_id.len();
+    fn single_source_betweenness(
+        &self,
+        source: usize,
+        bc: &mut [f64],
+        scratch: &mut BetweennessScratch,
+    ) {
+        scratch.reset();
+        scratch.sigma[source] = 1.0;
+        scratch.dist[source] = 0;
+        scratch.queue.push(source);
 
-        let mut stack = Vec::<usize>::with_capacity(n);
-        let mut pred = vec![Vec::<usize>::new(); n];
-        let mut sigma = vec![0.0_f64; n];
-        let mut dist = vec![-1_i32; n];
-        let mut delta = vec![0.0_f64; n];
-
-        sigma[source] = 1.0;
-        dist[source] = 0;
-
-        let mut queue = VecDeque::<usize>::new();
-        queue.push_back(source);
-
-        while let Some(v) = queue.pop_front() {
-            stack.push(v);
+        let mut queue_head = 0usize;
+        while queue_head < scratch.queue.len() {
+            let v = scratch.queue[queue_head];
+            queue_head += 1;
+            scratch.stack.push(v);
 
             for &w in &self.successors[v] {
-                if dist[w] < 0 {
-                    dist[w] = dist[v] + 1;
-                    queue.push_back(w);
+                if scratch.dist[w] < 0 {
+                    scratch.dist[w] = scratch.dist[v] + 1;
+                    scratch.queue.push(w);
                 }
 
-                if dist[w] == dist[v] + 1 {
-                    sigma[w] += sigma[v];
-                    pred[w].push(v);
+                if scratch.dist[w] == scratch.dist[v] + 1 {
+                    scratch.sigma[w] += scratch.sigma[v];
+                    scratch.pred[w].push(v);
                 }
             }
         }
 
-        while let Some(w) = stack.pop() {
-            for &v in &pred[w] {
-                if sigma[w] > 0.0 {
-                    delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
+        while let Some(w) = scratch.stack.pop() {
+            let sigma_w = scratch.sigma[w];
+            let delta_w = scratch.delta[w];
+            for &v in &scratch.pred[w] {
+                if sigma_w > 0.0 {
+                    scratch.delta[v] += (scratch.sigma[v] / sigma_w) * (1.0 + delta_w);
                 }
             }
 
             if w != source {
-                bc[w] += delta[w];
+                bc[w] += scratch.delta[w];
             }
         }
     }

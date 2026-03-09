@@ -17,7 +17,9 @@ use crate::model::Issue;
 use crate::robot::compute_data_hash;
 use crate::{BvrError, Result};
 use chrono::{DateTime, Utc};
-use ftui::core::event::{Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseEvent, MouseEventKind};
+use ftui::core::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseEvent, MouseEventKind,
+};
 use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
 use ftui::render::frame::Frame;
@@ -1127,6 +1129,7 @@ impl Model for BvrApp {
             ViewMode::Attention => "Label Attention",
             ViewMode::Tree => "Dependency Tree",
             ViewMode::LabelDashboard => "Label Health",
+            ViewMode::FlowMatrix => "Flow Matrix",
             ViewMode::Main => "Issues",
         };
         let list_focused = self.focus == FocusPane::List;
@@ -1172,6 +1175,7 @@ impl Model for BvrApp {
             ViewMode::Attention => "Label Detail",
             ViewMode::Tree => "Issue Detail",
             ViewMode::LabelDashboard => "Label Detail",
+            ViewMode::FlowMatrix => "Flow Detail",
             ViewMode::Main => "Details",
         };
         let detail_focused = self.focus == FocusPane::Detail;
@@ -1288,11 +1292,11 @@ impl Model for BvrApp {
                 )
             }
             ViewMode::LabelDashboard => {
-                let label_count = self
-                    .label_dashboard
-                    .as_ref()
-                    .map_or(0, |r| r.labels.len());
+                let label_count = self.label_dashboard.as_ref().map_or(0, |r| r.labels.len());
                 format!("Labels: {label_count} | j/k navigate | Tab focus | [/Esc back")
+            }
+            ViewMode::FlowMatrix => {
+                "Flow matrix: data wiring in progress | Tab focus | Esc back".to_string()
             }
         };
         Paragraph::new(footer_text)
@@ -1463,6 +1467,11 @@ impl BvrApp {
 
     fn label_dashboard_shortcut_focus(&self) -> bool {
         matches!(self.mode, ViewMode::LabelDashboard)
+            && matches!(self.focus, FocusPane::List | FocusPane::Detail)
+    }
+
+    fn flow_matrix_shortcut_focus(&self) -> bool {
+        matches!(self.mode, ViewMode::FlowMatrix)
             && matches!(self.focus, FocusPane::List | FocusPane::Detail)
     }
 
@@ -2092,7 +2101,9 @@ impl BvrApp {
             KeyCode::Char('k') | KeyCode::Up if self.tree_shortcut_focus() => {
                 self.tree_cursor = self.tree_cursor.saturating_sub(1);
             }
-            KeyCode::Enter if matches!(self.mode, ViewMode::Tree) && self.focus == FocusPane::List => {
+            KeyCode::Enter
+                if matches!(self.mode, ViewMode::Tree) && self.focus == FocusPane::List =>
+            {
                 self.tree_toggle_collapse();
             }
             // -- LabelDashboard mode navigation
@@ -2826,8 +2837,7 @@ impl BvrApp {
                             || commit.author_email.to_ascii_lowercase().contains(&query)
                     }
                     HistorySearchMode::Bead => {
-                        let related =
-                            self.history_git_related_beads_for_commit(&commit.sha);
+                        let related = self.history_git_related_beads_for_commit(&commit.sha);
                         related
                             .iter()
                             .any(|id| id.to_ascii_lowercase().contains(&query))
@@ -3394,31 +3404,21 @@ impl BvrApp {
                                         || c.short_sha.to_ascii_lowercase().starts_with(&query)
                                 })
                         }
-                        HistorySearchMode::Commit => {
-                            cache
-                                .and_then(|c| c.histories.get(&issue.id))
-                                .and_then(|h| h.commits.as_deref())
-                                .unwrap_or_default()
-                                .iter()
-                                .any(|c| c.message.to_ascii_lowercase().contains(&query))
-                        }
-                        HistorySearchMode::Author => {
-                            cache
-                                .and_then(|c| c.histories.get(&issue.id))
-                                .map_or(false, |h| {
-                                    h.last_author.to_ascii_lowercase().contains(&query)
-                                        || h.commits
-                                            .as_deref()
-                                            .unwrap_or_default()
-                                            .iter()
-                                            .any(|c| {
-                                                c.author.to_ascii_lowercase().contains(&query)
-                                                    || c.author_email
-                                                        .to_ascii_lowercase()
-                                                        .contains(&query)
-                                            })
-                                })
-                        }
+                        HistorySearchMode::Commit => cache
+                            .and_then(|c| c.histories.get(&issue.id))
+                            .and_then(|h| h.commits.as_deref())
+                            .unwrap_or_default()
+                            .iter()
+                            .any(|c| c.message.to_ascii_lowercase().contains(&query)),
+                        HistorySearchMode::Author => cache
+                            .and_then(|c| c.histories.get(&issue.id))
+                            .map_or(false, |h| {
+                                h.last_author.to_ascii_lowercase().contains(&query)
+                                    || h.commits.as_deref().unwrap_or_default().iter().any(|c| {
+                                        c.author.to_ascii_lowercase().contains(&query)
+                                            || c.author_email.to_ascii_lowercase().contains(&query)
+                                    })
+                            }),
                         HistorySearchMode::All => {
                             issue.id.to_ascii_lowercase().contains(&query)
                                 || issue.title.to_ascii_lowercase().contains(&query)
@@ -4334,6 +4334,7 @@ impl BvrApp {
             ViewMode::Attention => self.attention_list_text(),
             ViewMode::Tree => self.tree_list_text(),
             ViewMode::LabelDashboard => self.label_dashboard_list_text(),
+            ViewMode::FlowMatrix => self.flow_matrix_list_text(),
             ViewMode::Main => self.main_list_text(),
         }
     }
@@ -4986,7 +4987,9 @@ impl BvrApp {
     // -- Actionable view --------------------------------------------------
 
     fn compute_actionable_plan(&mut self) {
-        let triage = self.analyzer.triage(crate::analysis::triage::TriageOptions::default());
+        let triage = self
+            .analyzer
+            .triage(crate::analysis::triage::TriageOptions::default());
         let plan = self.analyzer.plan(&triage.score_by_id);
         self.actionable_track_cursor = 0;
         self.actionable_item_cursor = 0;
@@ -5008,8 +5011,7 @@ impl BvrApp {
             // Navigate between items within current track.
             if let Some(track) = plan.tracks.get(self.actionable_track_cursor) {
                 let max = track.items.len().saturating_sub(1);
-                let new_pos =
-                    (self.actionable_item_cursor as isize + delta).clamp(0, max as isize);
+                let new_pos = (self.actionable_item_cursor as isize + delta).clamp(0, max as isize);
                 self.actionable_item_cursor = new_pos as usize;
             }
         }
@@ -5051,19 +5053,23 @@ impl BvrApp {
                 track.reason
             ));
             for (item_idx, item) in track.items.iter().enumerate() {
-                let item_marker =
-                    if track_idx == self.actionable_track_cursor && item_idx == self.actionable_item_cursor
-                        && matches!(self.focus, FocusPane::Detail)
-                    {
-                        "  ▹"
-                    } else {
-                        "   "
-                    };
+                let item_marker = if track_idx == self.actionable_track_cursor
+                    && item_idx == self.actionable_item_cursor
+                    && matches!(self.focus, FocusPane::Detail)
+                {
+                    "  ▹"
+                } else {
+                    "   "
+                };
                 lines.push(format!(
                     "{item_marker} {:<12} {:.2}  {}",
                     item.id,
                     item.score,
-                    if item.title.len() > 40 { format!("{}…", &item.title[..39]) } else { item.title.clone() }
+                    if item.title.len() > 40 {
+                        format!("{}…", &item.title[..39])
+                    } else {
+                        item.title.clone()
+                    }
                 ));
                 global_idx += 1;
             }
@@ -5090,7 +5096,11 @@ impl BvrApp {
         lines.push(String::new());
 
         for (idx, item) in track.items.iter().enumerate() {
-            let marker = if idx == self.actionable_item_cursor { "▸" } else { " " };
+            let marker = if idx == self.actionable_item_cursor {
+                "▸"
+            } else {
+                " "
+            };
             lines.push(format!("{marker} {} (score: {:.3})", item.id, item.score));
             lines.push(format!("  Title: {}", item.title));
             if !item.unblocks.is_empty() {
@@ -5139,7 +5149,10 @@ impl BvrApp {
 
         let mut md = String::new();
         md.push_str(&format!("# {} — {}\n\n", issue.id, issue.title));
-        md.push_str(&format!("**Status:** {} | **Priority:** p{} | **Type:** {}\n\n", issue.status, issue.priority, issue.issue_type));
+        md.push_str(&format!(
+            "**Status:** {} | **Priority:** p{} | **Type:** {}\n\n",
+            issue.status, issue.priority, issue.issue_type
+        ));
         if !issue.assignee.is_empty() {
             md.push_str(&format!("**Assignee:** {}\n\n", issue.assignee));
         }
@@ -5260,7 +5273,11 @@ impl BvrApp {
         lines.push(format!("{}", "─".repeat(72)));
 
         for (idx, label) in result.labels.iter().enumerate() {
-            let marker = if idx == self.attention_cursor { "▸" } else { " " };
+            let marker = if idx == self.attention_cursor {
+                "▸"
+            } else {
+                " "
+            };
             lines.push(format!(
                 "{marker}{:>3}  {:<20} {:>5.1}  {}",
                 label.rank,
@@ -5730,6 +5747,14 @@ impl BvrApp {
 
     // -- end LabelDashboard view ------------------------------------------
 
+    fn flow_matrix_list_text(&self) -> String {
+        "(flow matrix view not yet wired)".to_string()
+    }
+
+    fn flow_matrix_detail_text(&self) -> String {
+        "Cross-label flow data is not available in this build.".to_string()
+    }
+
     fn detail_panel_text(&self) -> String {
         match self.mode {
             ViewMode::Board => self.board_detail_text(),
@@ -5740,6 +5765,7 @@ impl BvrApp {
             ViewMode::Attention => self.attention_detail_text(),
             ViewMode::Tree => self.tree_detail_text(),
             ViewMode::LabelDashboard => self.label_dashboard_detail_text(),
+            ViewMode::FlowMatrix => self.flow_matrix_detail_text(),
             ViewMode::Main => self.issue_detail_text(),
         }
     }
@@ -5997,7 +6023,12 @@ impl BvrApp {
             ..TriageOptions::default()
         });
 
-        if let Some(rec) = triage.result.recommendations.iter().find(|r| r.id == issue.id) {
+        if let Some(rec) = triage
+            .result
+            .recommendations
+            .iter()
+            .find(|r| r.id == issue.id)
+        {
             lines.push(format!("  Triage Score:  {:.3}", rec.score));
             lines.push(format!("  Confidence:    {:.1}%", rec.confidence * 100.0));
             lines.push(format!("  Unblocks:      {}", rec.unblocks));
@@ -7406,6 +7437,9 @@ fn new_app_with_background(
         tree_collapsed: std::collections::HashSet::new(),
         label_dashboard: None,
         label_dashboard_cursor: 0,
+        flow_matrix: None,
+        flow_matrix_row_cursor: 0,
+        flow_matrix_col_cursor: 0,
         priority_hints_visible: false,
         status_msg: String::new(),
         #[cfg(not(test))]
@@ -7767,6 +7801,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -8630,6 +8667,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -8712,6 +8752,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -8788,6 +8831,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -8882,6 +8928,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -8960,6 +9009,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9039,6 +9091,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9119,6 +9174,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9194,6 +9252,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9284,6 +9345,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9360,6 +9424,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9507,6 +9574,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9589,6 +9659,9 @@ mod tests {
             tree_collapsed: std::collections::HashSet::new(),
             label_dashboard: None,
             label_dashboard_cursor: 0,
+            flow_matrix: None,
+            flow_matrix_row_cursor: 0,
+            flow_matrix_col_cursor: 0,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -10415,7 +10488,11 @@ mod tests {
 
         let detail = app.label_dashboard_detail_text();
         // If there are labels, detail should show label info
-        if app.label_dashboard.as_ref().is_some_and(|r| !r.labels.is_empty()) {
+        if app
+            .label_dashboard
+            .as_ref()
+            .is_some_and(|r| !r.labels.is_empty())
+        {
             assert!(
                 detail.contains("Label:"),
                 "detail should show label name, got: {detail}"
@@ -11338,7 +11415,10 @@ mod tests {
         app.update(key(KeyCode::Char('b')));
         assert!(matches!(app.mode, ViewMode::Board));
         app.update(key(KeyCode::Char('p')));
-        assert!(!app.priority_hints_visible, "p should not toggle hints in Board mode");
+        assert!(
+            !app.priority_hints_visible,
+            "p should not toggle hints in Board mode"
+        );
     }
 
     // -- Export/clipboard/editor tests ---------------------------------------

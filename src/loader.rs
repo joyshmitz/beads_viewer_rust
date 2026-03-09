@@ -724,6 +724,41 @@ pub fn load_issues_from_file(path: &Path) -> Result<Vec<Issue>> {
     Ok(issues)
 }
 
+/// Parse issues from JSONL text (e.g., from `git show` output).
+pub fn parse_issues_from_text(text: &str) -> Result<Vec<Issue>> {
+    let mut issues = Vec::new();
+    for (line_no, raw_line) in text.lines().enumerate() {
+        let trimmed = if line_no == 0 {
+            raw_line.trim_start_matches('\u{feff}').trim()
+        } else {
+            raw_line.trim()
+        };
+        if trimmed.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Issue>(trimmed) {
+            Ok(mut issue) => {
+                issue.status = issue.normalized_status();
+                if let Err(error) = issue.validate() {
+                    warn(format!(
+                        "skipping invalid issue on line {}: {error}",
+                        line_no + 1
+                    ));
+                    continue;
+                }
+                issues.push(issue);
+            }
+            Err(error) => {
+                warn(format!(
+                    "skipping malformed JSON on line {}: {error}",
+                    line_no + 1
+                ));
+            }
+        }
+    }
+    Ok(issues)
+}
+
 pub fn load_sprints(repo_path: Option<&Path>) -> Result<Vec<Sprint>> {
     let beads_dir = get_beads_dir(repo_path)?;
     let path = beads_dir.join(SPRINTS_FILE_NAME);

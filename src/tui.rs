@@ -12,7 +12,7 @@ use crate::analysis::git_history::{
 use crate::analysis::history::IssueHistory;
 use crate::analysis::triage::TriageOptions;
 use crate::loader;
-use crate::model::Issue;
+use crate::model::{Issue, Sprint};
 #[cfg(not(test))]
 use crate::robot::compute_data_hash;
 use crate::{BvrError, Result};
@@ -353,6 +353,8 @@ enum ViewMode {
     Tree,
     LabelDashboard,
     FlowMatrix,
+    TimeTravelDiff,
+    Sprint,
 }
 
 impl ViewMode {
@@ -368,6 +370,8 @@ impl ViewMode {
             Self::Tree => "Tree",
             Self::LabelDashboard => "Labels",
             Self::FlowMatrix => "Flow",
+            Self::TimeTravelDiff => "TimeTravel",
+            Self::Sprint => "Sprint",
         }
     }
 }
@@ -721,6 +725,21 @@ enum ModalOverlay {
     Confirm { title: String, message: String },
     /// Interactive pages export wizard.
     PagesWizard(PagesWizardState),
+    /// Recipe picker: shows available triage recipes.
+    RecipePicker {
+        items: Vec<(String, String)>,
+        cursor: usize,
+    },
+    /// Label picker: shows all labels for quick filtering.
+    LabelPicker {
+        items: Vec<(String, usize)>,
+        cursor: usize,
+    },
+    /// Repo picker: shows workspace repos for filtering.
+    RepoPicker {
+        items: Vec<String>,
+        cursor: usize,
+    },
 }
 
 /// State for the multi-step pages export wizard.
@@ -876,6 +895,17 @@ struct BvrApp {
     flow_matrix: Option<crate::analysis::label_intel::CrossLabelFlow>,
     flow_matrix_row_cursor: usize,
     flow_matrix_col_cursor: usize,
+    sprint_data: Vec<Sprint>,
+    sprint_cursor: usize,
+    sprint_issue_cursor: usize,
+    modal_label_filter: Option<String>,
+    modal_repo_filter: Option<String>,
+    time_travel_ref_input: String,
+    time_travel_input_active: bool,
+    time_travel_diff: Option<crate::analysis::diff::SnapshotDiff>,
+    time_travel_category_cursor: usize,
+    time_travel_issue_cursor: usize,
+    time_travel_last_ref: Option<String>,
     priority_hints_visible: bool,
     status_msg: String,
     #[cfg(not(test))]
@@ -1101,6 +1131,78 @@ impl Model for BvrApp {
                         .render(rows[2], frame);
                     return;
                 }
+                ModalOverlay::RecipePicker { items, cursor } => {
+                    let mut lines = Vec::new();
+                    for (i, (name, desc)) in items.iter().enumerate() {
+                        let marker = if i == *cursor { "▸" } else { " " };
+                        lines.push(format!(" {marker} {name:16} {desc}"));
+                    }
+                    let text = if lines.is_empty() {
+                        " No recipes available.".to_string()
+                    } else {
+                        lines.join("\n")
+                    };
+                    Paragraph::new(text)
+                        .block(
+                            Block::bordered()
+                                .title("Recipe Picker")
+                                .border_style(tokens::panel_border_focused())
+                                .style(tokens::panel_title_focused()),
+                        )
+                        .render(rows[1], frame);
+                    Paragraph::new("j/k=navigate | Enter=apply | Esc=close")
+                        .style(tokens::footer())
+                        .render(rows[2], frame);
+                    return;
+                }
+                ModalOverlay::LabelPicker { items, cursor } => {
+                    let mut lines = Vec::new();
+                    for (i, (label, count)) in items.iter().enumerate() {
+                        let marker = if i == *cursor { "▸" } else { " " };
+                        lines.push(format!(" {marker} {label:24} ({count} issues)"));
+                    }
+                    let text = if lines.is_empty() {
+                        " No labels found.".to_string()
+                    } else {
+                        lines.join("\n")
+                    };
+                    Paragraph::new(text)
+                        .block(
+                            Block::bordered()
+                                .title("Label Picker")
+                                .border_style(tokens::panel_border_focused())
+                                .style(tokens::panel_title_focused()),
+                        )
+                        .render(rows[1], frame);
+                    Paragraph::new("j/k=navigate | Enter=filter by label | Esc=close")
+                        .style(tokens::footer())
+                        .render(rows[2], frame);
+                    return;
+                }
+                ModalOverlay::RepoPicker { items, cursor } => {
+                    let mut lines = Vec::new();
+                    for (i, repo) in items.iter().enumerate() {
+                        let marker = if i == *cursor { "▸" } else { " " };
+                        lines.push(format!(" {marker} {repo}"));
+                    }
+                    let text = if lines.is_empty() {
+                        " No repos found.".to_string()
+                    } else {
+                        lines.join("\n")
+                    };
+                    Paragraph::new(text)
+                        .block(
+                            Block::bordered()
+                                .title("Repo Picker")
+                                .border_style(tokens::panel_border_focused())
+                                .style(tokens::panel_title_focused()),
+                        )
+                        .render(rows[1], frame);
+                    Paragraph::new("j/k=navigate | Enter=filter by repo | Esc=close")
+                        .style(tokens::footer())
+                        .render(rows[2], frame);
+                    return;
+                }
             }
         }
 
@@ -1122,6 +1224,8 @@ impl Model for BvrApp {
             ViewMode::Tree => "Issue Detail",
             ViewMode::LabelDashboard => "Label Detail",
             ViewMode::FlowMatrix => "Flow Detail",
+            ViewMode::TimeTravelDiff => "Diff Detail",
+            ViewMode::Sprint => "Sprint Detail",
             ViewMode::Main => "Details",
         };
         let detail_focused = self.focus == FocusPane::Detail || graph_single_pane;
@@ -1175,6 +1279,8 @@ impl Model for BvrApp {
                 ViewMode::Tree => "Dependency Tree",
                 ViewMode::LabelDashboard => "Label Health",
                 ViewMode::FlowMatrix => "Flow Matrix",
+                ViewMode::TimeTravelDiff => "Diff Categories",
+                ViewMode::Sprint => "Sprints",
                 ViewMode::Main => "Issues",
             };
             let list_focused = self.focus == FocusPane::List;
@@ -1322,6 +1428,23 @@ impl Model for BvrApp {
                     .map_or(0, |f| f.total_cross_label_deps);
                 format!(
                     "Flow: {label_count} labels, {dep_count} cross-deps | j/k rows | h/l cols | Tab focus | ]/Esc back"
+                )
+            }
+            ViewMode::TimeTravelDiff => {
+                if self.time_travel_input_active {
+                    format!(
+                        "Time-travel: enter git ref or file path | Enter confirm | Esc cancel"
+                    )
+                } else if self.time_travel_diff.is_some() {
+                    "Time-travel: j/k navigate | Tab focus | T reload | t/Esc back".to_string()
+                } else {
+                    "Time-travel: no diff loaded | t to enter ref | Esc back".to_string()
+                }
+            }
+            ViewMode::Sprint => {
+                let sprint_count = self.sprint_data.len();
+                format!(
+                    "Sprint: {sprint_count} sprint(s) | j/k navigate | Tab focus | S/Esc back"
                 )
             }
         };
@@ -1498,6 +1621,17 @@ impl BvrApp {
 
     fn flow_matrix_shortcut_focus(&self) -> bool {
         matches!(self.mode, ViewMode::FlowMatrix)
+            && matches!(self.focus, FocusPane::List | FocusPane::Detail)
+    }
+
+    fn time_travel_shortcut_focus(&self) -> bool {
+        matches!(self.mode, ViewMode::TimeTravelDiff)
+            && matches!(self.focus, FocusPane::List | FocusPane::Detail)
+            && !self.time_travel_input_active
+    }
+
+    fn sprint_shortcut_focus(&self) -> bool {
+        matches!(self.mode, ViewMode::Sprint)
             && matches!(self.focus, FocusPane::List | FocusPane::Detail)
     }
 
@@ -1807,6 +1941,102 @@ impl BvrApp {
                 ModalOverlay::PagesWizard(wiz) => {
                     return self.handle_pages_wizard_key(code, wiz.clone());
                 }
+                ModalOverlay::RecipePicker { items, cursor } => {
+                    let len = items.len();
+                    let cur = *cursor;
+                    match code {
+                        KeyCode::Escape => self.modal_overlay = None,
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            if let Some(ModalOverlay::RecipePicker { cursor, items }) =
+                                &mut self.modal_overlay
+                            {
+                                if *cursor + 1 < items.len() {
+                                    *cursor += 1;
+                                }
+                            }
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            if let Some(ModalOverlay::RecipePicker { cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                *cursor = cursor.saturating_sub(1);
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if cur < len {
+                                let recipe_name = items[cur].0.clone();
+                                self.modal_overlay = None;
+                                self.status_msg = format!("Recipe: {recipe_name}");
+                            }
+                        }
+                        _ => {}
+                    }
+                    return Cmd::None;
+                }
+                ModalOverlay::LabelPicker { items, cursor } => {
+                    let len = items.len();
+                    let cur = *cursor;
+                    match code {
+                        KeyCode::Escape => self.modal_overlay = None,
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            if let Some(ModalOverlay::LabelPicker { cursor, items }) =
+                                &mut self.modal_overlay
+                            {
+                                if *cursor + 1 < items.len() {
+                                    *cursor += 1;
+                                }
+                            }
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            if let Some(ModalOverlay::LabelPicker { cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                *cursor = cursor.saturating_sub(1);
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if cur < len {
+                                let label = items[cur].0.clone();
+                                self.modal_overlay = None;
+                                self.set_label_filter(&label);
+                            }
+                        }
+                        _ => {}
+                    }
+                    return Cmd::None;
+                }
+                ModalOverlay::RepoPicker { items, cursor } => {
+                    let len = items.len();
+                    let cur = *cursor;
+                    match code {
+                        KeyCode::Escape => self.modal_overlay = None,
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            if let Some(ModalOverlay::RepoPicker { cursor, items }) =
+                                &mut self.modal_overlay
+                            {
+                                if *cursor + 1 < items.len() {
+                                    *cursor += 1;
+                                }
+                            }
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => {
+                            if let Some(ModalOverlay::RepoPicker { cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                *cursor = cursor.saturating_sub(1);
+                            }
+                        }
+                        KeyCode::Enter => {
+                            if cur < len {
+                                let repo = items[cur].clone();
+                                self.modal_overlay = None;
+                                self.set_repo_filter(&repo);
+                            }
+                        }
+                        _ => {}
+                    }
+                    return Cmd::None;
+                }
             }
         }
 
@@ -1914,6 +2144,30 @@ impl BvrApp {
             return Cmd::None;
         }
 
+        // -- Time-travel ref input -----------------------------------------------
+        if matches!(self.mode, ViewMode::TimeTravelDiff) && self.time_travel_input_active {
+            match code {
+                KeyCode::Escape => {
+                    self.time_travel_input_active = false;
+                    if self.time_travel_diff.is_none() {
+                        self.mode = ViewMode::Main;
+                        self.focus = FocusPane::List;
+                    }
+                }
+                KeyCode::Enter => self.execute_time_travel(),
+                KeyCode::Backspace => {
+                    self.time_travel_ref_input.pop();
+                }
+                KeyCode::Char(ch)
+                    if !modifiers.contains(Modifiers::CTRL) && !ch.is_control() =>
+                {
+                    self.time_travel_ref_input.push(ch);
+                }
+                _ => {}
+            }
+            return Cmd::None;
+        }
+
         match code {
             KeyCode::Escape if self.exit_insights_heatmap_drill() => return Cmd::None,
             KeyCode::Char('?') => {
@@ -1948,7 +2202,11 @@ impl BvrApp {
             }
             KeyCode::Char('c') if modifiers.contains(Modifiers::CTRL) => return Cmd::Quit,
             KeyCode::Escape => {
-                if matches!(self.mode, ViewMode::History) {
+                if matches!(self.mode, ViewMode::History) && self.history_show_file_tree {
+                    self.history_show_file_tree = false;
+                    self.history_file_tree_focus = false;
+                    self.history_status_msg = "File tree hidden".into();
+                } else if matches!(self.mode, ViewMode::History) {
                     self.mode = self.mode_before_history;
                     self.focus = FocusPane::List;
                 } else if !matches!(self.mode, ViewMode::Main) {
@@ -2161,6 +2419,49 @@ impl BvrApp {
             KeyCode::Char('h') | KeyCode::Left if self.flow_matrix_shortcut_focus() => {
                 self.flow_matrix_col_cursor = self.flow_matrix_col_cursor.saturating_sub(1);
             }
+            KeyCode::Char('j') | KeyCode::Down if self.sprint_shortcut_focus() => {
+                if self.focus == FocusPane::List {
+                    let count = self.sprint_data.len();
+                    if count > 0 && self.sprint_cursor + 1 < count {
+                        self.sprint_cursor += 1;
+                        self.sprint_issue_cursor = 0;
+                    }
+                } else {
+                    let issue_count = self.sprint_visible_issues().len();
+                    if issue_count > 0 && self.sprint_issue_cursor + 1 < issue_count {
+                        self.sprint_issue_cursor += 1;
+                    }
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up if self.sprint_shortcut_focus() => {
+                if self.focus == FocusPane::List {
+                    self.sprint_cursor = self.sprint_cursor.saturating_sub(1);
+                    self.sprint_issue_cursor = 0;
+                } else {
+                    self.sprint_issue_cursor = self.sprint_issue_cursor.saturating_sub(1);
+                }
+            }
+            KeyCode::Char('j') | KeyCode::Down if self.time_travel_shortcut_focus() => {
+                if self.focus == FocusPane::List {
+                    let count = self.time_travel_categories().len();
+                    if count > 0 && self.time_travel_category_cursor + 1 < count {
+                        self.time_travel_category_cursor += 1;
+                        self.time_travel_issue_cursor = 0;
+                    }
+                } else {
+                    self.time_travel_issue_cursor += 1;
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up if self.time_travel_shortcut_focus() => {
+                if self.focus == FocusPane::List {
+                    self.time_travel_category_cursor =
+                        self.time_travel_category_cursor.saturating_sub(1);
+                    self.time_travel_issue_cursor = 0;
+                } else {
+                    self.time_travel_issue_cursor =
+                        self.time_travel_issue_cursor.saturating_sub(1);
+                }
+            }
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL)
                     && matches!(self.mode, ViewMode::Board)
@@ -2273,7 +2574,9 @@ impl BvrApp {
             KeyCode::Char('o') => self.set_list_filter(ListFilter::Open),
             KeyCode::Char('c') => self.set_list_filter(ListFilter::Closed),
             KeyCode::Char('r') => self.set_list_filter(ListFilter::Ready),
-            KeyCode::Char('a') => self.set_list_filter(ListFilter::All),
+            KeyCode::Char('a') if self.should_clear_filter_with_all_shortcut() => {
+                self.set_list_filter(ListFilter::All);
+            }
             KeyCode::Char('j') | KeyCode::Down
                 if matches!(self.mode, ViewMode::History)
                     && matches!(self.history_view_mode, HistoryViewMode::Git)
@@ -2523,6 +2826,9 @@ impl BvrApp {
                 self.toggle_tree_mode();
                 self.focus = FocusPane::List;
             }
+            KeyCode::Char('t') => {
+                self.toggle_time_travel_mode();
+            }
             KeyCode::Char('[') => {
                 self.toggle_label_dashboard();
                 self.focus = FocusPane::List;
@@ -2530,6 +2836,19 @@ impl BvrApp {
             KeyCode::Char(']') => {
                 self.toggle_flow_matrix();
                 self.focus = FocusPane::List;
+            }
+            KeyCode::Char('S') if !matches!(self.mode, ViewMode::Insights) => {
+                self.toggle_sprint_mode();
+                self.focus = FocusPane::List;
+            }
+            KeyCode::Char('\'') => {
+                self.open_recipe_picker();
+            }
+            KeyCode::Char('L') => {
+                self.open_label_picker();
+            }
+            KeyCode::Char('w') => {
+                self.open_repo_picker();
             }
             KeyCode::Char('p') if matches!(self.mode, ViewMode::Main) => {
                 self.priority_hints_visible = !self.priority_hints_visible;
@@ -2641,12 +2960,9 @@ impl BvrApp {
     fn toggle_history_file_tree(&mut self) {
         self.history_show_file_tree = !self.history_show_file_tree;
         if self.history_show_file_tree {
-            self.history_file_tree_cursor = 0;
-            self.history_file_tree_filter = None;
             self.history_status_msg = "File tree: j/k navigate, Enter filter, Esc close".into();
         } else {
             self.history_file_tree_focus = false;
-            self.history_file_tree_filter = None;
             self.history_status_msg = "File tree hidden".into();
         }
     }
@@ -2680,7 +2996,44 @@ impl BvrApp {
                 self.history_file_tree_filter = Some(path.clone());
                 self.history_status_msg = format!("Filtered to: {path}");
             }
+            self.history_event_cursor = 0;
+            self.history_bead_commit_cursor = 0;
+            if matches!(self.history_view_mode, HistoryViewMode::Bead) {
+                let visible = self.history_visible_issue_indices();
+                if !visible.contains(&self.selected)
+                    && let Some(&first_visible) = visible.first()
+                {
+                    self.set_selected_index(first_visible);
+                }
+            }
         }
+    }
+
+    fn history_path_matches_file_filter(&self, path: &str) -> bool {
+        self.history_file_tree_filter
+            .as_deref()
+            .is_none_or(|filter| path == filter || path.starts_with(&format!("{filter}/")))
+    }
+
+    fn history_filtered_bead_commits<'a>(&'a self, issue_id: &str) -> Vec<&'a HistoryCommitCompat> {
+        let min_confidence = self.history_min_confidence();
+        self.history_git_cache
+            .as_ref()
+            .and_then(|cache| cache.histories.get(issue_id))
+            .and_then(|history| history.commits.as_deref())
+            .map(|commits| {
+                commits
+                    .iter()
+                    .filter(|commit| {
+                        commit.confidence >= min_confidence
+                            && commit
+                                .files
+                                .iter()
+                                .any(|file| self.history_path_matches_file_filter(&file.path))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     fn history_file_tree_nodes(&self) -> Vec<FileTreeNode> {
@@ -2695,45 +3048,64 @@ impl BvrApp {
             }
         }
 
-        // Build flat file tree with directory grouping
-        let mut roots: BTreeMap<String, FileTreeNode> = BTreeMap::new();
-        for (path, count) in &file_counts {
-            let parts: Vec<&str> = path.rsplitn(2, '/').collect();
-            let (file_name, dir_path) = if parts.len() == 2 {
-                (parts[0].to_string(), parts[1].to_string())
-            } else {
-                (path.clone(), String::new())
+        fn insert_path(
+            nodes: &mut Vec<FileTreeNode>,
+            parts: &[&str],
+            level: usize,
+            prefix: &str,
+            count: usize,
+        ) {
+            let Some((name, rest)) = parts.split_first() else {
+                return;
             };
 
-            let dir_node = roots
-                .entry(dir_path.clone())
-                .or_insert_with(|| FileTreeNode {
-                    name: if dir_path.is_empty() {
-                        ".".to_string()
-                    } else {
-                        dir_path.clone()
-                    },
-                    path: dir_path.clone(),
-                    is_dir: true,
-                    change_count: 0,
-                    expanded: true,
-                    level: 0,
-                    children: Vec::new(),
+            let path = if prefix.is_empty() {
+                (*name).to_string()
+            } else {
+                format!("{prefix}/{name}")
+            };
+            let is_dir = !rest.is_empty();
+            let index = nodes
+                .iter()
+                .position(|node| node.path == path)
+                .unwrap_or_else(|| {
+                    nodes.push(FileTreeNode {
+                        name: (*name).to_string(),
+                        path: path.clone(),
+                        is_dir,
+                        change_count: 0,
+                        expanded: true,
+                        level,
+                        children: Vec::new(),
+                    });
+                    nodes.len() - 1
                 });
 
-            dir_node.change_count += count;
-            dir_node.children.push(FileTreeNode {
-                name: file_name,
-                path: path.clone(),
-                is_dir: false,
-                change_count: *count,
-                expanded: false,
-                level: 1,
-                children: Vec::new(),
+            nodes[index].change_count += count;
+            if is_dir {
+                insert_path(&mut nodes[index].children, rest, level + 1, &path, count);
+            }
+        }
+
+        fn sort_nodes(nodes: &mut [FileTreeNode]) {
+            for node in nodes.iter_mut() {
+                sort_nodes(&mut node.children);
+            }
+            nodes.sort_by(|left, right| {
+                right
+                    .is_dir
+                    .cmp(&left.is_dir)
+                    .then_with(|| left.name.cmp(&right.name))
             });
         }
 
-        roots.into_values().collect()
+        let mut roots = Vec::new();
+        for (path, count) in file_counts {
+            let parts = path.split('/').collect::<Vec<_>>();
+            insert_path(&mut roots, &parts, 0, "", count);
+        }
+        sort_nodes(&mut roots);
+        roots
     }
 
     fn history_flat_file_list(&self) -> Vec<FlatFileEntry> {
@@ -2866,43 +3238,7 @@ impl BvrApp {
         }
 
         if matches!(self.history_view_mode, HistoryViewMode::Git) {
-            let Some(cache) = &self.history_git_cache else {
-                return Vec::new();
-            };
-            cache
-                .commits
-                .iter()
-                .enumerate()
-                .filter(|(_, commit)| match self.history_search_mode {
-                    HistorySearchMode::Sha => {
-                        commit.sha.to_ascii_lowercase().starts_with(&query)
-                            || commit.short_sha.to_ascii_lowercase().starts_with(&query)
-                    }
-                    HistorySearchMode::Commit => {
-                        commit.message.to_ascii_lowercase().contains(&query)
-                    }
-                    HistorySearchMode::Author => {
-                        commit.author.to_ascii_lowercase().contains(&query)
-                            || commit.author_email.to_ascii_lowercase().contains(&query)
-                    }
-                    HistorySearchMode::Bead => {
-                        let related = self.history_git_related_beads_for_commit(&commit.sha);
-                        related
-                            .iter()
-                            .any(|id| id.to_ascii_lowercase().contains(&query))
-                    }
-                    HistorySearchMode::All => {
-                        commit.sha.to_ascii_lowercase().contains(&query)
-                            || commit.message.to_ascii_lowercase().contains(&query)
-                            || commit.author.to_ascii_lowercase().contains(&query)
-                            || commit
-                                .files
-                                .iter()
-                                .any(|f| f.path.to_ascii_lowercase().contains(&query))
-                    }
-                })
-                .map(|(i, _)| i)
-                .collect()
+            self.history_git_visible_commit_indices()
         } else {
             self.history_visible_issue_indices()
         }
@@ -3017,6 +3353,13 @@ impl BvrApp {
             .filter_map(|(index, commit)| {
                 let related = self.history_git_related_beads_for_commit(&commit.sha);
                 if related.is_empty() {
+                    return None;
+                }
+                if !commit
+                    .files
+                    .iter()
+                    .any(|file| self.history_path_matches_file_filter(&file.path))
+                {
                     return None;
                 }
 
@@ -3204,11 +3547,7 @@ impl BvrApp {
 
         self.ensure_git_history_loaded();
 
-        let commits_len = self
-            .history_git_cache
-            .as_ref()
-            .and_then(|cache| cache.histories.get(&issue_id))
-            .map_or(0, |history| history.commits.as_ref().map_or(0, Vec::len));
+        let commits_len = self.history_filtered_bead_commits(&issue_id).len();
 
         if commits_len == 0 {
             self.history_bead_commit_cursor = 0;
@@ -3330,9 +3669,7 @@ impl BvrApp {
 
     fn selected_history_bead_commit(&self) -> Option<HistoryCommitCompat> {
         let issue = self.selected_issue()?;
-        let cache = self.history_git_cache.as_ref()?;
-        let history = cache.histories.get(&issue.id)?;
-        let commits = history.commits.as_ref()?;
+        let commits = self.history_filtered_bead_commits(&issue.id);
         if commits.is_empty() {
             return None;
         }
@@ -3340,18 +3677,32 @@ impl BvrApp {
         let slot = self
             .history_bead_commit_cursor
             .min(commits.len().saturating_sub(1));
-        commits.get(slot).cloned()
+        commits.get(slot).map(|commit| (*commit).clone())
     }
 
     fn issue_matches_filter(&self, issue: &Issue) -> bool {
-        match self.list_filter {
+        let base = match self.list_filter {
             ListFilter::All => true,
             ListFilter::Open => issue.is_open_like(),
             ListFilter::Closed => issue.is_closed_like(),
             ListFilter::Ready => {
                 issue.is_open_like() && self.analyzer.graph.open_blockers(&issue.id).is_empty()
             }
+        };
+        if !base {
+            return false;
         }
+        if let Some(ref label) = self.modal_label_filter {
+            if !issue.labels.iter().any(|l| l == label) {
+                return false;
+            }
+        }
+        if let Some(ref repo) = self.modal_repo_filter {
+            if issue.source_repo != *repo {
+                return false;
+            }
+        }
+        true
     }
 
     fn visible_issue_indices(&self) -> Vec<usize> {
@@ -3411,7 +3762,10 @@ impl BvrApp {
         }
 
         let query = self.history_search_query.trim().to_ascii_lowercase();
-        if query.is_empty() {
+        if query.is_empty()
+            && self.history_file_tree_filter.is_none()
+            && self.history_min_confidence() == 0.0
+        {
             return visible;
         }
 
@@ -3420,38 +3774,42 @@ impl BvrApp {
             .into_iter()
             .filter(|index| {
                 self.analyzer.issues.get(*index).is_some_and(|issue| {
+                    let filtered_commits = if cache.is_some() {
+                        self.history_filtered_bead_commits(&issue.id)
+                    } else {
+                        Vec::new()
+                    };
+                    if (self.history_file_tree_filter.is_some()
+                        || self.history_min_confidence() > 0.0)
+                        && filtered_commits.is_empty()
+                    {
+                        return false;
+                    }
+
                     match self.history_search_mode {
                         HistorySearchMode::Bead => {
                             issue.id.to_ascii_lowercase().contains(&query)
                                 || issue.title.to_ascii_lowercase().contains(&query)
                         }
-                        HistorySearchMode::Sha => {
-                            // Search SHA prefixes in the bead's correlated commits
-                            cache
-                                .and_then(|c| c.histories.get(&issue.id))
-                                .and_then(|h| h.commits.as_deref())
-                                .unwrap_or_default()
-                                .iter()
-                                .any(|c| {
-                                    c.sha.to_ascii_lowercase().starts_with(&query)
-                                        || c.short_sha.to_ascii_lowercase().starts_with(&query)
-                                })
-                        }
-                        HistorySearchMode::Commit => cache
-                            .and_then(|c| c.histories.get(&issue.id))
-                            .and_then(|h| h.commits.as_deref())
-                            .unwrap_or_default()
+                        HistorySearchMode::Sha => filtered_commits.iter().any(|commit| {
+                            commit.sha.to_ascii_lowercase().starts_with(&query)
+                                || commit.short_sha.to_ascii_lowercase().starts_with(&query)
+                        }),
+                        HistorySearchMode::Commit => filtered_commits
                             .iter()
-                            .any(|c| c.message.to_ascii_lowercase().contains(&query)),
-                        HistorySearchMode::Author => cache
-                            .and_then(|c| c.histories.get(&issue.id))
-                            .map_or(false, |h| {
-                                h.last_author.to_ascii_lowercase().contains(&query)
-                                    || h.commits.as_deref().unwrap_or_default().iter().any(|c| {
-                                        c.author.to_ascii_lowercase().contains(&query)
-                                            || c.author_email.to_ascii_lowercase().contains(&query)
+                            .any(|commit| commit.message.to_ascii_lowercase().contains(&query)),
+                        HistorySearchMode::Author => cache.is_some_and(|c| {
+                            c.histories.get(&issue.id).is_some_and(|history| {
+                                history.last_author.to_ascii_lowercase().contains(&query)
+                                    || filtered_commits.iter().any(|commit| {
+                                        commit.author.to_ascii_lowercase().contains(&query)
+                                            || commit
+                                                .author_email
+                                                .to_ascii_lowercase()
+                                                .contains(&query)
                                     })
-                            }),
+                            })
+                        }),
                         HistorySearchMode::All => {
                             issue.id.to_ascii_lowercase().contains(&query)
                                 || issue.title.to_ascii_lowercase().contains(&query)
@@ -3525,10 +3883,20 @@ impl BvrApp {
 
     fn has_active_filter(&self) -> bool {
         self.list_filter != ListFilter::All
+            || self.modal_label_filter.is_some()
+            || self.modal_repo_filter.is_some()
+    }
+
+    fn should_clear_filter_with_all_shortcut(&self) -> bool {
+        self.has_active_filter() && !matches!(self.mode, ViewMode::Actionable)
     }
 
     fn set_list_filter(&mut self, list_filter: ListFilter) {
         self.list_filter = list_filter;
+        if matches!(list_filter, ListFilter::All) {
+            self.modal_label_filter = None;
+            self.modal_repo_filter = None;
+        }
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
@@ -4376,6 +4744,8 @@ impl BvrApp {
             ViewMode::Tree => self.tree_list_text(),
             ViewMode::LabelDashboard => self.label_dashboard_list_text(),
             ViewMode::FlowMatrix => self.flow_matrix_list_text(),
+            ViewMode::TimeTravelDiff => self.time_travel_list_text(),
+            ViewMode::Sprint => self.sprint_list_text(),
             ViewMode::Main => self.main_list_text(),
         }
     }
@@ -5067,21 +5437,24 @@ impl BvrApp {
         };
 
         if plan.tracks.is_empty() {
-            return "(no actionable tracks — all issues may be blocked or closed)".to_string();
+            return "⚡ ACTIONABLE ITEMS\n\n✓ No actionable items. All tasks are either blocked or completed."
+                .to_string();
         }
 
         let mut lines = Vec::new();
         lines.push(format!(
-            "  {} tracks | {} actionable items",
-            plan.tracks.len(),
-            plan.summary.actionable_count
+            "⚡ ACTIONABLE ITEMS | {} items in {} tracks",
+            plan.summary.actionable_count,
+            plan.tracks.len()
         ));
-        if let Some(ref highest) = plan.summary.highest_impact {
-            lines.push(format!("  Highest impact: {highest}"));
+        if let (Some(highest), Some(reason)) = (
+            plan.summary.highest_impact.as_deref(),
+            plan.summary.impact_reason.as_deref(),
+        ) {
+            lines.push(format!("RECOMMENDED: Start with {highest} -> {reason}"));
         }
         lines.push(String::new());
 
-        let mut global_idx = 0usize;
         for (track_idx, track) in plan.tracks.iter().enumerate() {
             let track_marker = if track_idx == self.actionable_track_cursor
                 && matches!(self.focus, FocusPane::List)
@@ -5090,38 +5463,45 @@ impl BvrApp {
             } else {
                 " "
             };
+            let track_label = track.id.strip_prefix("track-").unwrap_or(&track.id);
             lines.push(format!(
-                "{track_marker} Track {} ({} items): {}",
-                track.id,
-                track.items.len(),
+                "{track_marker} TRACK {track_label} | {}",
                 track.reason
+            ));
+            lines.push(format!(
+                "  {} item{}",
+                track.items.len(),
+                if track.items.len() == 1 { "" } else { "s" }
             ));
             for (item_idx, item) in track.items.iter().enumerate() {
                 let item_marker = if track_idx == self.actionable_track_cursor
                     && item_idx == self.actionable_item_cursor
                     && matches!(self.focus, FocusPane::Detail)
                 {
-                    "  ▹"
+                    "  ▸"
                 } else {
                     "   "
                 };
+                let tree = if item_idx + 1 < track.items.len() {
+                    "├─"
+                } else {
+                    "└─"
+                };
+                let title = truncate_str(&item.title, 42);
+                let unblocks = if item.unblocks.is_empty() {
+                    String::new()
+                } else {
+                    format!(" -> {}", item.unblocks.len())
+                };
                 lines.push(format!(
-                    "{item_marker} {:<12} {:.2}  {}",
-                    item.id,
-                    item.score,
-                    if item.title.len() > 40 {
-                        format!("{}…", &item.title[..39])
-                    } else {
-                        item.title.clone()
-                    }
+                    "{item_marker}{tree} {:<12} {:>5.2}  {}{}",
+                    item.id, item.score, title, unblocks
                 ));
-                global_idx += 1;
             }
             lines.push(String::new());
         }
-        let _ = global_idx;
 
-        lines.join("\n")
+        lines.join("\n").trim_end().to_string()
     }
 
     fn actionable_detail_text(&self) -> String {
@@ -5133,10 +5513,16 @@ impl BvrApp {
             return "(no track selected)".to_string();
         };
 
+        let track_label = track.id.strip_prefix("track-").unwrap_or(&track.id);
+
         let mut lines = Vec::new();
-        lines.push(format!("Track: {}", track.id));
-        lines.push(format!("Reason: {}", track.reason));
-        lines.push(format!("Items: {}", track.items.len()));
+        lines.push(format!("TRACK {track_label}"));
+        lines.push(track.reason.clone());
+        lines.push(format!(
+            "{} actionable item{}",
+            track.items.len(),
+            if track.items.len() == 1 { "" } else { "s" }
+        ));
         lines.push(String::new());
 
         for (idx, item) in track.items.iter().enumerate() {
@@ -5145,8 +5531,8 @@ impl BvrApp {
             } else {
                 " "
             };
-            lines.push(format!("{marker} {} (score: {:.3})", item.id, item.score));
-            lines.push(format!("  Title: {}", item.title));
+            lines.push(format!("{marker} {}  score {:.3}", item.id, item.score));
+            lines.push(format!("  {}", item.title));
             if !item.unblocks.is_empty() {
                 lines.push(format!("  Unblocks: {}", item.unblocks.join(", ")));
             }
@@ -5154,11 +5540,15 @@ impl BvrApp {
             lines.push(String::new());
         }
 
-        if let Some(ref reason) = plan.summary.impact_reason {
-            lines.push(format!("Impact: {reason}"));
+        if let (Some(highest), Some(reason)) = (
+            plan.summary.highest_impact.as_deref(),
+            plan.summary.impact_reason.as_deref(),
+        ) {
+            lines.push(format!("Highest impact: {highest}"));
+            lines.push(format!("Impact detail: {reason}"));
         }
 
-        lines.join("\n")
+        lines.join("\n").trim_end().to_string()
     }
 
     // -- end Actionable view -----------------------------------------------
@@ -5974,6 +6364,622 @@ impl BvrApp {
 
     // -- end FlowMatrix view -----------------------------------------------
 
+    // -- TimeTravelDiff view -------------------------------------------------
+
+    fn toggle_time_travel_mode(&mut self) {
+        if matches!(self.mode, ViewMode::TimeTravelDiff) {
+            self.mode = ViewMode::Main;
+            self.focus = FocusPane::List;
+        } else {
+            self.mode = ViewMode::TimeTravelDiff;
+            self.focus = FocusPane::List;
+            if self.time_travel_diff.is_none() {
+                // If no diff loaded yet, prompt for a ref
+                self.time_travel_input_active = true;
+                self.time_travel_ref_input.clear();
+            }
+        }
+    }
+
+    fn execute_time_travel(&mut self) {
+        let reference = self.time_travel_ref_input.trim().to_string();
+        if reference.is_empty() {
+            self.status_msg = "Time-travel: empty ref, cancelled".into();
+            self.time_travel_input_active = false;
+            if self.time_travel_diff.is_none() {
+                self.mode = ViewMode::Main;
+                self.focus = FocusPane::List;
+            }
+            return;
+        }
+
+        self.time_travel_input_active = false;
+        self.time_travel_last_ref = Some(reference.clone());
+
+        // Try to load historical snapshot
+        match self.load_time_travel_diff(&reference) {
+            Ok(diff) => {
+                self.time_travel_diff = Some(diff);
+                self.time_travel_category_cursor = 0;
+                self.time_travel_issue_cursor = 0;
+                self.status_msg = format!("Time-travel: loaded diff from {reference}");
+            }
+            Err(err) => {
+                self.status_msg = format!("Time-travel: {err}");
+            }
+        }
+    }
+
+    fn load_time_travel_diff(
+        &self,
+        reference: &str,
+    ) -> std::result::Result<crate::analysis::diff::SnapshotDiff, String> {
+        // Try file path first
+        let path = std::path::Path::new(reference);
+        if path.is_file() {
+            let before = crate::loader::load_issues_from_file(path)
+                .map_err(|e| format!("load file: {e}"))?;
+            return Ok(crate::analysis::diff::compare_snapshots(
+                &before,
+                &self.analyzer.issues,
+            ));
+        }
+
+        // Try repo-relative path
+        if let Some(ref root) = self.repo_root {
+            let rooted = root.join(reference);
+            if rooted.is_file() {
+                let before = crate::loader::load_issues_from_file(&rooted)
+                    .map_err(|e| format!("load file: {e}"))?;
+                return Ok(crate::analysis::diff::compare_snapshots(
+                    &before,
+                    &self.analyzer.issues,
+                ));
+            }
+        }
+
+        // Try git ref
+        let repo_root = self
+            .repo_root
+            .as_deref()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let repo_root_str = repo_root.to_string_lossy();
+
+        // Find beads file candidates
+        let candidates = [".beads/issues.jsonl", ".beads/beads.jsonl"];
+        for candidate in &candidates {
+            let output = std::process::Command::new("git")
+                .args([
+                    "-C",
+                    &repo_root_str,
+                    "show",
+                    &format!("{reference}:{candidate}"),
+                ])
+                .output()
+                .map_err(|e| format!("git show: {e}"))?;
+
+            if output.status.success() {
+                let content = String::from_utf8_lossy(&output.stdout);
+                let before = crate::loader::parse_issues_from_text(&content)
+                    .map_err(|e| format!("parse: {e}"))?;
+                return Ok(crate::analysis::diff::compare_snapshots(
+                    &before,
+                    &self.analyzer.issues,
+                ));
+            }
+        }
+
+        Err(format!(
+            "could not resolve '{reference}' as file or git ref"
+        ))
+    }
+
+    fn time_travel_categories(&self) -> Vec<(&str, usize)> {
+        let Some(ref diff) = self.time_travel_diff else {
+            return Vec::new();
+        };
+        let mut cats = Vec::new();
+        let new_count = diff.new_issues.as_ref().map_or(0, |v| v.len());
+        let closed_count = diff.closed_issues.as_ref().map_or(0, |v| v.len());
+        let removed_count = diff.removed_issues.as_ref().map_or(0, |v| v.len());
+        let reopened_count = diff.reopened_issues.as_ref().map_or(0, |v| v.len());
+        let modified_count = diff.modified_issues.as_ref().map_or(0, |v| v.len());
+        let new_cycles = diff.new_cycles.as_ref().map_or(0, |v| v.len());
+        let resolved_cycles = diff.resolved_cycles.as_ref().map_or(0, |v| v.len());
+
+        if new_count > 0 {
+            cats.push(("New issues", new_count));
+        }
+        if closed_count > 0 {
+            cats.push(("Closed issues", closed_count));
+        }
+        if removed_count > 0 {
+            cats.push(("Removed issues", removed_count));
+        }
+        if reopened_count > 0 {
+            cats.push(("Reopened issues", reopened_count));
+        }
+        if modified_count > 0 {
+            cats.push(("Modified issues", modified_count));
+        }
+        if new_cycles > 0 {
+            cats.push(("New cycles", new_cycles));
+        }
+        if resolved_cycles > 0 {
+            cats.push(("Resolved cycles", resolved_cycles));
+        }
+        cats
+    }
+
+    fn time_travel_list_text(&self) -> String {
+        let Some(ref diff) = self.time_travel_diff else {
+            if self.time_travel_input_active {
+                return format!(
+                    " Enter git ref or file path:\n > {}_",
+                    self.time_travel_ref_input
+                );
+            }
+            return " No diff loaded. Press t to enter a ref.".to_string();
+        };
+
+        let mut lines = Vec::new();
+        let ref_label = self
+            .time_travel_last_ref
+            .as_deref()
+            .unwrap_or("unknown");
+        lines.push(format!(" Diff from: {ref_label}"));
+        lines.push(format!(
+            " Summary: {} changes",
+            diff.summary.total_changes
+        ));
+        lines.push(String::new());
+
+        let cats = self.time_travel_categories();
+        if cats.is_empty() {
+            lines.push(" (no changes detected)".to_string());
+        } else {
+            for (i, (label, count)) in cats.iter().enumerate() {
+                let marker = if i == self.time_travel_category_cursor {
+                    ">"
+                } else {
+                    " "
+                };
+                lines.push(format!(" {marker} {label} ({count})"));
+            }
+        }
+
+        // Metric deltas summary
+        lines.push(String::new());
+        lines.push(" METRIC DELTAS".to_string());
+        let md = &diff.metric_deltas;
+        if md.total_issues != 0 {
+            lines.push(format!("   Total issues: {:+}", md.total_issues));
+        }
+        if md.open_issues != 0 {
+            lines.push(format!("   Open issues:  {:+}", md.open_issues));
+        }
+        if md.blocked_issues != 0 {
+            lines.push(format!("   Blocked:      {:+}", md.blocked_issues));
+        }
+        if md.total_edges != 0 {
+            lines.push(format!("   Edges:        {:+}", md.total_edges));
+        }
+        if md.cycle_count != 0 {
+            lines.push(format!("   Cycles:       {:+}", md.cycle_count));
+        }
+
+        lines.join("\n")
+    }
+
+    fn time_travel_detail_text(&self) -> String {
+        let Some(ref diff) = self.time_travel_diff else {
+            return String::new();
+        };
+
+        let cats = self.time_travel_categories();
+        if cats.is_empty() {
+            return " No changes in this diff.".to_string();
+        }
+
+        let cat_idx = self.time_travel_category_cursor.min(cats.len().saturating_sub(1));
+        let (label, _) = cats[cat_idx];
+
+        let mut lines = Vec::new();
+        lines.push(format!(" {label}"));
+        lines.push(String::new());
+
+        match label {
+            "New issues" => {
+                if let Some(ref issues) = diff.new_issues {
+                    for (i, di) in issues.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!(
+                            " {marker} {} [{}] {}",
+                            di.id, di.status, di.title
+                        ));
+                    }
+                }
+            }
+            "Closed issues" => {
+                if let Some(ref issues) = diff.closed_issues {
+                    for (i, di) in issues.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!(
+                            " {marker} {} [{}] {}",
+                            di.id, di.status, di.title
+                        ));
+                    }
+                }
+            }
+            "Removed issues" => {
+                if let Some(ref issues) = diff.removed_issues {
+                    for (i, di) in issues.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!(
+                            " {marker} {} [{}] {}",
+                            di.id, di.status, di.title
+                        ));
+                    }
+                }
+            }
+            "Reopened issues" => {
+                if let Some(ref issues) = diff.reopened_issues {
+                    for (i, di) in issues.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!(
+                            " {marker} {} [{}] {}",
+                            di.id, di.status, di.title
+                        ));
+                    }
+                }
+            }
+            "Modified issues" => {
+                if let Some(ref issues) = diff.modified_issues {
+                    for (i, mi) in issues.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        let field_changes: Vec<&str> = mi
+                            .changes
+                            .iter()
+                            .map(|c| c.field.as_str())
+                            .collect();
+                        lines.push(format!(
+                            " {marker} {} ({} fields: {})",
+                            mi.issue_id,
+                            mi.changes.len(),
+                            field_changes.join(", ")
+                        ));
+                    }
+                }
+            }
+            "New cycles" => {
+                if let Some(ref cycles) = diff.new_cycles {
+                    for (i, cycle) in cycles.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!(
+                            " {marker} [{}]",
+                            cycle.join(" -> ")
+                        ));
+                    }
+                }
+            }
+            "Resolved cycles" => {
+                if let Some(ref cycles) = diff.resolved_cycles {
+                    for (i, cycle) in cycles.iter().enumerate() {
+                        let marker = if i == self.time_travel_issue_cursor {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        lines.push(format!(
+                            " {marker} [{}]",
+                            cycle.join(" -> ")
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        lines.join("\n")
+    }
+
+    // -- end TimeTravelDiff view ---------------------------------------------
+
+    // -- Sprint view ---------------------------------------------------------
+
+    fn toggle_sprint_mode(&mut self) {
+        if matches!(self.mode, ViewMode::Sprint) {
+            self.mode = ViewMode::Main;
+        } else {
+            self.load_sprint_data();
+            self.mode = ViewMode::Sprint;
+            self.sprint_cursor = 0;
+            self.sprint_issue_cursor = 0;
+        }
+    }
+
+    fn load_sprint_data(&mut self) {
+        self.sprint_data = loader::load_sprints(self.repo_root.as_deref()).unwrap_or_default();
+    }
+
+    fn sprint_visible_issues(&self) -> Vec<(usize, &Issue)> {
+        let sprint = match self.sprint_data.get(self.sprint_cursor) {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
+        sprint
+            .bead_ids
+            .iter()
+            .filter_map(|bead_id| {
+                self.analyzer
+                    .issues
+                    .iter()
+                    .enumerate()
+                    .find(|(_, issue)| issue.id == *bead_id)
+            })
+            .collect()
+    }
+
+    fn sprint_list_text(&self) -> String {
+        if self.sprint_data.is_empty() {
+            return " No sprints found.\n\n \
+                    Sprints are defined in .beads/sprints.jsonl\n \
+                    Each line: {\"id\":\"sprint-1\",\"name\":\"Sprint Alpha\",\n \
+                    \"start_date\":\"...\",\"end_date\":\"...\",\"bead_ids\":[...]}"
+                .to_string();
+        }
+
+        let now = Utc::now();
+        let mut lines = Vec::new();
+        lines.push(format!(" {} sprint(s)", self.sprint_data.len()));
+        lines.push(String::new());
+
+        for (i, sprint) in self.sprint_data.iter().enumerate() {
+            let marker = if i == self.sprint_cursor { "▸" } else { " " };
+            let active = if sprint.is_active_at(now) {
+                " [ACTIVE]"
+            } else {
+                ""
+            };
+            let issue_count = sprint.bead_ids.len();
+            let dates = match (&sprint.start_date, &sprint.end_date) {
+                (Some(start), Some(end)) => {
+                    format!("{} → {}", start.format("%Y-%m-%d"), end.format("%Y-%m-%d"))
+                }
+                _ => "no dates".to_string(),
+            };
+            lines.push(format!(
+                " {marker} {} | {} issues | {dates}{active}",
+                sprint.name, issue_count
+            ));
+
+            // Show mini-progress
+            let matched_issues = sprint
+                .bead_ids
+                .iter()
+                .filter(|id| {
+                    self.analyzer
+                        .issues
+                        .iter()
+                        .any(|issue| issue.id == **id)
+                })
+                .count();
+            let closed = sprint
+                .bead_ids
+                .iter()
+                .filter(|id| {
+                    self.analyzer
+                        .issues
+                        .iter()
+                        .any(|issue| issue.id == **id && issue.is_closed_like())
+                })
+                .count();
+            if matched_issues > 0 {
+                let pct = (closed as f64 / matched_issues as f64 * 100.0) as u32;
+                lines.push(format!(
+                    "   {closed}/{matched_issues} done ({pct}%)"
+                ));
+            }
+        }
+
+        lines.join("\n")
+    }
+
+    fn sprint_detail_text(&self) -> String {
+        let sprint = match self.sprint_data.get(self.sprint_cursor) {
+            Some(s) => s,
+            None => return " Select a sprint from the list.".to_string(),
+        };
+
+        let now = Utc::now();
+        let mut lines = Vec::new();
+
+        // Sprint header
+        lines.push(format!(" SPRINT: {}", sprint.name));
+        if sprint.is_active_at(now) {
+            lines.push(" Status: ACTIVE".to_string());
+        } else if sprint
+            .end_date
+            .is_some_and(|end| end < now)
+        {
+            lines.push(" Status: Completed".to_string());
+        } else {
+            lines.push(" Status: Upcoming".to_string());
+        }
+
+        if let (Some(start), Some(end)) = (&sprint.start_date, &sprint.end_date) {
+            lines.push(format!(
+                " Dates: {} → {}",
+                start.format("%Y-%m-%d"),
+                end.format("%Y-%m-%d")
+            ));
+            let total_days = (*end - *start).num_days();
+            let elapsed = (now - *start).num_days().max(0).min(total_days);
+            let remaining = total_days - elapsed;
+            lines.push(format!(
+                " Days: {total_days} total, {elapsed} elapsed, {remaining} remaining"
+            ));
+        }
+        lines.push(String::new());
+
+        // Issue list
+        let visible = self.sprint_visible_issues();
+        if visible.is_empty() {
+            lines.push(format!(
+                " {} bead(s) assigned, none matched loaded issues.",
+                sprint.bead_ids.len()
+            ));
+        } else {
+            let total = visible.len();
+            let closed = visible
+                .iter()
+                .filter(|(_, issue)| issue.is_closed_like())
+                .count();
+            let open = total - closed;
+            lines.push(format!(
+                " Issues: {total} total, {open} open, {closed} closed"
+            ));
+            lines.push(String::new());
+
+            // Sorted: open first (by priority), then closed
+            let mut sorted: Vec<_> = visible.clone();
+            sorted.sort_by(|(_, a), (_, b)| {
+                let a_closed = a.is_closed_like();
+                let b_closed = b.is_closed_like();
+                a_closed
+                    .cmp(&b_closed)
+                    .then(a.priority.cmp(&b.priority))
+            });
+
+            for (i, (_, issue)) in sorted.iter().enumerate() {
+                let marker = if i == self.sprint_issue_cursor {
+                    "▸"
+                } else {
+                    " "
+                };
+                let status_icon = if issue.is_closed_like() {
+                    "✓"
+                } else if issue.status == "in_progress" {
+                    "●"
+                } else if issue.status == "blocked" {
+                    "✗"
+                } else {
+                    "○"
+                };
+                lines.push(format!(
+                    " {marker} {status_icon} {} [P{}] {}",
+                    issue.id, issue.priority, issue.title
+                ));
+            }
+
+            // Burndown summary (ASCII bar)
+            lines.push(String::new());
+            if total > 0 {
+                let pct = (closed as f64 / total as f64 * 100.0) as usize;
+                let filled = pct / 5;
+                let empty = 20 - filled;
+                let bar = format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), pct);
+                lines.push(format!(" Progress: {bar}"));
+            }
+        }
+
+        lines.join("\n")
+    }
+
+    // -- end Sprint view -----------------------------------------------------
+
+    // -- Modal pickers -------------------------------------------------------
+
+    fn open_recipe_picker(&mut self) {
+        let recipes = crate::analysis::recipe::list_recipes();
+        let items: Vec<(String, String)> = recipes
+            .into_iter()
+            .map(|r| (r.name, r.description))
+            .collect();
+        self.modal_overlay = Some(ModalOverlay::RecipePicker { items, cursor: 0 });
+    }
+
+    fn open_label_picker(&mut self) {
+        let mut label_counts = BTreeMap::<String, usize>::new();
+        for issue in &self.analyzer.issues {
+            for label in &issue.labels {
+                *label_counts.entry(label.clone()).or_insert(0) += 1;
+            }
+        }
+        let items: Vec<(String, usize)> = label_counts.into_iter().collect();
+        self.modal_overlay = Some(ModalOverlay::LabelPicker { items, cursor: 0 });
+    }
+
+    fn open_repo_picker(&mut self) {
+        let mut repos = std::collections::HashSet::<String>::new();
+        for issue in &self.analyzer.issues {
+            if !issue.source_repo.is_empty() {
+                repos.insert(issue.source_repo.clone());
+            }
+        }
+        let mut items: Vec<String> = repos.into_iter().collect();
+        items.sort();
+        if items.is_empty() {
+            self.status_msg = "No workspace repos loaded".into();
+            return;
+        }
+        self.modal_overlay = Some(ModalOverlay::RepoPicker { items, cursor: 0 });
+    }
+
+    fn set_label_filter(&mut self, label: &str) {
+        if self
+            .modal_label_filter
+            .as_deref()
+            .is_some_and(|current| current == label)
+        {
+            self.modal_label_filter = None;
+            self.status_msg = "Label filter cleared".into();
+        } else {
+            self.modal_label_filter = Some(label.to_string());
+            self.status_msg = format!("Filtering by label: {label}");
+        }
+    }
+
+    fn set_repo_filter(&mut self, repo: &str) {
+        if self
+            .modal_repo_filter
+            .as_deref()
+            .is_some_and(|current| current == repo)
+        {
+            self.modal_repo_filter = None;
+            self.status_msg = "Repo filter cleared".into();
+        } else {
+            self.modal_repo_filter = Some(repo.to_string());
+            self.status_msg = format!("Filtering by repo: {repo}");
+        }
+    }
+
+    // -- end Modal pickers ---------------------------------------------------
+
     fn detail_panel_text(&self) -> String {
         match self.mode {
             ViewMode::Board => self.board_detail_text(),
@@ -5985,6 +6991,8 @@ impl BvrApp {
             ViewMode::Tree => self.tree_detail_text(),
             ViewMode::LabelDashboard => self.label_dashboard_detail_text(),
             ViewMode::FlowMatrix => self.flow_matrix_detail_text(),
+            ViewMode::TimeTravelDiff => self.time_travel_detail_text(),
+            ViewMode::Sprint => self.sprint_detail_text(),
             ViewMode::Main => self.issue_detail_text(),
         }
     }
@@ -7326,11 +8334,7 @@ impl BvrApp {
         }
 
         if let Some(commit) = self.selected_history_bead_commit() {
-            let total = self
-                .history_git_cache
-                .as_ref()
-                .and_then(|cache| cache.histories.get(&issue.id))
-                .map_or(0, |history| history.commits.as_ref().map_or(0, Vec::len));
+            let total = self.history_filtered_bead_commits(&issue.id).len();
             let slot = self.history_bead_commit_cursor.min(total.saturating_sub(1));
 
             lines.push(String::new());
@@ -7909,6 +8913,17 @@ fn new_app_with_background(
         flow_matrix: None,
         flow_matrix_row_cursor: 0,
         flow_matrix_col_cursor: 0,
+        time_travel_ref_input: String::new(),
+        time_travel_input_active: false,
+        time_travel_diff: None,
+        time_travel_category_cursor: 0,
+        time_travel_issue_cursor: 0,
+        time_travel_last_ref: None,
+        sprint_data: Vec::new(),
+        sprint_cursor: 0,
+        sprint_issue_cursor: 0,
+        modal_label_filter: None,
+        modal_repo_filter: None,
         priority_hints_visible: false,
         status_msg: String::new(),
         #[cfg(not(test))]
@@ -8003,14 +9018,17 @@ fn buffer_to_text(buf: &ftui::Buffer, pool: &ftui::GraphemePool) -> String {
 mod tests {
     use super::{
         BackgroundTickDecision, BoardGrouping, BvrApp, EmptyLaneVisibility, FocusPane,
-        HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter, ListSort, ModalOverlay,
-        MouseEventKind, Msg, ViewMode, background_warning_message, decide_background_tick,
-        render_debug_view, should_apply_background_reload,
+        GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache,
+        HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
+        ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
+        decide_background_tick, render_debug_view, should_apply_background_reload,
     };
     use crate::analysis::Analyzer;
-    use crate::model::{Comment, Dependency, Issue, ts};
+    use crate::analysis::git_history::HistoryFileChangeCompat;
+    use crate::model::{Comment, Dependency, Issue, Sprint, ts};
     use ftui::core::event::{KeyCode, Modifiers};
     use ftui::runtime::{Cmd, Model};
+    use std::collections::BTreeMap;
 
     fn sample_issues() -> Vec<Issue> {
         vec![
@@ -8273,6 +9291,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -8284,6 +9313,114 @@ mod tests {
         let mut app = new_app(mode, selected);
         app.analyzer = Analyzer::new(issues);
         app.selected = selected;
+        app
+    }
+
+    fn history_file_change(path: &str) -> HistoryFileChangeCompat {
+        HistoryFileChangeCompat {
+            path: path.to_string(),
+            action: "M".to_string(),
+            insertions: 1,
+            deletions: 0,
+        }
+    }
+
+    fn history_commit(
+        sha: &str,
+        message: &str,
+        confidence: f64,
+        paths: &[&str],
+    ) -> HistoryCommitCompat {
+        HistoryCommitCompat {
+            sha: sha.to_string(),
+            short_sha: sha[..7.min(sha.len())].to_string(),
+            message: message.to_string(),
+            author: "Test Author".to_string(),
+            author_email: "test@example.com".to_string(),
+            timestamp: "2026-01-10T00:00:00Z".to_string(),
+            files: paths.iter().map(|path| history_file_change(path)).collect(),
+            method: "co_committed".to_string(),
+            confidence,
+            reason: "fixture".to_string(),
+        }
+    }
+
+    fn git_commit_record(sha: &str, message: &str, paths: &[&str]) -> GitCommitRecord {
+        GitCommitRecord {
+            sha: sha.to_string(),
+            short_sha: sha[..7.min(sha.len())].to_string(),
+            timestamp: "2026-01-10T00:00:00Z".to_string(),
+            author: "Test Author".to_string(),
+            author_email: "test@example.com".to_string(),
+            message: message.to_string(),
+            files: paths.iter().map(|path| history_file_change(path)).collect(),
+            changed_beads: true,
+            changed_non_beads: true,
+        }
+    }
+
+    fn history_app_with_git_cache(view_mode: HistoryViewMode, selected: usize) -> BvrApp {
+        let ui_commit = history_commit(
+            "aaaa1111",
+            "feat: ui wiring",
+            0.95,
+            &["src/ui/app.rs", "src/ui/detail.rs"],
+        );
+        let core_commit =
+            history_commit("bbbb2222", "feat: graph core", 0.80, &["src/core/graph.rs"]);
+        let docs_commit = history_commit("cccc3333", "docs: readme", 0.90, &["README.md"]);
+        let build_commit = history_commit("dddd4444", "chore: cargo polish", 0.85, &["Cargo.toml"]);
+
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "A".to_string(),
+            HistoryBeadCompat {
+                bead_id: "A".to_string(),
+                title: "Root".to_string(),
+                status: "open".to_string(),
+                events: Vec::new(),
+                milestones: HistoryMilestonesCompat::default(),
+                commits: Some(vec![ui_commit.clone(), core_commit.clone()]),
+                cycle_time: None,
+                last_author: "Alice".to_string(),
+            },
+        );
+        histories.insert(
+            "B".to_string(),
+            HistoryBeadCompat {
+                bead_id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                events: Vec::new(),
+                milestones: HistoryMilestonesCompat::default(),
+                commits: Some(vec![docs_commit.clone(), build_commit.clone()]),
+                cycle_time: None,
+                last_author: "Bob".to_string(),
+            },
+        );
+
+        let mut commit_bead_confidence = BTreeMap::new();
+        commit_bead_confidence.insert("aaaa1111".to_string(), vec![("A".to_string(), 0.95)]);
+        commit_bead_confidence.insert("bbbb2222".to_string(), vec![("A".to_string(), 0.80)]);
+        commit_bead_confidence.insert("cccc3333".to_string(), vec![("B".to_string(), 0.90)]);
+        commit_bead_confidence.insert("dddd4444".to_string(), vec![("B".to_string(), 0.85)]);
+
+        let mut app = new_app(ViewMode::History, selected);
+        app.history_view_mode = view_mode;
+        app.history_git_cache = Some(HistoryGitCache {
+            commits: vec![
+                git_commit_record(
+                    "aaaa1111",
+                    "feat: ui wiring",
+                    &["src/ui/app.rs", "src/ui/detail.rs"],
+                ),
+                git_commit_record("bbbb2222", "feat: graph core", &["src/core/graph.rs"]),
+                git_commit_record("cccc3333", "docs: readme", &["README.md"]),
+                git_commit_record("dddd4444", "chore: cargo polish", &["Cargo.toml"]),
+            ],
+            histories,
+            commit_bead_confidence,
+        });
         app
     }
 
@@ -9233,6 +10370,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9318,6 +10466,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9397,6 +10556,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9494,6 +10664,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9575,6 +10756,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9657,6 +10849,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9740,6 +10943,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9818,6 +11032,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9911,6 +11136,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -9990,6 +11226,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -10140,6 +11387,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -10225,6 +11483,17 @@ mod tests {
             flow_matrix: None,
             flow_matrix_row_cursor: 0,
             flow_matrix_col_cursor: 0,
+            time_travel_ref_input: String::new(),
+            time_travel_input_active: false,
+            time_travel_diff: None,
+            time_travel_category_cursor: 0,
+            time_travel_issue_cursor: 0,
+            time_travel_last_ref: None,
+            sprint_data: Vec::new(),
+            sprint_cursor: 0,
+            sprint_issue_cursor: 0,
+            modal_label_filter: None,
+            modal_repo_filter: None,
             priority_hints_visible: false,
             status_msg: String::new(),
             #[cfg(test)]
@@ -10719,6 +11988,23 @@ mod tests {
     }
 
     #[test]
+    fn actionable_text_uses_legacy_summary_shape() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('a')));
+
+        let list = app.list_panel_text();
+        assert!(list.contains("ACTIONABLE ITEMS"));
+        assert!(list.contains("TRACK 1"));
+        assert!(list.contains("RECOMMENDED:"));
+
+        app.update(key(KeyCode::Tab));
+        let detail = app.detail_panel_text();
+        assert!(detail.contains("TRACK 1"));
+        assert!(detail.contains("Claim:"));
+        assert!(detail.contains("Highest impact:"));
+    }
+
+    #[test]
     fn empty_lane_visibility_3state_cycle() {
         let v = EmptyLaneVisibility::Auto;
         assert_eq!(v.next(), EmptyLaneVisibility::ShowAll);
@@ -10734,7 +12020,156 @@ mod tests {
         assert!(!auto.should_show_empty(BoardGrouping::Type));
     }
 
+    #[test]
+    fn help_overlay_text_switches_column_layout_at_width_thresholds() {
+        let app = new_app(ViewMode::Main, 0);
+
+        let narrow = app.help_overlay_text(70);
+        let medium = app.help_overlay_text(80);
+        let wide = app.help_overlay_text(120);
+
+        assert!(!narrow.lines().any(|line| line.contains(" | ")));
+        assert!(medium.lines().any(|line| line.matches(" | ").count() == 1));
+        assert!(wide.lines().any(|line| line.matches(" | ").count() >= 2));
+
+        for section in [
+            "[Navigation]",
+            "[Views]",
+            "[Filters]",
+            "[Search]",
+            "[Actions]",
+            "[History]",
+            "[Board]",
+            "[Insights]",
+            "[Global]",
+        ] {
+            assert!(wide.contains(section), "wide help should include {section}");
+        }
+    }
+
+    #[test]
+    fn help_overlay_text_keeps_critical_shortcuts_visible_in_compact_mode() {
+        let app = new_app(ViewMode::Main, 0);
+        let text = app.help_overlay_text(70);
+
+        for snippet in [
+            "Filter: open only",
+            "Toggle file tree",
+            "Ctrl+R/F5",
+            "Quit immediately",
+        ] {
+            assert!(
+                text.contains(snippet),
+                "compact help should include {snippet}"
+            );
+        }
+    }
+
     // -- History parity tests ------------------------------------------------
+
+    #[test]
+    fn history_file_tree_builds_nested_directories_and_root_files() {
+        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        let nodes = app.history_file_tree_nodes();
+
+        assert_eq!(nodes.first().map(|node| node.name.as_str()), Some("src"));
+        assert_eq!(
+            nodes
+                .iter()
+                .filter(|node| !node.is_dir)
+                .map(|node| node.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Cargo.toml", "README.md"]
+        );
+
+        let src = nodes
+            .iter()
+            .find(|node| node.path == "src")
+            .expect("src root node should exist");
+        assert_eq!(src.change_count, 3);
+        assert_eq!(
+            src.children
+                .iter()
+                .map(|node| node.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["core", "ui"]
+        );
+
+        let ui = src
+            .children
+            .iter()
+            .find(|node| node.path == "src/ui")
+            .expect("src/ui directory should exist");
+        assert_eq!(ui.change_count, 2);
+        assert_eq!(
+            ui.children
+                .iter()
+                .map(|node| node.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["app.rs", "detail.rs"]
+        );
+    }
+
+    #[test]
+    fn history_file_tree_filter_applies_to_git_view_and_panel_text() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.history_show_file_tree = true;
+        app.history_file_tree_focus = true;
+        app.history_file_tree_cursor = app
+            .history_flat_file_list()
+            .iter()
+            .position(|entry| entry.path == "src/ui")
+            .expect("src/ui entry should exist");
+
+        app.file_tree_toggle_or_filter();
+
+        assert_eq!(app.history_file_tree_filter.as_deref(), Some("src/ui"));
+        assert_eq!(app.history_git_visible_commit_indices(), vec![0]);
+
+        let panel = app.file_tree_panel_text();
+        assert!(panel.contains("Filter: src/ui"));
+        assert!(panel.contains("src/"));
+        assert!(panel.contains("ui/"));
+        assert!(panel.contains("app.rs"));
+    }
+
+    #[test]
+    fn history_file_tree_filter_repositions_hidden_bead_selection() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 1);
+        app.history_show_file_tree = true;
+        app.history_file_tree_cursor = app
+            .history_flat_file_list()
+            .iter()
+            .position(|entry| entry.path == "src/ui")
+            .expect("src/ui entry should exist");
+
+        app.file_tree_toggle_or_filter();
+
+        assert_eq!(selected_issue_id(&app), "A");
+        assert_eq!(app.history_visible_issue_indices(), vec![0]);
+        assert_eq!(
+            app.selected_history_bead_commit()
+                .map(|commit| commit.short_sha),
+            Some("aaaa111".to_string())
+        );
+    }
+
+    #[test]
+    fn history_escape_closes_file_tree_before_leaving_history() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        app.mode_before_history = ViewMode::Main;
+        app.history_show_file_tree = true;
+        app.history_file_tree_focus = true;
+
+        app.update(key(KeyCode::Escape));
+        assert!(matches!(app.mode, ViewMode::History));
+        assert!(!app.history_show_file_tree);
+        assert!(!app.history_file_tree_focus);
+
+        app.update(key(KeyCode::Escape));
+        assert!(matches!(app.mode, ViewMode::Main));
+    }
 
     #[test]
     fn history_f_toggles_file_tree() {
@@ -10921,6 +12356,45 @@ mod tests {
             visible_all.len() >= visible_status.len(),
             "All mode should match at least as many as Bead mode"
         );
+    }
+
+    #[test]
+    fn history_git_search_modes_filter_commit_sha_and_author_fields() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        if let Some(cache) = app.history_git_cache.as_mut() {
+            cache.commits[0].author = "Alice Example".to_string();
+            cache.commits[0].author_email = "alice@example.com".to_string();
+            cache.commits[1].author = "Carol Example".to_string();
+            cache.commits[1].author_email = "carol@example.com".to_string();
+            cache.commits[2].author = "Bob Example".to_string();
+            cache.commits[2].author_email = "bob@example.com".to_string();
+            cache.commits[3].author = "Bob Example".to_string();
+            cache.commits[3].author_email = "bob@example.com".to_string();
+        }
+
+        app.history_search_mode = HistorySearchMode::Commit;
+        app.history_search_query = "graph".to_string();
+        assert_eq!(app.history_search_matches(), vec![1]);
+
+        app.history_search_mode = HistorySearchMode::Sha;
+        app.history_search_query = "cccc".to_string();
+        assert_eq!(app.history_search_matches(), vec![2]);
+
+        app.history_search_mode = HistorySearchMode::Author;
+        app.history_search_query = "bob".to_string();
+        assert_eq!(app.history_search_matches(), vec![2, 3]);
+    }
+
+    #[test]
+    fn history_git_search_matches_respect_file_tree_filter() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.history_search_mode = HistorySearchMode::Commit;
+        app.history_search_query = "feat".to_string();
+
+        assert_eq!(app.history_search_matches(), vec![0, 1]);
+
+        app.history_file_tree_filter = Some("src/ui".to_string());
+        assert_eq!(app.history_search_matches(), vec![0]);
     }
 
     #[test]
@@ -11419,6 +12893,10 @@ mod tests {
     /// Render a full frame for the given mode/width/height and return text.
     fn render_frame(mode: ViewMode, width: u16, height: u16) -> String {
         let app = new_app(mode, 0);
+        render_app(&app, width, height)
+    }
+
+    fn render_app(app: &BvrApp, width: u16, height: u16) -> String {
         let mut pool = ftui::GraphemePool::default();
         let mut frame = ftui::render::frame::Frame::new(width, height, &mut pool);
         app.view(&mut frame);
@@ -11642,6 +13120,41 @@ mod tests {
     }
 
     #[test]
+    fn keyflow_main_to_actionable_return() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key(KeyCode::Char('a')));
+        assert_eq!(app.mode, ViewMode::Actionable);
+        assert!(app.actionable_plan.is_some());
+        assert_eq!(app.focus, FocusPane::List);
+
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        assert!(app.detail_panel_text().contains("Claim:"));
+
+        app.update(key(KeyCode::Char('j')));
+        app.update(key(KeyCode::Char('a')));
+        assert_eq!(app.mode, ViewMode::Main);
+        assert_eq!(app.focus, FocusPane::List);
+    }
+
+    #[test]
+    fn actionable_all_shortcut_clears_filter_before_toggling_view() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key(KeyCode::Char('o')));
+        assert_eq!(app.list_filter, ListFilter::Open);
+
+        app.update(key(KeyCode::Char('a')));
+        assert_eq!(app.mode, ViewMode::Main);
+        assert_eq!(app.list_filter, ListFilter::All);
+
+        app.update(key(KeyCode::Char('a')));
+        assert_eq!(app.mode, ViewMode::Actionable);
+        assert!(app.actionable_plan.is_some());
+    }
+
+    #[test]
     fn keyflow_help_then_modal_then_quit() {
         let mut app = new_app(ViewMode::Main, 0);
 
@@ -11746,7 +13259,7 @@ mod tests {
 
     #[test]
     fn keyflow_full_mode_tour() {
-        // Journey: Main → Board → Main → Insights → Main → Graph → Main → History → Main
+        // Journey: Main → Board → Main → Insights → Main → Graph → Main → Actionable → Main → History → Main
         let mut app = new_app(ViewMode::Main, 0);
 
         for (toggle_key, expected_mode) in [
@@ -11756,6 +13269,8 @@ mod tests {
             ('i', ViewMode::Main), // toggle back
             ('g', ViewMode::Graph),
             ('g', ViewMode::Main), // toggle back
+            ('a', ViewMode::Actionable),
+            ('a', ViewMode::Main), // toggle back
             ('h', ViewMode::History),
         ] {
             app.update(key(KeyCode::Char(toggle_key)));
@@ -11770,7 +13285,7 @@ mod tests {
         assert_eq!(app.mode, ViewMode::Main);
 
         // Verify complete trace
-        assert_eq!(app.key_trace.len(), 8);
+        assert_eq!(app.key_trace.len(), 10);
     }
 
     #[test]
@@ -11854,10 +13369,7 @@ mod tests {
         let mut app = new_app(ViewMode::History, 0);
         app.update(key(KeyCode::Char('v')));
 
-        let mut pool = ftui::GraphemePool::default();
-        let mut frame = ftui::render::frame::Frame::new(100, 30, &mut pool);
-        app.view(&mut frame);
-        let text = super::buffer_to_text(&frame.buffer, &pool);
+        let text = render_app(&app, 100, 30);
         insta::assert_snapshot!(text);
     }
 
@@ -11879,12 +13391,57 @@ mod tests {
         let mut app = new_app(ViewMode::Main, 0);
         app.update(key(KeyCode::Char('o'))); // open filter
 
-        let mut pool = ftui::GraphemePool::default();
-        let mut frame = ftui::render::frame::Frame::new(100, 30, &mut pool);
-        app.view(&mut frame);
-        let text = super::buffer_to_text(&frame.buffer, &pool);
+        let text = render_app(&app, 100, 30);
         insta::assert_snapshot!(text);
     }
+
+    #[test]
+    fn snap_main_with_priority_hints() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('p')));
+
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
+    }
+
+    #[test]
+    fn snap_board_detail_focus() {
+        let mut app = new_app(ViewMode::Board, 1);
+        app.update(key(KeyCode::Tab));
+
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
+    }
+
+    #[test]
+    fn snap_insights_heatmap_drill() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.update(key(KeyCode::Char('m')));
+        app.update(key(KeyCode::Enter));
+
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
+    }
+
+    #[test]
+    fn snap_graph_detail_focus() {
+        let mut app = new_app(ViewMode::Graph, 1);
+        app.update(key(KeyCode::Tab));
+
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
+    }
+
+    #[test]
+    fn snap_actionable_detail_focus() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('a')));
+        app.update(key(KeyCode::Tab));
+
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
+    }
+
 
     // -- Attention view tests ------------------------------------------------
 
@@ -12087,5 +13644,290 @@ mod tests {
         // Any key press should clear the status msg
         app.update(key(KeyCode::Char('j')));
         assert!(app.status_msg.is_empty());
+    }
+
+    // -- TimeTravelDiff mode tests -------------------------------------------
+
+    #[test]
+    fn t_key_enters_time_travel_mode_with_input_prompt() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('t')));
+        assert_eq!(app.mode, ViewMode::TimeTravelDiff);
+        assert!(app.time_travel_input_active);
+        assert!(app.time_travel_ref_input.is_empty());
+    }
+
+    #[test]
+    fn time_travel_escape_from_empty_input_returns_to_main() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('t')));
+        assert_eq!(app.mode, ViewMode::TimeTravelDiff);
+        app.update(key(KeyCode::Escape));
+        assert_eq!(app.mode, ViewMode::Main);
+        assert!(!app.time_travel_input_active);
+    }
+
+    #[test]
+    fn time_travel_input_accepts_characters() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('t')));
+        app.update(key(KeyCode::Char('H')));
+        app.update(key(KeyCode::Char('E')));
+        app.update(key(KeyCode::Char('A')));
+        app.update(key(KeyCode::Char('D')));
+        assert_eq!(app.time_travel_ref_input, "HEAD");
+    }
+
+    #[test]
+    fn time_travel_backspace_removes_char() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('t')));
+        app.update(key(KeyCode::Char('a')));
+        app.update(key(KeyCode::Char('b')));
+        app.update(key(KeyCode::Backspace));
+        assert_eq!(app.time_travel_ref_input, "a");
+    }
+
+    #[test]
+    fn time_travel_enter_with_empty_ref_returns_to_main() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('t')));
+        app.update(key(KeyCode::Enter));
+        // Empty ref cancels
+        assert_eq!(app.mode, ViewMode::Main);
+        assert!(!app.time_travel_input_active);
+    }
+
+    #[test]
+    fn time_travel_toggle_off() {
+        let mut app = new_app(ViewMode::Main, 0);
+        // Enter time-travel, then provide a diff manually
+        app.mode = ViewMode::TimeTravelDiff;
+        app.time_travel_input_active = false;
+        app.time_travel_diff = Some(crate::analysis::diff::compare_snapshots(
+            &app.analyzer.issues.clone(),
+            &app.analyzer.issues,
+        ));
+        // Press t again to toggle off
+        app.update(key(KeyCode::Char('t')));
+        assert_eq!(app.mode, ViewMode::Main);
+    }
+
+    #[test]
+    fn time_travel_jk_navigates_categories() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::TimeTravelDiff;
+        app.time_travel_input_active = false;
+        // Provide a self-diff (will have 0 categories, but navigation shouldn't panic)
+        app.time_travel_diff = Some(crate::analysis::diff::compare_snapshots(
+            &[],
+            &app.analyzer.issues,
+        ));
+        app.update(key(KeyCode::Char('j')));
+        app.update(key(KeyCode::Char('k')));
+        // Should not panic
+    }
+
+    #[test]
+    fn time_travel_list_text_shows_prompt_when_input_active() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::TimeTravelDiff;
+        app.time_travel_input_active = true;
+        app.time_travel_ref_input = "HEAD~3".to_string();
+        let text = app.time_travel_list_text();
+        assert!(text.contains("HEAD~3"), "should show input: {text}");
+    }
+
+    #[test]
+    fn time_travel_list_text_shows_no_diff_when_empty() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::TimeTravelDiff;
+        app.time_travel_input_active = false;
+        let text = app.time_travel_list_text();
+        assert!(
+            text.contains("No diff loaded"),
+            "should show no-diff message: {text}"
+        );
+    }
+
+    #[test]
+    fn time_travel_with_diff_shows_summary() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::TimeTravelDiff;
+        app.time_travel_input_active = false;
+        app.time_travel_last_ref = Some("HEAD~1".to_string());
+        // Diff from empty to current issues shows new_issues
+        app.time_travel_diff = Some(crate::analysis::diff::compare_snapshots(
+            &[],
+            &app.analyzer.issues,
+        ));
+        let text = app.time_travel_list_text();
+        assert!(text.contains("HEAD~1"), "should show ref: {text}");
+        assert!(text.contains("New issues"), "should show new issues category: {text}");
+    }
+
+    // -- Sprint view tests ---------------------------------------------------
+
+    fn make_sprint(id: &str, name: &str, bead_ids: Vec<&str>) -> Sprint {
+        Sprint {
+            id: id.to_string(),
+            name: name.to_string(),
+            start_date: Some(chrono::Utc::now() - chrono::Duration::days(7)),
+            end_date: Some(chrono::Utc::now() + chrono::Duration::days(7)),
+            bead_ids: bead_ids.into_iter().map(String::from).collect(),
+        }
+    }
+
+    #[test]
+    fn s_key_toggles_sprint_mode() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('S')));
+        assert_eq!(app.mode, ViewMode::Sprint, "S should enter Sprint mode");
+        app.update(key(KeyCode::Char('S')));
+        assert_eq!(
+            app.mode,
+            ViewMode::Main,
+            "S again should return to Main"
+        );
+    }
+
+    #[test]
+    fn sprint_list_shows_no_sprints_message() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = Vec::new();
+        let text = app.sprint_list_text();
+        assert!(
+            text.contains("No sprints found"),
+            "should show no-sprints message: {text}"
+        );
+    }
+
+    #[test]
+    fn sprint_list_shows_sprint_summary() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        // Create a sprint referencing sample issues (A, B, C from sample_issues())
+        app.sprint_data = vec![make_sprint("s1", "Sprint Alpha", vec!["A", "B", "C"])];
+        let text = app.sprint_list_text();
+        assert!(
+            text.contains("Sprint Alpha"),
+            "should show sprint name: {text}"
+        );
+        assert!(text.contains("3 issues"), "should show issue count: {text}");
+        assert!(text.contains("ACTIVE"), "should show active status: {text}");
+    }
+
+    #[test]
+    fn sprint_detail_shows_issue_list() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![make_sprint("s1", "Sprint Alpha", vec!["A", "B", "C"])];
+        app.sprint_cursor = 0;
+        let text = app.sprint_detail_text();
+        assert!(
+            text.contains("SPRINT: Sprint Alpha"),
+            "should show sprint name: {text}"
+        );
+        assert!(text.contains("ACTIVE"), "should show active status: {text}");
+        // Should list at least some issues
+        assert!(
+            text.contains("Issues:") || text.contains("bead(s)"),
+            "should show issue summary: {text}"
+        );
+    }
+
+    #[test]
+    fn sprint_jk_navigates_sprints() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![
+            make_sprint("s1", "Sprint 1", vec!["A"]),
+            make_sprint("s2", "Sprint 2", vec!["B"]),
+        ];
+        app.focus = FocusPane::List;
+        assert_eq!(app.sprint_cursor, 0);
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(app.sprint_cursor, 1, "j should move to next sprint");
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(app.sprint_cursor, 0, "k should move back");
+    }
+
+    #[test]
+    fn sprint_jk_navigates_issues_in_detail() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![make_sprint("s1", "Sprint 1", vec!["A", "B", "C"])];
+        app.focus = FocusPane::Detail;
+        assert_eq!(app.sprint_issue_cursor, 0);
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(
+            app.sprint_issue_cursor, 1,
+            "j in detail should move issue cursor"
+        );
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(app.sprint_issue_cursor, 0, "k should move back");
+    }
+
+    #[test]
+    fn sprint_escape_returns_to_main() {
+        let mut app = new_app(ViewMode::Sprint, 0);
+        app.sprint_data = vec![make_sprint("s1", "Sprint 1", vec!["A"])];
+        app.update(key(KeyCode::Char('S')));
+        assert_eq!(
+            app.mode,
+            ViewMode::Main,
+            "S in Sprint mode should return to Main"
+        );
+    }
+
+    #[test]
+    fn sprint_detail_shows_progress_bar() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        // C is closed in sample_issues()
+        app.sprint_data = vec![make_sprint("s1", "Sprint Alpha", vec!["A", "B", "C"])];
+        app.sprint_cursor = 0;
+        let text = app.sprint_detail_text();
+        assert!(text.contains("Progress:"), "should show progress bar: {text}");
+        assert!(
+            text.contains('%'),
+            "should show percentage: {text}"
+        );
+    }
+
+    #[test]
+    fn sprint_cursor_reset_on_sprint_change() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![
+            make_sprint("s1", "Sprint 1", vec!["A", "B"]),
+            make_sprint("s2", "Sprint 2", vec!["C"]),
+        ];
+        app.focus = FocusPane::List;
+        app.sprint_issue_cursor = 1;
+        // Navigate to next sprint
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(
+            app.sprint_issue_cursor, 0,
+            "issue cursor should reset on sprint change"
+        );
+    }
+
+    #[test]
+    fn sprint_with_no_matching_issues_shows_message() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![make_sprint(
+            "s1",
+            "Sprint Ghost",
+            vec!["NONEXISTENT-1", "NONEXISTENT-2"],
+        )];
+        app.sprint_cursor = 0;
+        let text = app.sprint_detail_text();
+        assert!(
+            text.contains("none matched"),
+            "should say no issues matched: {text}"
+        );
     }
 }

@@ -1,0 +1,35 @@
+---
+source: src/tui.rs
+assertion_line: 11902
+expression: text
+---
+bvr | mode=Board | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus | Esc
+┌Board Lanes─────────────────────────────┐┌Board Focus [focus]─────────────────────────────────────┐
+│                                        ││                                                        │
+│ Grouping: status (s cycles) | Empty: A ││ ┌────────────────────────────────────────┐             │
+│                                        ││ │  o T B p0                              │             │
+│ Lanes (5) | 3 issues total             ││ │ Dependent                              │             │
+│                                        ││ ├────────────────────────────────────────┤             │
+│ > open         [  2] ██                ││ │ Lane: open                             │             │
+│       o A          p0 Root             ││ │ Assignee:                              │             │
+│     ▶ o B          p0 Dependent        ││ │ Depends on A and should report blo...  │             │
+│                                        ││ └────────────────────────────────────────┘             │
+│   in_progress  [  0]                   ││                                                        │
+│     (empty)                            ││ Depends on (1)                                         │
+│                                        ││ > o A [OPEN]                                           │
+│   blocked      [  0]                   ││                                                        │
+│     (empty)                            ││ Blocked by 1 open issue(s).                            │
+│                                        ││                                                        │
+│   closed       [  1] █                 ││                                                        │
+│       x C          p0 Closed           ││                                                        │
+│                                        ││                                                        │
+│   other        [  0]                   ││                                                        │
+│     (empty)                            ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles

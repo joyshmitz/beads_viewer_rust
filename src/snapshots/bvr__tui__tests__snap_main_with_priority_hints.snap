@@ -1,0 +1,35 @@
+---
+source: src/tui.rs
+assertion_line: 11893
+expression: text
+---
+bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus | Esc bac
+┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
+│                                        ││                                                        │
+│ > A              open        p1 Featur ││ F A  Feature work                                      │
+│   B              open        p2 Bug fi ││ Status: open | Priority: p1 | Type: feature | State: r │
+│   C              open        p3 UI pol ││ Assignee: unassigned | Repo: local | Estimate: n/a     │
+│                                        ││ Created: n/a | Updated: n/a | Due: n/a                 │
+│                                        ││ Closed: n/a | Labels: backend, urgent                  │
+│                                        ││                                                        │
+│                                        ││ Triage Snapshot:                                       │
+│                                        ││   open blockers: 0 (none)                              │
+│                                        ││   unblocks: 0 (none)                                   │
+│                                        ││   dependency pressure: 0 upstream | 0 downstream       │
+│                                        ││                                                        │
+│                                        ││ Graph Signals:                                         │
+│                                        ││   Critical depth: 1 | k-core: 0 | slack: 0.0000 | cut- │
+│                                        ││   PageRank:       0.3333  ██████  #1                   │
+│                                        ││   Betweenness:    0.0000  ░░░░░░  #1                   │
+│                                        ││   Eigenvector:    0.5774  ██████  #1                   │
+│                                        ││   HITS: hub 0.0000 ░░░░░░ #1 | auth 0.0000 ░░░░░░ #1   │
+│                                        ││                                                        │
+│                                        ││ Dependency Map:                                        │
+│                                        ││   upstream: none                                       │
+│                                        ││   open gate: none                                      │
+│                                        ││   downstream: none                                     │
+│                                        ││                                                        │
+│                                        ││ Priority Hints (p to hide):                            │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+b/i/g/h modes | s sort (default) | p hints | C copy | x export | O edit

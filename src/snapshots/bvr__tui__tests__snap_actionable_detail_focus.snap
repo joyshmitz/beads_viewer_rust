@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Actionable | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Execution Tracks────────────────────────┐┌Track Detail [focus]────────────────────────────────────┐
+│                                        ││                                                        │
+│ ⚡ ACTIONABLE ITEMS | 1 items in 1 tra ││ TRACK 1                                                │
+│ RECOMMENDED: Start with A -> highest i ││ completing A unblocks 1 issue(s)                       │
+│                                        ││ 1 actionable item                                      │
+│   TRACK 1 | completing A unblocks 1 is ││                                                        │
+│   1 item                               ││ ▸ A  score 0.700                                       │
+│   ▸└─ A             0.70  Root -> 1    ││   Root                                                 │
+│                                        ││   Unblocks: B                                          │
+│                                        ││   Claim: br update A --status=in_progress              │
+│                                        ││                                                        │
+│                                        ││ Highest impact: A                                      │
+│                                        ││ Impact detail: highest impact: A (score 0.70, unblocks │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Actionable: 1 tracks, 1 items | j/k navigate | Tab focus | a/Esc back

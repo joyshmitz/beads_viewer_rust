@@ -148,6 +148,258 @@ fn robot_orphans_has_valid_envelope() {
 }
 
 // ============================================================================
+// Recently-added field validation (bd-1ru.* parity work)
+// ============================================================================
+
+#[test]
+fn robot_triage_has_usage_hints() {
+    let output = run_bvr_json(&["--robot-triage"], "tests/testdata/minimal.jsonl");
+    assert!(validate_type_at(&output, "usage_hints", JsonType::Array).is_empty());
+}
+
+#[test]
+fn robot_plan_has_analysis_config() {
+    let output = run_bvr_json(&["--robot-plan"], "tests/testdata/minimal.jsonl");
+    assert!(validate_type_at(&output, "analysis_config", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_plan_has_usage_hints() {
+    let output = run_bvr_json(&["--robot-plan"], "tests/testdata/minimal.jsonl");
+    assert!(validate_type_at(&output, "usage_hints", JsonType::Array).is_empty());
+}
+
+#[test]
+fn robot_insights_has_advanced_and_stats_fields() {
+    let output = run_bvr_json(
+        &["--robot-insights", "--robot-full-stats"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+    test_utils::assert_valid_envelope(&output);
+    // full_stats is a map of issue-id -> metric node
+    assert!(validate_type_at(&output, "full_stats", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_next_has_envelope_and_score_fields() {
+    let output = run_bvr_json(&["--robot-next"], "tests/testdata/minimal.jsonl");
+    test_utils::assert_valid_envelope(&output);
+    // RobotNextOutput always has these fields (nullable)
+    assert!(output.get("id").is_some(), "next output must have id field");
+    assert!(
+        output.get("score").is_some(),
+        "next output must have score field"
+    );
+    assert!(
+        output.get("reasons").is_some(),
+        "next output must have reasons field"
+    );
+}
+
+#[test]
+fn robot_forecast_has_valid_envelope() {
+    let output = run_bvr_json(&["--robot-forecast", "all"], "tests/testdata/minimal.jsonl");
+    assert_valid_version_envelope(&output);
+    assert!(validate_type_at(&output, "forecasts", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "forecast_count", JsonType::Number).is_empty());
+}
+
+#[test]
+fn robot_burndown_has_valid_envelope() {
+    // --robot-burndown requires a sprint target; use "current" which gracefully
+    // returns an error or empty data when no sprints are configured.
+    // We test via the binary directly to check the envelope shape.
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let result = std::process::Command::new(&bvr_bin)
+        .args(["--robot-burndown", "current", "--beads-file"])
+        .arg(&beads_path)
+        .output()
+        .expect("failed to run bvr");
+    // If it succeeds (sprint found), validate the envelope
+    if result.status.success() {
+        let output: Value =
+            serde_json::from_slice(&result.stdout).expect("valid JSON output");
+        assert_valid_version_envelope(&output);
+        assert!(validate_type_at(&output, "daily_points", JsonType::Array).is_empty());
+    } else {
+        // No sprints configured is expected; just verify it doesn't panic
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            stderr.contains("sprint") || stderr.contains("error"),
+            "expected sprint-related error, got: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn robot_history_has_valid_envelope() {
+    let output = run_bvr_json(&["--robot-history"], "tests/testdata/minimal.jsonl");
+    test_utils::assert_valid_envelope(&output);
+    // histories is a BTreeMap<String, HistoryBeadCompat> → JSON Object
+    assert!(validate_type_at(&output, "histories", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "git_range", JsonType::String).is_empty());
+    assert!(validate_type_at(&output, "stats", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_diff_has_valid_envelope() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+    // --robot-diff requires --diff-since; use the same file to get an empty diff
+    let output = run_bvr_json(
+        &[
+            "--robot-diff",
+            "--diff-since",
+            beads_path.to_str().unwrap(),
+        ],
+        "tests/testdata/minimal.jsonl",
+    );
+    test_utils::assert_valid_envelope(&output);
+    assert!(output.get("from_data_hash").is_some());
+    assert!(output.get("to_data_hash").is_some());
+    assert!(output.get("resolved_revision").is_some());
+    assert!(validate_type_at(&output, "diff", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_graph_json_has_valid_envelope() {
+    let output = run_bvr_json(&["--robot-graph"], "tests/testdata/minimal.jsonl");
+    test_utils::assert_valid_envelope(&output);
+    // nodes and edges are counts (usize), not arrays
+    assert!(validate_type_at(&output, "nodes", JsonType::Number).is_empty());
+    assert!(validate_type_at(&output, "edges", JsonType::Number).is_empty());
+    assert!(validate_type_at(&output, "format", JsonType::String).is_empty());
+    assert!(validate_type_at(&output, "explanation", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_metrics_has_valid_envelope() {
+    let output = run_bvr_json(&["--robot-metrics"], "tests/testdata/minimal.jsonl");
+    assert_valid_version_envelope(&output);
+    // timing, cache are Vec<> → JSON Array
+    assert!(validate_type_at(&output, "timing", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "cache", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "memory", JsonType::Object).is_empty());
+}
+
+// ============================================================================
+// Determinism tests for additional robot modes
+// ============================================================================
+
+#[test]
+fn robot_plan_deterministic() {
+    let first = run_bvr_json(&["--robot-plan"], "tests/testdata/minimal.jsonl");
+    let second = run_bvr_json(&["--robot-plan"], "tests/testdata/minimal.jsonl");
+
+    let diffs = test_utils::compare_json_ignoring(&first, &second, "", &["generated_at"]);
+    assert!(
+        diffs.is_empty(),
+        "Plan output not deterministic:\n{}",
+        test_utils::format_diffs_compact(&diffs)
+    );
+}
+
+#[test]
+fn robot_insights_deterministic() {
+    let first = run_bvr_json(&["--robot-insights"], "tests/testdata/minimal.jsonl");
+    let second = run_bvr_json(&["--robot-insights"], "tests/testdata/minimal.jsonl");
+
+    let diffs = test_utils::compare_json_ignoring(&first, &second, "", &["generated_at"]);
+    assert!(
+        diffs.is_empty(),
+        "Insights output not deterministic:\n{}",
+        test_utils::format_diffs_compact(&diffs)
+    );
+}
+
+#[test]
+fn robot_next_deterministic() {
+    let first = run_bvr_json(&["--robot-next"], "tests/testdata/minimal.jsonl");
+    let second = run_bvr_json(&["--robot-next"], "tests/testdata/minimal.jsonl");
+
+    let diffs = test_utils::compare_json_ignoring(&first, &second, "", &["generated_at"]);
+    assert!(
+        diffs.is_empty(),
+        "Next output not deterministic:\n{}",
+        test_utils::format_diffs_compact(&diffs)
+    );
+}
+
+#[test]
+fn robot_alerts_deterministic() {
+    let first = run_bvr_json(&["--robot-alerts"], "tests/testdata/minimal.jsonl");
+    let second = run_bvr_json(&["--robot-alerts"], "tests/testdata/minimal.jsonl");
+
+    let diffs = test_utils::compare_json_ignoring(&first, &second, "", &["generated_at"]);
+    assert!(
+        diffs.is_empty(),
+        "Alerts output not deterministic:\n{}",
+        test_utils::format_diffs_compact(&diffs)
+    );
+}
+
+#[test]
+fn robot_capacity_deterministic() {
+    let first = run_bvr_json(&["--robot-capacity"], "tests/testdata/minimal.jsonl");
+    let second = run_bvr_json(&["--robot-capacity"], "tests/testdata/minimal.jsonl");
+
+    let diffs = test_utils::compare_json_ignoring(&first, &second, "", &["generated_at"]);
+    assert!(
+        diffs.is_empty(),
+        "Capacity output not deterministic:\n{}",
+        test_utils::format_diffs_compact(&diffs)
+    );
+}
+
+// ============================================================================
+// Complex fixture validates richer output shapes
+// ============================================================================
+
+#[test]
+fn robot_triage_complex_has_recommendations() {
+    let output = run_bvr_json(&["--robot-triage"], "tests/testdata/synthetic_complex.jsonl");
+    test_utils::assert_valid_envelope(&output);
+    let recs = output["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations array");
+    assert!(
+        !recs.is_empty(),
+        "complex fixture must produce triage recommendations"
+    );
+}
+
+#[test]
+fn robot_plan_complex_has_tracks() {
+    let output = run_bvr_json(&["--robot-plan"], "tests/testdata/synthetic_complex.jsonl");
+    test_utils::assert_valid_envelope(&output);
+    let tracks = output["plan"]["tracks"]
+        .as_array()
+        .expect("tracks array");
+    assert!(
+        !tracks.is_empty(),
+        "complex fixture must produce execution tracks"
+    );
+}
+
+#[test]
+fn robot_insights_complex_has_bottlenecks() {
+    let output = run_bvr_json(
+        &["--robot-insights"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+    test_utils::assert_valid_envelope(&output);
+    let bottlenecks = output["insights"]["bottlenecks"]
+        .as_array()
+        .expect("bottlenecks array");
+    assert!(
+        !bottlenecks.is_empty(),
+        "complex fixture must produce bottleneck insights"
+    );
+}
+
+// ============================================================================
 // Comparator self-tests (verifying the test_utils module itself)
 // ============================================================================
 

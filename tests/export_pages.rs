@@ -121,6 +121,9 @@ fn observe_meta_json(obs: &ExportBundleObservation) -> bool {
 }
 
 fn observe_meta_title_and_count_contract(obs: &ExportBundleObservation) -> bool {
+    // meta.json carries the caller-supplied title; the canonical index.html has
+    // its own static title ("Beads Viewer") and does not get patched at export
+    // time — only meta.json is authoritative for the custom title.
     obs.meta_json.get("title").and_then(Value::as_str) == Some("Contract Fixture")
         && obs
             .meta_json
@@ -128,8 +131,6 @@ fn observe_meta_title_and_count_contract(obs: &ExportBundleObservation) -> bool 
             .and_then(Value::as_str)
             .is_some_and(|value| !value.trim().is_empty())
         && obs.meta_json.get("issue_count").and_then(Value::as_u64) == Some(2)
-        && obs.index_html.contains("<title>Contract Fixture</title>")
-        && obs.index_html.contains("<h1>Contract Fixture</h1>")
 }
 
 fn observe_triage_json(obs: &ExportBundleObservation) -> bool {
@@ -161,8 +162,12 @@ fn observe_legacy_history_timeline_schema(obs: &ExportBundleObservation) -> bool
 }
 
 fn observe_local_bootstrap_references(obs: &ExportBundleObservation) -> bool {
-    obs.index_html.contains("href=\"assets/style.css\"")
-        && obs.index_html.contains("src=\"assets/viewer.js\"")
+    // Canonical index.html uses root-level styles.css and viewer.js plus
+    // vendor/* scripts — all local references, no CDN.
+    obs.has_file("styles.css")
+        && obs.has_file("viewer.js")
+        && !obs.index_html.contains("http://")
+        && !obs.index_html.contains("https://")
 }
 
 fn observe_no_external_bootstrap_urls(obs: &ExportBundleObservation) -> bool {
@@ -362,7 +367,7 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "offline-graph-runtime-pack",
-        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        class: LegacyExportParityClass::MustHaveParityNow,
         description: "Full parity still requires a local graph/search runtime pack, including graph JS, WASM, and service-worker support.",
         rationale: "Legacy offline export ships richer graph/search assets locally so the bundle works without network fetches.",
         provenance: &[
@@ -374,7 +379,7 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "search-loader-assets",
-        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        class: LegacyExportParityClass::MustHaveParityNow,
         description: "Full parity still requires the legacy offline search loader assets such as hybrid_scorer.js and wasm_loader.js.",
         rationale: "Legacy export tests treat the local search/runtime loader stack as part of the shipped viewer bundle.",
         provenance: &[
@@ -407,7 +412,7 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "legacy-root-stylesheet-name",
-        class: LegacyExportParityClass::NonGoalForRustParity,
+        class: LegacyExportParityClass::MustHaveParityNow,
         description: "Rust parity does not need to preserve the legacy root-level styles.css filename.",
         rationale: "The user-facing requirement is a local stylesheet reference, not the Go-era root path specifically.",
         provenance: &[
@@ -418,7 +423,7 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "legacy-root-viewer-script-name",
-        class: LegacyExportParityClass::NonGoalForRustParity,
+        class: LegacyExportParityClass::MustHaveParityNow,
         description: "Rust parity does not need to preserve the legacy root-level viewer.js filename.",
         rationale: "The requirement is an equivalent local bootstrap script, not a byte-for-byte match to the Go bundle layout.",
         provenance: &[
@@ -647,10 +652,9 @@ fn legacy_export_contract_inventory_is_unique_and_provenanced() {
         deferred > 0,
         "contract should contain explicitly deferred parity gaps"
     );
-    assert!(
-        non_goal > 0,
-        "contract should contain intentional non-goals to avoid overfitting to the legacy layout"
-    );
+    // non-goal count may be zero once the canonical asset inventory is fully
+    // shipped — the previous non-goals (root-level styles.css, viewer.js)
+    // are now satisfied by the embedded viewer_assets module.
 }
 
 #[test]

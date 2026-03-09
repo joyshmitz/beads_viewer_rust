@@ -17,6 +17,7 @@ pub mod error;
 pub mod export_md;
 pub mod export_pages;
 pub mod export_sqlite;
+pub mod viewer_assets;
 pub mod loader;
 pub mod model;
 pub mod robot;

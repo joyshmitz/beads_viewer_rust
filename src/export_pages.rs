@@ -183,7 +183,6 @@ pub fn export_pages_bundle(
         .cloned()
         .collect::<Vec<_>>();
 
-    fs::create_dir_all(output_dir.join("assets"))?;
     fs::create_dir_all(output_dir.join("data"))?;
 
     let analyzer = Analyzer::new(filtered.clone());
@@ -208,12 +207,14 @@ pub fn export_pages_bundle(
 
     let mut files = Vec::<String>::new();
 
-    write_text(
-        output_dir.join("index.html"),
-        &render_index_html(&title, options.include_history),
-    )?;
-    files.push("index.html".to_string());
+    // Write the canonical viewer asset inventory (deterministic, sorted order).
+    let asset_paths = crate::viewer_assets::write_viewer_assets(output_dir)?;
+    files.extend(asset_paths);
 
+    // Also write the lightweight Rust-generated assets under assets/ for
+    // backward compatibility — the canonical index.html does not reference
+    // these, but existing integrations may rely on their presence.
+    fs::create_dir_all(output_dir.join("assets"))?;
     write_text(output_dir.join("assets/style.css"), CSS_BUNDLE)?;
     files.push("assets/style.css".to_string());
 
@@ -637,61 +638,6 @@ fn install_preview_signal_handlers() -> Result<Arc<AtomicBool>> {
         signal_hook::flag::register(*signal, Arc::clone(&shutdown_requested))?;
     }
     Ok(shutdown_requested)
-}
-
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#x27;")
-}
-
-fn render_index_html(title: &str, include_history: bool) -> String {
-    let title = escape_html(title);
-    format!(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{title}</title>
-  <link rel="stylesheet" href="assets/style.css">
-</head>
-<body>
-  <main class="layout">
-    <header>
-      <h1>{title}</h1>
-      <p id="meta-line" class="meta">Loading export metadata...</p>
-    </header>
-    <section class="grid">
-      <article>
-        <h2>Issues</h2>
-        <ul id="issue-list" class="issue-list"></ul>
-      </article>
-      <article>
-        <h2>Triage Top Picks</h2>
-        <ol id="top-picks" class="pick-list"></ol>
-      </article>
-      <article>
-        <h2>Insights</h2>
-        <pre id="insights" class="insights"></pre>
-      </article>
-    </section>
-    <footer class="meta">
-      <span>History payload: {history_state}</span>
-    </footer>
-  </main>
-  <script src="assets/viewer.js"></script>
-</body>
-</html>
-"#,
-        history_state = if include_history {
-            "included"
-        } else {
-            "excluded"
-        }
-    )
 }
 
 const CSS_BUNDLE: &str = r":root {

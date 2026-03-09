@@ -72,11 +72,7 @@ impl MetricsCache {
     ///
     /// The cache key is a SHA-256 hash of the graph structure (sorted node IDs,
     /// edges, and issue statuses) plus the analysis config.
-    pub fn get_or_compute(
-        &self,
-        issues: &[Issue],
-        config: &AnalysisConfig,
-    ) -> GraphMetrics {
+    pub fn get_or_compute(&self, issues: &[Issue], config: &AnalysisConfig) -> GraphMetrics {
         let key = compute_cache_key(issues, config);
 
         // Check cache.
@@ -183,15 +179,47 @@ fn compute_cache_key(issues: &[Issue], config: &AnalysisConfig) -> [u8; 32] {
     }
 
     // Include config toggles that affect metric computation.
-    hasher.update(if config.enable_pagerank { b"pr:1" } else { b"pr:0" });
-    hasher.update(if config.enable_betweenness { b"bt:1" } else { b"bt:0" });
-    hasher.update(if config.enable_eigenvector { b"ev:1" } else { b"ev:0" });
+    hasher.update(if config.enable_pagerank {
+        b"pr:1"
+    } else {
+        b"pr:0"
+    });
+    hasher.update(if config.enable_betweenness {
+        b"bt:1"
+    } else {
+        b"bt:0"
+    });
+    hasher.update(if config.enable_eigenvector {
+        b"ev:1"
+    } else {
+        b"ev:0"
+    });
     hasher.update(if config.enable_hits { b"hi:1" } else { b"hi:0" });
-    hasher.update(if config.enable_k_core { b"kc:1" } else { b"kc:0" });
-    hasher.update(if config.enable_cycles { b"cy:1" } else { b"cy:0" });
-    hasher.update(if config.enable_critical_path { b"cp:1" } else { b"cp:0" });
-    hasher.update(if config.enable_articulation { b"ap:1" } else { b"ap:0" });
-    hasher.update(if config.enable_slack { b"sl:1" } else { b"sl:0" });
+    hasher.update(if config.enable_k_core {
+        b"kc:1"
+    } else {
+        b"kc:0"
+    });
+    hasher.update(if config.enable_cycles {
+        b"cy:1"
+    } else {
+        b"cy:0"
+    });
+    hasher.update(if config.enable_critical_path {
+        b"cp:1"
+    } else {
+        b"cp:0"
+    });
+    hasher.update(if config.enable_articulation {
+        b"ap:1"
+    } else {
+        b"ap:0"
+    });
+    hasher.update(if config.enable_slack {
+        b"sl:1"
+    } else {
+        b"sl:0"
+    });
 
     let result = hasher.finalize();
     let mut key = [0u8; 32];

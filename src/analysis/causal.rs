@@ -36,10 +36,8 @@ pub struct BlockerChainResult {
 
 #[derive(Debug, Serialize)]
 pub struct RobotBlockerChainOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: BlockerChainResult,
 }
@@ -208,10 +206,8 @@ pub struct ImpactNetworkResult {
 
 #[derive(Debug, Serialize)]
 pub struct RobotImpactNetworkOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: ImpactNetworkResult,
 }
@@ -719,10 +715,8 @@ pub struct CausalityResult {
 
 #[derive(Debug, Serialize)]
 pub struct RobotCausalityOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: CausalityResult,
 }

@@ -15,6 +15,8 @@ use crate::model::Issue;
 pub struct RobotEnvelope {
     pub generated_at: String,
     pub data_hash: String,
+    pub output_format: String,
+    pub version: String,
 }
 
 #[must_use]
@@ -22,6 +24,19 @@ pub fn envelope(issues: &[Issue]) -> RobotEnvelope {
     RobotEnvelope {
         generated_at: Utc::now().to_rfc3339(),
         data_hash: compute_data_hash(issues),
+        output_format: "json".to_string(),
+        version: format!("v{}", env!("CARGO_PKG_VERSION")),
+    }
+}
+
+/// Create an envelope without issues (for commands that don't load issues).
+#[must_use]
+pub fn envelope_empty() -> RobotEnvelope {
+    RobotEnvelope {
+        generated_at: Utc::now().to_rfc3339(),
+        data_hash: String::new(),
+        output_format: "json".to_string(),
+        version: format!("v{}", env!("CARGO_PKG_VERSION")),
     }
 }
 
@@ -1228,6 +1243,17 @@ mod tests {
         assert_eq!(env.data_hash.len(), 16);
         // generated_at should be a parseable RFC3339 timestamp
         assert!(env.generated_at.contains('T'));
+        assert_eq!(env.output_format, "json");
+        assert!(env.version.starts_with('v'));
+    }
+
+    #[test]
+    fn envelope_empty_has_empty_hash() {
+        let env = envelope_empty();
+        assert!(!env.generated_at.is_empty());
+        assert!(env.data_hash.is_empty());
+        assert_eq!(env.output_format, "json");
+        assert!(env.version.starts_with('v'));
     }
 
     // -- default_field_descriptions tests --

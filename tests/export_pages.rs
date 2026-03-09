@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -9,6 +10,423 @@ use std::time::Duration;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
+
+// `bd-7oo.1.1` freezes the legacy export contract in one place. The point is not
+// to cargo-cult every Go-era filename forever; it is to make the parity line
+// explicit: which legacy behaviors are already satisfied, which gaps are
+// intentionally deferred, and which legacy file-layout details are not part of
+// the Rust contract going forward.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LegacyExportParityClass {
+    MustHaveParityNow,
+    ExplicitlyDeferredParity,
+    NonGoalForRustParity,
+}
+
+impl LegacyExportParityClass {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::MustHaveParityNow => "must-have-now",
+            Self::ExplicitlyDeferredParity => "explicitly-deferred",
+            Self::NonGoalForRustParity => "non-goal",
+        }
+    }
+
+    const fn expected_present_now(self) -> bool {
+        matches!(self, Self::MustHaveParityNow)
+    }
+}
+
+#[derive(Debug)]
+struct LegacyExportContractItem {
+    id: &'static str,
+    class: LegacyExportParityClass,
+    description: &'static str,
+    rationale: &'static str,
+    provenance: &'static [&'static str],
+    observe_now: fn(&ExportBundleObservation) -> bool,
+}
+
+#[derive(Debug)]
+struct ExportBundleObservation {
+    files: BTreeSet<String>,
+    index_html: String,
+    meta_json: Value,
+    triage_json: Value,
+    history_json: Option<Value>,
+}
+
+impl ExportBundleObservation {
+    fn capture(export_dir: &Path) -> Self {
+        let mut files = BTreeSet::new();
+        collect_files_recursive(export_dir, export_dir, &mut files);
+
+        Self {
+            files,
+            index_html: fs::read_to_string(export_dir.join("index.html")).expect("read index.html"),
+            meta_json: serde_json::from_str(
+                &fs::read_to_string(export_dir.join("data/meta.json"))
+                    .expect("read data/meta.json"),
+            )
+            .expect("parse data/meta.json"),
+            triage_json: serde_json::from_str(
+                &fs::read_to_string(export_dir.join("data/triage.json"))
+                    .expect("read data/triage.json"),
+            )
+            .expect("parse data/triage.json"),
+            history_json: export_dir.join("data/history.json").is_file().then(|| {
+                serde_json::from_str(
+                    &fs::read_to_string(export_dir.join("data/history.json"))
+                        .expect("read data/history.json"),
+                )
+                .expect("parse data/history.json")
+            }),
+        }
+    }
+
+    fn has_file(&self, path: &str) -> bool {
+        self.files.contains(path)
+    }
+
+    fn has_file_suffix(&self, suffix: &str) -> bool {
+        self.files.iter().any(|path| path.ends_with(suffix))
+    }
+}
+
+fn collect_files_recursive(root: &Path, current: &Path, files: &mut BTreeSet<String>) {
+    for entry in fs::read_dir(current).expect("read export directory") {
+        let entry = entry.expect("export dir entry");
+        let path = entry.path();
+        if entry.file_type().expect("export entry file type").is_dir() {
+            collect_files_recursive(root, &path, files);
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .expect("export path under root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.insert(relative);
+    }
+}
+
+fn observe_index_html_root(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("index.html")
+}
+
+fn observe_meta_json(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("data/meta.json")
+}
+
+fn observe_meta_title_and_count_contract(obs: &ExportBundleObservation) -> bool {
+    obs.meta_json.get("title").and_then(Value::as_str) == Some("Contract Fixture")
+        && obs
+            .meta_json
+            .get("generated_at")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+        && obs.meta_json.get("issue_count").and_then(Value::as_u64) == Some(2)
+        && obs.index_html.contains("<title>Contract Fixture</title>")
+        && obs.index_html.contains("<h1>Contract Fixture</h1>")
+}
+
+fn observe_triage_json(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("data/triage.json")
+}
+
+fn observe_triage_recommendation_shape(obs: &ExportBundleObservation) -> bool {
+    obs.triage_json
+        .get("recommendations")
+        .and_then(Value::as_array)
+        .is_some_and(|rows| !rows.is_empty())
+        && obs
+            .triage_json
+            .get("quick_ref")
+            .and_then(|value| value.get("top_picks"))
+            .and_then(Value::as_array)
+            .is_some_and(|rows| !rows.is_empty())
+}
+
+fn observe_history_json(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("data/history.json")
+}
+
+fn observe_legacy_history_timeline_schema(obs: &ExportBundleObservation) -> bool {
+    obs.history_json
+        .as_ref()
+        .and_then(Value::as_object)
+        .is_some_and(|object| object.contains_key("commits"))
+}
+
+fn observe_local_bootstrap_references(obs: &ExportBundleObservation) -> bool {
+    obs.index_html.contains("href=\"assets/style.css\"")
+        && obs.index_html.contains("src=\"assets/viewer.js\"")
+}
+
+fn observe_no_external_bootstrap_urls(obs: &ExportBundleObservation) -> bool {
+    !obs.index_html.contains("http://") && !obs.index_html.contains("https://")
+}
+
+fn observe_sqlite_database(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("beads.sqlite3")
+}
+
+fn observe_sqlite_config(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("beads.sqlite3.config.json")
+}
+
+fn observe_triage_project_health(obs: &ExportBundleObservation) -> bool {
+    obs.triage_json.get("project_health").is_some()
+}
+
+fn observe_legacy_quick_ref_counts(obs: &ExportBundleObservation) -> bool {
+    let quick_ref = obs.triage_json.get("quick_ref");
+    quick_ref.is_some_and(|value| value.get("open_count").is_some())
+        && quick_ref.is_some_and(|value| value.get("actionable_count").is_some())
+        && quick_ref.is_some_and(|value| value.get("blocked_count").is_some())
+        && quick_ref.is_some_and(|value| value.get("in_progress_count").is_some())
+}
+
+fn observe_graph_runtime_pack(obs: &ExportBundleObservation) -> bool {
+    obs.has_file_suffix("graph.js")
+        && obs.has_file_suffix(".wasm")
+        && (obs.has_file_suffix("serviceworker.js") || obs.has_file_suffix("service-worker.js"))
+}
+
+fn observe_search_loader_assets(obs: &ExportBundleObservation) -> bool {
+    obs.has_file_suffix("hybrid_scorer.js") && obs.has_file_suffix("wasm_loader.js")
+}
+
+fn observe_readme(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("README.md")
+}
+
+fn observe_cloudflare_headers(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("_headers")
+}
+
+fn observe_legacy_root_stylesheet(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("styles.css") || obs.index_html.contains("href=\"styles.css\"")
+}
+
+fn observe_legacy_root_viewer_script(obs: &ExportBundleObservation) -> bool {
+    obs.has_file("viewer.js") || obs.index_html.contains("src=\"viewer.js\"")
+}
+
+static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
+    LegacyExportContractItem {
+        id: "index-html-entrypoint",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle must contain a root index.html entrypoint for preview and static hosts.",
+        rationale: "Legacy preview, offline, and deploy flows all assume a root HTML landing page.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/cmd/bv/main.go::help text for --export-pages output",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_HTMLStructure",
+        ],
+        observe_now: observe_index_html_root,
+    },
+    LegacyExportContractItem {
+        id: "meta-json",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle must emit data/meta.json for page metadata and generation context.",
+        rationale: "Legacy export tests and viewer bootstrapping both expect a serialized metadata payload.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_IncludesHistoryAndRunsHooks",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+        ],
+        observe_now: observe_meta_json,
+    },
+    LegacyExportContractItem {
+        id: "meta-title-and-count-contract",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The exported metadata and HTML title should carry title, generated_at, and issue_count coherently.",
+        rationale: "Legacy incremental and Cloudflare tests treat title propagation and changing generation metadata as part of the operator-visible export contract.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_MetaJSON",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_cloudflare_test.go::TestCloudflare_CustomTitle",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_incremental_test.go::TestExportIncremental_AddNewIssues",
+        ],
+        observe_now: observe_meta_title_and_count_contract,
+    },
+    LegacyExportContractItem {
+        id: "triage-json",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle must emit data/triage.json as the machine-readable planning payload.",
+        rationale: "Legacy static pages surface recommendations and health from triage data rather than recomputing in-browser.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_TriageJSON",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+        ],
+        observe_now: observe_triage_json,
+    },
+    LegacyExportContractItem {
+        id: "triage-recommendations-shape",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The current Rust parity surface must still export actionable recommendations and top picks in triage.json.",
+        rationale: "Legacy export tests expect static pages to render useful planning output immediately, not an empty stub payload.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_TriageJSON",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_incremental_test.go::TestExportIncremental_AddNewIssues",
+        ],
+        observe_now: observe_triage_recommendation_shape,
+    },
+    LegacyExportContractItem {
+        id: "history-json-when-enabled",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "When history export is enabled, the bundle must include data/history.json.",
+        rationale: "Legacy time-travel and timeline views depend on an exported history payload, and the current Rust export already ships it.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_IncludesHistoryAndRunsHooks",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/history_timeline_e2e_test.go::TestTimelineExportStructure",
+        ],
+        observe_now: observe_history_json,
+    },
+    LegacyExportContractItem {
+        id: "local-bootstrap-references",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The exported index.html must reference local stylesheet and viewer bootstrap assets.",
+        rationale: "Static-host and preview flows must stay self-contained instead of depending on live asset servers.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_CSSPresent",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_JavaScriptFiles",
+        ],
+        observe_now: observe_local_bootstrap_references,
+    },
+    LegacyExportContractItem {
+        id: "offline-bootstrap-without-network-urls",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The exported HTML bootstrap should remain self-contained and avoid hard-coded external URLs.",
+        rationale: "Offline-capable static export is a user-facing promise, not just a test harness detail.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_NoExternalURLs",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+        ],
+        observe_now: observe_no_external_bootstrap_urls,
+    },
+    LegacyExportContractItem {
+        id: "sqlite-database",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires a SQLite export database at beads.sqlite3.",
+        rationale: "Legacy detail panes, search, and richer viewer state are backed by SQLite rather than reduced JSON sidecars.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_SQLiteDatabase",
+            "legacy_beads_viewer_code/beads_viewer/pkg/export/integration_test.go::TestExportCreatesExpectedFiles",
+        ],
+        observe_now: observe_sqlite_database,
+    },
+    LegacyExportContractItem {
+        id: "sqlite-bootstrap-config",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires beads.sqlite3.config.json with chunking/bootstrap metadata.",
+        rationale: "Legacy large-bundle handling depends on a config payload that reports total size and chunking state.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_SQLiteDatabase",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_cloudflare_test.go::TestCloudflare_SQLiteChunking",
+        ],
+        observe_now: observe_sqlite_config,
+    },
+    LegacyExportContractItem {
+        id: "triage-project-health",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires triage.json to carry project_health summary data.",
+        rationale: "Legacy static pages expose graph and velocity health directly from the exported triage payload.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_TriageJSON",
+            "legacy_beads_viewer_code/beads_viewer/pkg/export/viewer_assets/index.html::project_health dashboard widgets",
+        ],
+        observe_now: observe_triage_project_health,
+    },
+    LegacyExportContractItem {
+        id: "quick-ref-count-fields",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires legacy quick_ref count fields such as open_count, actionable_count, blocked_count, and in_progress_count.",
+        rationale: "Legacy incremental tests and dashboards consume richer summary counters than the current reduced Rust quick_ref payload exports.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_incremental_test.go::TestExportIncremental_CloseIssues",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_incremental_test.go::TestExportIncremental_CloseBlockingIssue",
+        ],
+        observe_now: observe_legacy_quick_ref_counts,
+    },
+    LegacyExportContractItem {
+        id: "history-timeline-schema",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires the richer timeline-style history schema with commits and bead deltas.",
+        rationale: "Legacy history export is a commit timeline payload, not just the reduced per-issue event list the current Rust exporter writes.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/history_timeline_e2e_test.go::TestTimelineExportStructure",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_IncludesHistoryAndRunsHooks",
+        ],
+        observe_now: observe_legacy_history_timeline_schema,
+    },
+    LegacyExportContractItem {
+        id: "offline-graph-runtime-pack",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires a local graph/search runtime pack, including graph JS, WASM, and service-worker support.",
+        rationale: "Legacy offline export ships richer graph/search assets locally so the bundle works without network fetches.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_JavaScriptFiles",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_cloudflare_test.go::TestCloudflare_ServiceWorkerForCOI",
+        ],
+        observe_now: observe_graph_runtime_pack,
+    },
+    LegacyExportContractItem {
+        id: "search-loader-assets",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires the legacy offline search loader assets such as hybrid_scorer.js and wasm_loader.js.",
+        rationale: "Legacy export tests treat the local search/runtime loader stack as part of the shipped viewer bundle.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_IncludesHistoryAndRunsHooks",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+        ],
+        observe_now: observe_search_loader_assets,
+    },
+    LegacyExportContractItem {
+        id: "deploy-readme",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires a deploy-facing README.md in the exported bundle.",
+        rationale: "Legacy export writes operator-oriented deployment context into the bundle itself for GitHub Pages workflows.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/cmd/bv/main.go::generateREADME",
+            "legacy_beads_viewer_code/beads_viewer/README.md::Static site export bundle layout",
+        ],
+        observe_now: observe_readme,
+    },
+    LegacyExportContractItem {
+        id: "cloudflare-headers",
+        class: LegacyExportParityClass::ExplicitlyDeferredParity,
+        description: "Full parity still requires Cloudflare/static-host header metadata such as _headers.",
+        rationale: "Legacy Cloudflare export flow emits host-specific cache and content-type guidance as export artifacts.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_cloudflare_test.go::TestCloudflare_HeadersFileGenerated",
+            "legacy_beads_viewer_code/beads_viewer/pkg/export/cloudflare.go::GenerateHeadersFile",
+        ],
+        observe_now: observe_cloudflare_headers,
+    },
+    LegacyExportContractItem {
+        id: "legacy-root-stylesheet-name",
+        class: LegacyExportParityClass::NonGoalForRustParity,
+        description: "Rust parity does not need to preserve the legacy root-level styles.css filename.",
+        rationale: "The user-facing requirement is a local stylesheet reference, not the Go-era root path specifically.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_CSSPresent",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+        ],
+        observe_now: observe_legacy_root_stylesheet,
+    },
+    LegacyExportContractItem {
+        id: "legacy-root-viewer-script-name",
+        class: LegacyExportParityClass::NonGoalForRustParity,
+        description: "Rust parity does not need to preserve the legacy root-level viewer.js filename.",
+        rationale: "The requirement is an equivalent local bootstrap script, not a byte-for-byte match to the Go bundle layout.",
+        provenance: &[
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_JavaScriptFiles",
+            "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_offline_test.go::TestOffline_CompleteBundleChecklist",
+        ],
+        observe_now: observe_legacy_root_viewer_script,
+    },
+];
 
 fn write_test_beads(repo_dir: &Path) {
     fs::create_dir_all(repo_dir.join(".beads")).expect("create .beads");
@@ -97,6 +515,109 @@ fn export_pages_writes_bundle_files() {
 
     let meta = fs::read_to_string(out.join("data/meta.json")).expect("read meta.json");
     assert!(meta.contains("\"Sprint Dashboard\""));
+}
+
+#[test]
+fn legacy_export_contract_inventory_is_unique_and_provenanced() {
+    let mut ids = BTreeSet::new();
+    let mut must_have = 0usize;
+    let mut deferred = 0usize;
+    let mut non_goal = 0usize;
+
+    for item in LEGACY_EXPORT_CONTRACT {
+        assert!(
+            ids.insert(item.id),
+            "duplicate legacy export contract id: {}",
+            item.id
+        );
+        assert!(
+            !item.description.trim().is_empty(),
+            "contract item {} is missing a description",
+            item.id
+        );
+        assert!(
+            !item.rationale.trim().is_empty(),
+            "contract item {} is missing rationale",
+            item.id
+        );
+        assert!(
+            !item.provenance.is_empty(),
+            "contract item {} is missing legacy provenance",
+            item.id
+        );
+        assert!(
+            item.provenance.iter().all(|entry| {
+                entry.contains("legacy_beads_viewer_code/beads_viewer/")
+                    && (entry.contains("::") || entry.contains("README.md"))
+            }),
+            "contract item {} has non-specific provenance: {:?}",
+            item.id,
+            item.provenance
+        );
+
+        match item.class {
+            LegacyExportParityClass::MustHaveParityNow => must_have += 1,
+            LegacyExportParityClass::ExplicitlyDeferredParity => deferred += 1,
+            LegacyExportParityClass::NonGoalForRustParity => non_goal += 1,
+        }
+    }
+
+    assert!(
+        must_have > 0,
+        "contract should contain must-have parity items"
+    );
+    assert!(
+        deferred > 0,
+        "contract should contain explicitly deferred parity gaps"
+    );
+    assert!(
+        non_goal > 0,
+        "contract should contain intentional non-goals to avoid overfitting to the legacy layout"
+    );
+}
+
+#[test]
+fn export_pages_contract_makes_current_parity_status_explicit() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    write_test_beads(repo_dir);
+
+    bvr_cmd(repo_dir)
+        .args([
+            "--export-pages",
+            "pages-out",
+            "--pages-title",
+            "Contract Fixture",
+        ])
+        .assert()
+        .success();
+
+    let observations = ExportBundleObservation::capture(&repo_dir.join("pages-out"));
+    let mut mismatches = Vec::new();
+
+    for item in LEGACY_EXPORT_CONTRACT {
+        let observed = (item.observe_now)(&observations);
+        let expected = item.class.expected_present_now();
+        if observed == expected {
+            continue;
+        }
+
+        mismatches.push(format!(
+            "[{}] {} expected present_now={} but observed={observed}. {}. Rationale: {}. Provenance: {}",
+            item.class.label(),
+            item.id,
+            expected,
+            item.description,
+            item.rationale,
+            item.provenance.join(" | "),
+        ));
+    }
+
+    assert!(
+        mismatches.is_empty(),
+        "legacy export contract drifted from the documented Rust parity status:\n{}",
+        mismatches.join("\n")
+    );
 }
 
 #[test]
@@ -402,7 +923,9 @@ fn preview_pages_reports_session_diagnostics() {
         "Preview server running at http://127.0.0.1:{port}"
     )));
     assert!(stdout.contains("Serving bundle:"));
-    assert!(stdout.contains("Live reload: enabled"));
+    assert!(stdout.contains("Status endpoint:"));
+    assert!(stdout.contains("Reload transport: polling"));
+    assert!(stdout.contains("Preview server stopped: request limit reached."));
 }
 
 #[test]
@@ -447,9 +970,16 @@ fn preview_pages_status_endpoint_reports_bundle_metadata() {
     let payload = serde_json::from_str::<Value>(body).expect("decode status json");
     assert_eq!(payload["status"], "running");
     assert_eq!(payload["port"], port);
+    assert_eq!(payload["url"], format!("http://127.0.0.1:{port}"));
     assert_eq!(payload["has_index"], true);
     assert_eq!(payload["live_reload"], true);
+    assert_eq!(payload["reload_mode"], "poll");
     assert_eq!(payload["file_count"], 2);
+    assert_eq!(
+        payload["status_url"],
+        format!("http://127.0.0.1:{port}/__preview__/status")
+    );
+    assert_eq!(payload["reload_endpoint"], "/.bvr/livereload");
     assert!(
         payload["bundle_path"]
             .as_str()
@@ -511,4 +1041,62 @@ fn preview_pages_no_live_reload_omits_reload_script() {
         "preview html request failed with stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn preview_pages_handles_sigterm_gracefully() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    let bundle_dir = repo_dir.join("bundle");
+    fs::create_dir_all(&bundle_dir).expect("create bundle dir");
+    fs::write(
+        bundle_dir.join("index.html"),
+        "<!doctype html><html><body>ok</body></html>",
+    )
+    .expect("write index");
+
+    let probe = TcpListener::bind(("127.0.0.1", 0)).expect("probe port");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args(["--preview-pages", "bundle"])
+        .env("BVR_PREVIEW_PORT", port.to_string())
+        .env("BV_NO_BROWSER", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+
+    let mut connected = false;
+    for _ in 0..40 {
+        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+            stream
+                .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .expect("write request");
+            connected = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(connected, "failed to connect to preview server");
+
+    let status = ProcessCommand::new("kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("send SIGTERM");
+    assert!(status.success(), "failed to send SIGTERM");
+
+    let output = child.wait_with_output().expect("wait for preview");
+    assert!(
+        output.status.success(),
+        "preview did not shut down cleanly: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Preview server stopped: received shutdown signal."));
 }

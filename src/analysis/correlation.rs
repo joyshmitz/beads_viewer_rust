@@ -408,10 +408,8 @@ pub fn default_feedback_path(repo_root: &Path) -> PathBuf {
 
 #[derive(Debug, Serialize)]
 pub struct RobotExplainOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub explanation: CorrelationExplanation,
 }
 
@@ -427,10 +425,8 @@ pub struct RobotCorrelationActionOutput {
 
 #[derive(Debug, Serialize)]
 pub struct RobotCorrelationStatsOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub stats: FeedbackStats,
 }

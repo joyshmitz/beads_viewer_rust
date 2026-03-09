@@ -301,10 +301,8 @@ pub struct ComponentScores {
 
 #[derive(Debug, Serialize)]
 pub struct RobotSearchOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub query: String,
     pub limit: usize,
     pub mode: String,

@@ -4,8 +4,10 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::Utc;
 use serde::Serialize;
@@ -19,6 +21,15 @@ const DEFAULT_PAGES_TITLE: &str = "Project Issues";
 const DEFAULT_PREVIEW_PORT: u16 = 9000;
 const MAX_PREVIEW_PORT_ATTEMPTS: u16 = 32;
 const PREVIEW_MAX_REQUESTS_ENV: &str = "BVR_PREVIEW_MAX_REQUESTS";
+const PREVIEW_ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const PREVIEW_STATUS_PATH: &str = "/__preview__/status";
+const PREVIEW_RELOAD_PATH: &str = "/.bvr/livereload";
+
+#[cfg(unix)]
+const PREVIEW_SIGNAL_SET: &[i32] = &[signal_hook::consts::SIGINT, signal_hook::consts::SIGTERM];
+
+#[cfg(not(unix))]
+const PREVIEW_SIGNAL_SET: &[i32] = &[signal_hook::consts::SIGINT];
 
 const LIVE_RELOAD_SCRIPT: &str = r"<script>
 (() => {
@@ -72,10 +83,66 @@ struct PagesMeta {
 struct PreviewStatusResponse {
     status: &'static str,
     port: u16,
+    url: String,
     bundle_path: String,
     has_index: bool,
     file_count: usize,
     live_reload: bool,
+    reload_mode: &'static str,
+    status_url: String,
+    reload_endpoint: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewReloadMode {
+    Poll,
+    Disabled,
+}
+
+impl PreviewReloadMode {
+    const fn from_enabled(live_reload: bool) -> Self {
+        if live_reload {
+            Self::Poll
+        } else {
+            Self::Disabled
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Poll => "poll",
+            Self::Disabled => "disabled",
+        }
+    }
+
+    const fn operator_summary(self) -> &'static str {
+        match self {
+            Self::Poll => "polling (GET /.bvr/livereload)",
+            Self::Disabled => "disabled",
+        }
+    }
+
+    const fn reload_endpoint(self) -> Option<&'static str> {
+        match self {
+            Self::Poll => Some(PREVIEW_RELOAD_PATH),
+            Self::Disabled => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreviewShutdownReason {
+    RequestLimitReached,
+    ShutdownSignal,
+}
+
+impl PreviewShutdownReason {
+    const fn operator_summary(self) -> &'static str {
+        match self {
+            Self::RequestLimitReached => "request limit reached",
+            Self::ShutdownSignal => "received shutdown signal",
+        }
+    }
 }
 
 pub fn print_pages_wizard() {
@@ -119,6 +186,7 @@ pub fn export_pages_bundle(
         group_by_track: false,
         group_by_label: false,
         max_recommendations: 50,
+        ..TriageOptions::default()
     });
     let insights = analyzer.insights();
 
@@ -195,12 +263,15 @@ pub fn run_preview_server(bundle_dir: &Path, live_reload: bool) -> Result<()> {
     }
 
     let (listener, port) = bind_preview_listener()?;
-    println!("Preview server running at http://127.0.0.1:{port}");
+    listener.set_nonblocking(true)?;
+    let preview_url = preview_url(port);
+    let reload_mode = PreviewReloadMode::from_enabled(live_reload);
+    let shutdown_requested = install_preview_signal_handlers()?;
+
+    println!("Preview server running at {preview_url}");
     println!("Serving bundle: {}", bundle_dir.display());
-    println!(
-        "Live reload: {}",
-        if live_reload { "enabled" } else { "disabled" }
-    );
+    println!("Status endpoint: {preview_url}{PREVIEW_STATUS_PATH}");
+    println!("Reload transport: {}", reload_mode.operator_summary());
     println!("Press Ctrl+C to stop.");
     maybe_open_preview_in_browser(port);
 
@@ -210,16 +281,37 @@ pub fn run_preview_server(bundle_dir: &Path, live_reload: bool) -> Result<()> {
         .filter(|value| *value > 0);
     let mut served = 0usize;
 
-    loop {
-        let (stream, _) = listener.accept()?;
-        if let Err(error) = handle_preview_request(stream, bundle_dir, live_reload, port) {
-            eprintln!("warning: preview request failed: {error}");
+    let shutdown_reason = loop {
+        if shutdown_requested.load(Ordering::Relaxed) {
+            break PreviewShutdownReason::ShutdownSignal;
         }
-        served = served.saturating_add(1);
-        if max_requests.is_some_and(|limit| served >= limit) {
-            return Ok(());
+
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if let Err(error) = handle_preview_request(stream, bundle_dir, live_reload, port) {
+                    eprintln!("warning: preview request failed: {error}");
+                }
+                served = served.saturating_add(1);
+                if max_requests.is_some_and(|limit| served >= limit) {
+                    break PreviewShutdownReason::RequestLimitReached;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(PREVIEW_ACCEPT_POLL_INTERVAL);
+            }
+            Err(error) if shutdown_requested.load(Ordering::Relaxed) => {
+                eprintln!("warning: preview accept loop stopped after shutdown signal: {error}");
+                break PreviewShutdownReason::ShutdownSignal;
+            }
+            Err(error) => return Err(BvrError::Io(error)),
         }
-    }
+    };
+
+    println!(
+        "Preview server stopped: {}.",
+        shutdown_reason.operator_summary()
+    );
+    Ok(())
 }
 
 fn bind_preview_listener() -> Result<(TcpListener, u16)> {
@@ -233,12 +325,16 @@ fn bind_preview_listener() -> Result<(TcpListener, u16)> {
         match TcpListener::bind(("127.0.0.1", port)) {
             Ok(listener) => return Ok((listener, port)),
             Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {}
-            Err(error) => return Err(BvrError::Io(error)),
+            Err(error) => {
+                return Err(BvrError::InvalidArgument(format!(
+                    "failed to bind preview server on 127.0.0.1:{port}: {error}. Set BVR_PREVIEW_PORT to a free port or stop the conflicting process."
+                )));
+            }
         }
     }
 
     Err(BvrError::InvalidArgument(format!(
-        "could not bind preview server on ports {base_port}..{}",
+        "could not bind preview server on ports {base_port}..{}. Set BVR_PREVIEW_PORT to a free port or stop the conflicting process.",
         base_port.saturating_add(MAX_PREVIEW_PORT_ATTEMPTS.saturating_sub(1))
     )))
 }
@@ -274,7 +370,7 @@ fn handle_preview_request(
     }
 
     let route = target.split('?').next().unwrap_or("/");
-    if route == "/__preview__/status" || route == "/.bvr/status" {
+    if route == PREVIEW_STATUS_PATH || route == "/.bvr/status" {
         let payload = serde_json::to_vec(&preview_status(bundle_dir, live_reload, port)?)?;
         write_http_response(
             &mut stream,
@@ -286,7 +382,7 @@ fn handle_preview_request(
         return Ok(());
     }
 
-    if route == "/.bvr/livereload" {
+    if route == PREVIEW_RELOAD_PATH {
         let token = latest_modified_token(bundle_dir)?.to_string();
         write_http_response(
             &mut stream,
@@ -417,14 +513,25 @@ fn preview_status(
     live_reload: bool,
     port: u16,
 ) -> Result<PreviewStatusResponse> {
+    let preview_url = preview_url(port);
+    let reload_mode = PreviewReloadMode::from_enabled(live_reload);
+
     Ok(PreviewStatusResponse {
         status: "running",
         port,
+        url: preview_url.clone(),
         bundle_path: bundle_dir.to_string_lossy().to_string(),
         has_index: bundle_dir.join("index.html").is_file(),
         file_count: count_files_recursive(bundle_dir)?,
         live_reload,
+        reload_mode: reload_mode.label(),
+        status_url: format!("{preview_url}{PREVIEW_STATUS_PATH}"),
+        reload_endpoint: reload_mode.reload_endpoint(),
     })
+}
+
+fn preview_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
 }
 
 fn latest_modified_token(path: &Path) -> Result<u64> {
@@ -479,7 +586,7 @@ fn maybe_open_preview_in_browser(port: u16) {
         return;
     }
 
-    let url = format!("http://127.0.0.1:{port}");
+    let url = preview_url(port);
     thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(500));
         if !open_url_in_browser(&url) {
@@ -507,6 +614,14 @@ fn run_command(command: &str, args: &[&str]) -> bool {
         .stderr(std::process::Stdio::null())
         .status()
         .is_ok_and(|status| status.success())
+}
+
+fn install_preview_signal_handlers() -> Result<Arc<AtomicBool>> {
+    let shutdown_requested = Arc::new(AtomicBool::new(false));
+    for signal in PREVIEW_SIGNAL_SET {
+        signal_hook::flag::register(*signal, Arc::clone(&shutdown_requested))?;
+    }
+    Ok(shutdown_requested)
 }
 
 fn render_index_html(title: &str, include_history: bool) -> String {
@@ -747,5 +862,20 @@ mod tests {
         let injected = inject_live_reload(html);
         let text = String::from_utf8(injected).expect("utf8");
         assert!(text.contains("window.location.reload"));
+    }
+
+    #[test]
+    fn preview_status_reports_urls_and_reload_mode() {
+        let temp = tempdir().expect("tempdir");
+        fs::write(temp.path().join("index.html"), "<html></html>").expect("write index");
+
+        let status = preview_status(temp.path(), true, 9123).expect("preview status");
+        assert_eq!(status.url, "http://127.0.0.1:9123");
+        assert_eq!(status.reload_mode, "poll");
+        assert_eq!(
+            status.status_url,
+            "http://127.0.0.1:9123/__preview__/status"
+        );
+        assert_eq!(status.reload_endpoint, Some("/.bvr/livereload"));
     }
 }

@@ -95,6 +95,10 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_insights: bool,
 
+    /// Include full per-node metric maps in robot-insights output.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_full_stats: bool,
+
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_priority: bool,
 

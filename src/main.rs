@@ -16,13 +16,13 @@ use bvr::analysis::git_history::{
     load_git_commits,
 };
 use bvr::analysis::suggest::{SuggestOptions, SuggestionType};
-use bvr::analysis::triage::TriageOptions;
+use bvr::analysis::triage::{TriageOptions, TriageScoringOptions};
 use bvr::analysis::{Analyzer, Insights, MetricStatus};
 use bvr::cli::{Cli, GraphFormat, GraphPreset, GraphStyle};
 use bvr::loader;
 use bvr::robot::{
-    compute_data_hash, default_field_descriptions, emit_with_stats, envelope, generate_robot_docs,
-    generate_robot_schemas,
+    compute_data_hash, default_field_descriptions, emit_with_stats, envelope, envelope_empty,
+    generate_robot_docs, generate_robot_schemas,
 };
 use chrono::{DateTime, Duration, Local, Utc};
 use clap::Parser;
@@ -129,10 +129,7 @@ fn main() -> ExitCode {
     if cli.robot_recipes {
         let recipes = bvr::analysis::recipe::list_recipes();
         let output = bvr::analysis::recipe::RobotRecipesOutput {
-            generated_at: Utc::now().to_rfc3339(),
-            data_hash: String::new(),
-            output_format: "json".to_string(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope_empty(),
             recipes,
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -162,10 +159,7 @@ fn main() -> ExitCode {
 
         let feedback = bvr::analysis::recipe::FeedbackData::load(&work_dir);
         let output = bvr::analysis::recipe::RobotFeedbackOutput {
-            generated_at: Utc::now().to_rfc3339(),
-            data_hash: String::new(),
-            output_format: "json".to_string(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope_empty(),
             stats: feedback.stats(),
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -260,19 +254,48 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    let (as_of, as_of_commit) = resolve_as_of(&cli);
+    let (label_scope, label_context) = if let Some(ref label) = cli.label {
+        let health = bvr::analysis::label_intel::compute_single_label_health(
+            label,
+            &issues,
+            &analyzer.metrics,
+        );
+        (Some(label.clone()), Some(health))
+    } else {
+        (None, None)
+    };
+
+    // Load feedback adjustments for triage scoring (persisted from --feedback-accept/ignore).
+    let feedback_weight_adjustments = {
+        let work_dir = cli
+            .workspace
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let feedback = bvr::analysis::recipe::FeedbackData::load(&work_dir);
+        feedback.weight_adjustment_map()
+    };
+
     if cli.robot_next || cli.robot_triage || cli.robot_triage_by_track || cli.robot_triage_by_label
     {
         let triage = analyzer.triage(TriageOptions {
             group_by_track: cli.robot_triage_by_track,
             group_by_label: cli.robot_triage_by_label,
             max_recommendations: cli.robot_max_results.max(10),
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
 
         if cli.robot_next {
+            let env = envelope(&issues);
             let result = if let Some(top) = triage.result.quick_ref.top_picks.first() {
                 RobotNextOutput {
-                    generated_at: envelope(&issues).generated_at,
-                    data_hash: envelope(&issues).data_hash,
+                    envelope: env,
+                    as_of: as_of.clone(),
+                    as_of_commit: as_of_commit.clone(),
                     id: Some(top.id.clone()),
                     title: Some(top.title.clone()),
                     score: Some(top.score),
@@ -284,8 +307,9 @@ fn main() -> ExitCode {
                 }
             } else {
                 RobotNextOutput {
-                    generated_at: envelope(&issues).generated_at,
-                    data_hash: envelope(&issues).data_hash,
+                    envelope: env,
+                    as_of: as_of.clone(),
+                    as_of_commit: as_of_commit.clone(),
                     id: None,
                     title: None,
                     score: None,
@@ -305,8 +329,9 @@ fn main() -> ExitCode {
         }
 
         let output = RobotTriageOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: envelope(&issues).data_hash,
+            envelope: envelope(&issues),
+            as_of: as_of.clone(),
+            as_of_commit: as_of_commit.clone(),
             triage: triage.result,
             usage_hints: vec![
                 "jq '.triage.quick_ref.top_picks[:3]'".to_string(),
@@ -329,13 +354,22 @@ fn main() -> ExitCode {
             group_by_track: false,
             group_by_label: false,
             max_recommendations: 200,
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
         let plan = analyzer.plan(&triage.score_by_id);
 
         let output = RobotPlanOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: envelope(&issues).data_hash,
+            envelope: envelope(&issues),
+            as_of: as_of.clone(),
+            as_of_commit: as_of_commit.clone(),
+            label_scope: label_scope.clone(),
+            label_context: label_context.clone(),
             status: MetricStatus::computed(),
+            analysis_config: analyzer.metrics.config.clone(),
             plan,
             usage_hints: vec![
                 "jq '.plan.summary'".to_string(),
@@ -355,12 +389,26 @@ fn main() -> ExitCode {
         let insights = analyzer.insights();
         let legacy_bottlenecks = insights.bottlenecks.clone();
         let legacy_cycles = insights.cycles.clone();
+        let full_stats = if cli.robot_full_stats {
+            Some(build_full_stats(&analyzer.metrics))
+        } else {
+            None
+        };
+        let top_what_ifs = Some(analyzer.top_what_ifs(5));
+        let advanced_insights = Some(analyzer.advanced_insights());
         let output = RobotInsightsOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: envelope(&issues).data_hash,
+            envelope: envelope(&issues),
+            as_of: as_of.clone(),
+            as_of_commit: as_of_commit.clone(),
+            label_scope: label_scope.clone(),
+            label_context: label_context.clone(),
+            analysis_config: analyzer.metrics.config.clone(),
             bottlenecks: legacy_bottlenecks,
             cycles: legacy_cycles,
             insights,
+            full_stats,
+            top_what_ifs,
+            advanced_insights,
             usage_hints: vec![
                 "jq '.insights.bottlenecks[:5]'".to_string(),
                 "jq '.insights.cycles'".to_string(),
@@ -390,9 +438,13 @@ fn main() -> ExitCode {
             .count();
 
         let output = RobotPriorityOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: envelope(&issues).data_hash,
+            envelope: envelope(&issues),
+            as_of: as_of.clone(),
+            as_of_commit: as_of_commit.clone(),
+            label_scope: label_scope.clone(),
+            label_context: label_context.clone(),
             status: MetricStatus::computed(),
+            analysis_config: analyzer.metrics.config.clone(),
             recommendations,
             field_descriptions: default_field_descriptions(),
             filters: PriorityFilterOutput {
@@ -546,7 +598,7 @@ fn main() -> ExitCode {
             },
         );
         let output = RobotDiffOutput {
-            generated_at: envelope(&issues).generated_at,
+            envelope: envelope(&issues),
             resolved_revision,
             from_data_hash: compute_data_hash(&before_issues),
             to_data_hash: compute_data_hash(&issues),
@@ -696,15 +748,12 @@ fn main() -> ExitCode {
         };
 
         let output = RobotForecastOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: envelope(&issues).data_hash,
+            envelope: envelope(&issues),
             agents,
             filters,
             forecast_count: forecasts.len(),
             forecasts,
             summary,
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
         };
 
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -728,10 +777,7 @@ fn main() -> ExitCode {
         if let Some(sprint_id) = cli.robot_sprint_show.as_deref() {
             if let Some(sprint) = sprints.iter().find(|s| s.id == sprint_id) {
                 let output = RobotSprintShowOutput {
-                    generated_at: envelope(&issues).generated_at,
-                    data_hash: compute_data_hash(&issues),
-                    output_format: "json".to_owned(),
-                    version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                    envelope: envelope(&issues),
                     sprint: sprint.clone(),
                 };
                 if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -744,10 +790,7 @@ fn main() -> ExitCode {
             }
         } else {
             let output = RobotSprintListOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 sprint_count: sprints.len(),
                 sprints,
             };
@@ -762,10 +805,7 @@ fn main() -> ExitCode {
 
     if cli.robot_metrics {
         let output = RobotMetricsOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: compute_data_hash(&issues),
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope(&issues),
             timing: Vec::new(),
             cache: Vec::new(),
             memory: MetricsMemory::current(),
@@ -783,6 +823,11 @@ fn main() -> ExitCode {
             group_by_track: true,
             group_by_label: true,
             max_recommendations: 50,
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
         let triage_duration = triage_start.elapsed();
 
@@ -819,10 +864,7 @@ fn main() -> ExitCode {
 
         if cli.profile_json {
             let output = ProfileJsonOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 profile,
                 total_with_load: format_duration_ms(total),
                 recommendations,
@@ -839,10 +881,7 @@ fn main() -> ExitCode {
 
     if cli.robot_label_health {
         let output = RobotLabelHealthOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: compute_data_hash(&issues),
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope(&issues),
             result: bvr::analysis::label_intel::compute_all_label_health(
                 &issues,
                 &analyzer.graph,
@@ -858,10 +897,7 @@ fn main() -> ExitCode {
 
     if cli.robot_label_flow {
         let output = RobotLabelFlowOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: compute_data_hash(&issues),
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope(&issues),
             flow: bvr::analysis::label_intel::compute_cross_label_flow(&issues),
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -874,10 +910,7 @@ fn main() -> ExitCode {
     if cli.robot_label_attention {
         let limit = cli.attention_limit;
         let output = RobotLabelAttentionOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: compute_data_hash(&issues),
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope(&issues),
             limit,
             result: bvr::analysis::label_intel::compute_label_attention(
                 &issues,
@@ -910,10 +943,7 @@ fn main() -> ExitCode {
                 }
             };
             let output = bvr::analysis::correlation::RobotCorrelationStatsOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 stats: store.stats(),
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -979,10 +1009,7 @@ fn main() -> ExitCode {
             let explanation =
                 bvr::analysis::correlation::build_explanation(commit_entry, &bead_id, existing);
             let output = bvr::analysis::correlation::RobotExplainOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 explanation,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1079,10 +1106,7 @@ fn main() -> ExitCode {
                 cli.orphans_min_score,
             );
             let output = bvr::analysis::file_intel::RobotOrphansOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 report,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1099,10 +1123,7 @@ fn main() -> ExitCode {
                 cli.file_beads_limit,
             );
             let output = bvr::analysis::file_intel::RobotFileBeadsOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1120,10 +1141,7 @@ fn main() -> ExitCode {
             let stats =
                 bvr::analysis::file_intel::compute_file_index_stats(&history_output.histories_map);
             let output = bvr::analysis::file_intel::RobotFileHotspotsOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 hotspots,
                 stats,
             };
@@ -1142,10 +1160,7 @@ fn main() -> ExitCode {
                 &history_output.histories_map,
             );
             let output = bvr::analysis::file_intel::RobotImpactOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1163,10 +1178,7 @@ fn main() -> ExitCode {
                 cli.relations_limit,
             );
             let output = bvr::analysis::file_intel::RobotFileRelationsOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1183,10 +1195,7 @@ fn main() -> ExitCode {
                 cli.related_limit,
             );
             let output = bvr::analysis::file_intel::RobotRelatedWorkOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1205,10 +1214,7 @@ fn main() -> ExitCode {
         if let Some(ref target_id) = cli.robot_blocker_chain {
             let result = bvr::analysis::causal::get_blocker_chain(&analyzer.graph, target_id);
             let output = bvr::analysis::causal::RobotBlockerChainOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1233,10 +1239,7 @@ fn main() -> ExitCode {
                 cli.network_depth,
             );
             let output = bvr::analysis::causal::RobotImpactNetworkOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1260,10 +1263,7 @@ fn main() -> ExitCode {
                 &analyzer.graph,
             );
             let output = bvr::analysis::causal::RobotCausalityOutput {
-                generated_at: envelope(&issues).generated_at,
-                data_hash: compute_data_hash(&issues),
-                output_format: "json".to_owned(),
-                version: format!("v{}", env!("CARGO_PKG_VERSION")),
+                envelope: envelope(&issues),
                 result,
             };
             if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1313,10 +1313,7 @@ fn main() -> ExitCode {
         );
         let exit_code = result.exit_code;
         let output = bvr::analysis::drift::RobotDriftOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: compute_data_hash(&issues),
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope(&issues),
             result,
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1379,10 +1376,7 @@ fn main() -> ExitCode {
         };
 
         let output = bvr::analysis::search::RobotSearchOutput {
-            generated_at: envelope(&issues).generated_at,
-            data_hash: compute_data_hash(&issues),
-            output_format: "json".to_owned(),
-            version: format!("v{}", env!("CARGO_PKG_VERSION")),
+            envelope: envelope(&issues),
             query: query.to_string(),
             limit: cli.search_limit,
             mode: mode.as_str().to_string(),
@@ -1403,6 +1397,11 @@ fn main() -> ExitCode {
             group_by_track: false,
             group_by_label: false,
             max_recommendations: cli.script_limit.max(10),
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
 
         let mut recommendations = triage.result.recommendations;
@@ -1462,11 +1461,16 @@ fn main() -> ExitCode {
             return ExitCode::from(1);
         };
 
-        // Look up the issue's triage score
+        // Look up the issue's triage score (with current feedback applied)
         let triage = analyzer.triage(TriageOptions {
             group_by_track: false,
             group_by_label: false,
             max_recommendations: 100,
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
         let score = triage
             .result
@@ -1500,6 +1504,11 @@ fn main() -> ExitCode {
             group_by_track: false,
             group_by_label: false,
             max_recommendations: 20,
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
         let env = envelope(&issues);
         let brief = bvr::analysis::brief::generate_priority_brief(
@@ -1522,6 +1531,11 @@ fn main() -> ExitCode {
             group_by_track: false,
             group_by_label: false,
             max_recommendations: 20,
+            scoring: TriageScoringOptions {
+                weight_adjustments: feedback_weight_adjustments.clone(),
+                ..TriageScoringOptions::default()
+            },
+            ..TriageOptions::default()
         });
         let insights = analyzer.insights();
         let insights_json = serde_json::to_value(&insights).unwrap_or_default();
@@ -2048,9 +2062,10 @@ fn parse_suggest_type(raw: Option<&str>) -> bvr::Result<Option<SuggestionType>> 
         "dependency" | "dependencies" => SuggestionType::MissingDependency,
         "label" | "labels" => SuggestionType::LabelSuggestion,
         "cycle" | "cycles" => SuggestionType::CycleWarning,
+        "stale" | "stale_cleanup" => SuggestionType::StaleCleanup,
         _ => {
             return Err(bvr::BvrError::InvalidArgument(format!(
-                "Invalid suggest-type: {value} (use: duplicate, dependency, label, cycle)"
+                "Invalid suggest-type: {value} (use: duplicate, dependency, label, cycle, stale)"
             )));
         }
     };
@@ -2155,6 +2170,20 @@ fn resolve_diff_revision(cli: &Cli, reference: &str) -> String {
     } else {
         resolved
     }
+}
+
+/// Resolve --as-of flag to (as_of_value, resolved_commit_sha).
+fn resolve_as_of(cli: &Cli) -> (Option<String>, Option<String>) {
+    let Some(ref_name) = &cli.as_of else {
+        return (None, None);
+    };
+    let resolved = resolve_diff_revision(cli, ref_name);
+    let commit = if resolved != *ref_name {
+        Some(resolved)
+    } else {
+        None
+    };
+    (Some(ref_name.clone()), commit)
 }
 
 fn latest_commit_sha(cli: &Cli) -> Option<String> {
@@ -2313,8 +2342,7 @@ fn build_robot_history_output(
     };
 
     Ok(RobotHistoryOutput {
-        generated_at: envelope(issues).generated_at,
-        data_hash: envelope(issues).data_hash,
+        envelope: envelope(issues),
         bead_history: cli.bead_history.clone(),
         history_count,
         histories_timeline,
@@ -2517,8 +2545,7 @@ fn build_robot_burndown_output(
         .unwrap_or_default();
 
     Ok(RobotBurndownOutput {
-        generated_at: envelope(issues).generated_at,
-        data_hash: envelope(issues).data_hash,
+        envelope: envelope(issues),
         sprint_id: sprint.id.clone(),
         sprint_name: sprint.name.clone(),
         start_date: sprint.start_date,
@@ -2536,8 +2563,6 @@ fn build_robot_burndown_output(
         daily_points,
         ideal_line,
         scope_changes,
-        output_format: "json".to_owned(),
-        version: format!("v{}", env!("CARGO_PKG_VERSION")),
     })
 }
 
@@ -3050,8 +3075,7 @@ fn build_robot_capacity_output(issues: &[bvr::model::Issue], cli: &Cli) -> Robot
     bottlenecks.truncate(5);
 
     RobotCapacityOutput {
-        generated_at: envelope(issues).generated_at,
-        data_hash: envelope(issues).data_hash,
+        envelope: envelope(issues),
         agents,
         label: cli
             .capacity_label
@@ -3070,8 +3094,6 @@ fn build_robot_capacity_output(issues: &[bvr::model::Issue], cli: &Cli) -> Robot
         actionable_count: actionable.len(),
         actionable,
         bottlenecks,
-        output_format: "json".to_owned(),
-        version: format!("v{}", env!("CARGO_PKG_VERSION")),
     }
 }
 
@@ -3127,8 +3149,16 @@ fn build_robot_graph_output(
     let graph_format = graph_format_override.unwrap_or(cli.graph_format);
     let format = graph_format_name(graph_format).to_string();
 
+    let env = bvr::robot::RobotEnvelope {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        data_hash: graph_data.data_hash.clone(),
+        output_format: "json".to_string(),
+        version: format!("v{}", env!("CARGO_PKG_VERSION")),
+    };
+
     if graph_data.filtered_issues.is_empty() {
         return RobotGraphOutput {
+            envelope: env,
             format,
             graph: None,
             nodes: 0,
@@ -3139,7 +3169,6 @@ fn build_robot_graph_output(
                 how_to_render: None,
                 when_to_use: "Adjust filter parameters to include more issues".to_string(),
             },
-            data_hash: graph_data.data_hash,
             adjacency: None,
         };
     }
@@ -3195,13 +3224,13 @@ fn build_robot_graph_output(
     };
 
     RobotGraphOutput {
+        envelope: env,
         format,
         graph,
         nodes: graph_data.filtered_issues.len(),
         edges: graph_data.edges.len(),
         filters_applied: graph_data.filters_applied,
         explanation,
-        data_hash: graph_data.data_hash,
         adjacency,
     }
 }
@@ -4453,16 +4482,24 @@ fn print_robot_help() {
 
 #[derive(Debug, Serialize)]
 struct RobotTriageOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of_commit: Option<String>,
     triage: bvr::analysis::triage::TriageResult,
     usage_hints: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotNextOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of_commit: Option<String>,
     id: Option<String>,
     title: Option<String>,
     score: Option<f64>,
@@ -4475,27 +4512,134 @@ struct RobotNextOutput {
 
 #[derive(Debug, Serialize)]
 struct RobotPlanOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_context: Option<bvr::analysis::label_intel::LabelHealth>,
     status: MetricStatus,
+    analysis_config: bvr::analysis::graph::AnalysisConfig,
     plan: bvr::analysis::plan::ExecutionPlan,
     usage_hints: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
+struct FullStatsNode {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pagerank: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    betweenness: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eigenvector: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hits_hub: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hits_authority: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kcore: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    critical_depth: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slack: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blocks_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blocked_by_count: Option<usize>,
+    is_articulation_point: bool,
+}
+
+fn build_full_stats(
+    metrics: &bvr::analysis::graph::GraphMetrics,
+) -> BTreeMap<String, FullStatsNode> {
+    let mut all_ids = BTreeSet::new();
+    for id in metrics.pagerank.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.betweenness.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.eigenvector.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.hubs.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.authorities.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.k_core.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.critical_depth.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.slack.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.blocks_count.keys() {
+        all_ids.insert(id.clone());
+    }
+    for id in metrics.blocked_by_count.keys() {
+        all_ids.insert(id.clone());
+    }
+
+    all_ids
+        .into_iter()
+        .map(|id| {
+            let node = FullStatsNode {
+                pagerank: metrics.pagerank.get(&id).copied(),
+                betweenness: metrics.betweenness.get(&id).copied(),
+                eigenvector: metrics.eigenvector.get(&id).copied(),
+                hits_hub: metrics.hubs.get(&id).copied(),
+                hits_authority: metrics.authorities.get(&id).copied(),
+                kcore: metrics.k_core.get(&id).copied(),
+                critical_depth: metrics.critical_depth.get(&id).copied(),
+                slack: metrics.slack.get(&id).copied(),
+                blocks_count: metrics.blocks_count.get(&id).copied(),
+                blocked_by_count: metrics.blocked_by_count.get(&id).copied(),
+                is_articulation_point: metrics.articulation_points.contains(&id),
+            };
+            (id, node)
+        })
+        .collect()
+}
+
+#[derive(Debug, Serialize)]
 struct RobotInsightsOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_context: Option<bvr::analysis::label_intel::LabelHealth>,
+    analysis_config: bvr::analysis::graph::AnalysisConfig,
     #[serde(rename = "Bottlenecks")]
     bottlenecks: Vec<bvr::analysis::InsightItem>,
     #[serde(rename = "Cycles")]
     cycles: Vec<Vec<String>>,
     insights: Insights,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    full_stats: Option<BTreeMap<String, FullStatsNode>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_what_ifs: Option<Vec<bvr::analysis::whatif::WhatIfDelta>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    advanced_insights: Option<bvr::analysis::advanced::AdvancedInsights>,
     usage_hints: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotGraphOutput {
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     format: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     graph: Option<String>,
@@ -4504,7 +4648,6 @@ struct RobotGraphOutput {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     filters_applied: BTreeMap<String, String>,
     explanation: GraphExplanation,
-    data_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     adjacency: Option<GraphAdjacency>,
 }
@@ -4560,9 +4703,18 @@ struct PrioritySummaryOutput {
 
 #[derive(Debug, Serialize)]
 struct RobotPriorityOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    as_of_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label_context: Option<bvr::analysis::label_intel::LabelHealth>,
     status: MetricStatus,
+    analysis_config: bvr::analysis::graph::AnalysisConfig,
     recommendations: Vec<bvr::analysis::triage::Recommendation>,
     field_descriptions: BTreeMap<&'static str, &'static str>,
     filters: PriorityFilterOutput,
@@ -4572,7 +4724,8 @@ struct RobotPriorityOutput {
 
 #[derive(Debug, Serialize)]
 struct RobotDiffOutput {
-    generated_at: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     resolved_revision: String,
     from_data_hash: String,
     to_data_hash: String,
@@ -4581,8 +4734,8 @@ struct RobotDiffOutput {
 
 #[derive(Debug, Serialize)]
 struct RobotHistoryOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     #[serde(skip_serializing_if = "Option::is_none")]
     bead_history: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -4599,8 +4752,8 @@ struct RobotHistoryOutput {
 
 #[derive(Debug, Serialize)]
 struct RobotBurndownOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     sprint_id: String,
     sprint_name: String,
     start_date: Option<DateTime<Utc>>,
@@ -4620,8 +4773,6 @@ struct RobotBurndownOutput {
     ideal_line: Vec<BurndownPointCompat>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     scope_changes: Vec<ScopeChangeCompat>,
-    output_format: String,
-    version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -4641,8 +4792,8 @@ struct ScopeChangeCompat {
 
 #[derive(Debug, Serialize)]
 struct RobotCapacityOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     agents: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     label: Option<String>,
@@ -4661,8 +4812,6 @@ struct RobotCapacityOutput {
     actionable: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     bottlenecks: Vec<CapacityBottleneck>,
-    output_format: String,
-    version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -4676,8 +4825,8 @@ struct CapacityBottleneck {
 
 #[derive(Debug, Serialize)]
 struct RobotForecastOutput {
-    generated_at: String,
-    data_hash: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     agents: usize,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     filters: BTreeMap<String, String>,
@@ -4685,8 +4834,6 @@ struct RobotForecastOutput {
     forecasts: Vec<RobotForecastItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<RobotForecastSummary>,
-    output_format: String,
-    version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -4714,29 +4861,23 @@ struct RobotForecastSummary {
 
 #[derive(Debug, Serialize)]
 struct RobotSprintListOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     sprint_count: usize,
     sprints: Vec<bvr::model::Sprint>,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotSprintShowOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     sprint: bvr::model::Sprint,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotMetricsOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     timing: Vec<MetricsTiming>,
     cache: Vec<MetricsCache>,
     memory: MetricsMemory,
@@ -4780,28 +4921,22 @@ impl MetricsMemory {
 
 #[derive(Debug, Serialize)]
 struct RobotLabelHealthOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     result: bvr::analysis::label_intel::LabelHealthResult,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotLabelFlowOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     flow: bvr::analysis::label_intel::CrossLabelFlow,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotLabelAttentionOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     limit: usize,
     result: bvr::analysis::label_intel::LabelAttentionResult,
 }
@@ -4827,10 +4962,8 @@ struct StartupProfile {
 
 #[derive(Debug, Serialize)]
 struct ProfileJsonOutput {
-    generated_at: String,
-    data_hash: String,
-    output_format: String,
-    version: String,
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
     profile: StartupProfile,
     total_with_load: String,
     recommendations: Vec<String>,
@@ -5145,5 +5278,296 @@ mod tests {
     fn build_background_mode_config_disables_as_of_snapshots() {
         let cli = Cli::parse_from(["bvr", "--as-of", "HEAD~1"]);
         assert!(build_background_mode_config(&cli, true).is_none());
+    }
+
+    #[test]
+    fn full_stats_serializes_correctly() {
+        use std::collections::HashMap;
+
+        let mut metrics = bvr::analysis::graph::GraphMetrics {
+            pagerank: HashMap::new(),
+            betweenness: HashMap::new(),
+            eigenvector: HashMap::new(),
+            hubs: HashMap::new(),
+            authorities: HashMap::new(),
+            blocks_count: HashMap::new(),
+            blocked_by_count: HashMap::new(),
+            critical_depth: HashMap::new(),
+            k_core: HashMap::new(),
+            articulation_points: std::collections::HashSet::new(),
+            slack: HashMap::new(),
+            cycles: Vec::new(),
+            skipped_metrics: Vec::new(),
+            config: bvr::analysis::graph::AnalysisConfig::full(),
+        };
+        metrics.pagerank.insert("A".to_string(), 0.5);
+        metrics.betweenness.insert("A".to_string(), 0.3);
+        metrics.k_core.insert("A".to_string(), 2);
+        metrics.articulation_points.insert("A".to_string());
+        metrics.pagerank.insert("B".to_string(), 0.1);
+
+        let stats = super::build_full_stats(&metrics);
+        let json = serde_json::to_value(&stats).unwrap();
+
+        // Keys are sorted (BTreeMap).
+        let keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, vec!["A", "B"]);
+
+        // Node A has all populated fields.
+        let node_a = &json["A"];
+        assert_eq!(node_a["pagerank"], 0.5);
+        assert_eq!(node_a["betweenness"], 0.3);
+        assert_eq!(node_a["kcore"], 2);
+        assert_eq!(node_a["is_articulation_point"], true);
+
+        // Node B has only pagerank; other optional fields are absent.
+        let node_b = &json["B"];
+        assert_eq!(node_b["pagerank"], 0.1);
+        assert!(node_b.get("betweenness").is_none());
+        assert!(node_b.get("kcore").is_none());
+        assert_eq!(node_b["is_articulation_point"], false);
+    }
+
+    #[test]
+    fn full_stats_empty_metrics_produces_empty_map() {
+        use std::collections::HashMap;
+
+        let metrics = bvr::analysis::graph::GraphMetrics {
+            pagerank: HashMap::new(),
+            betweenness: HashMap::new(),
+            eigenvector: HashMap::new(),
+            hubs: HashMap::new(),
+            authorities: HashMap::new(),
+            blocks_count: HashMap::new(),
+            blocked_by_count: HashMap::new(),
+            critical_depth: HashMap::new(),
+            k_core: HashMap::new(),
+            articulation_points: std::collections::HashSet::new(),
+            slack: HashMap::new(),
+            cycles: Vec::new(),
+            skipped_metrics: Vec::new(),
+            config: bvr::analysis::graph::AnalysisConfig::full(),
+        };
+
+        let stats = super::build_full_stats(&metrics);
+        assert!(stats.is_empty());
+    }
+
+    #[test]
+    fn full_stats_omitted_when_flag_not_set() {
+        let output = super::RobotInsightsOutput {
+            envelope: bvr::robot::envelope(&[]),
+            as_of: None,
+            as_of_commit: None,
+            label_scope: None,
+            label_context: None,
+            analysis_config: bvr::analysis::graph::AnalysisConfig::full(),
+            bottlenecks: Vec::new(),
+            cycles: Vec::new(),
+            insights: bvr::analysis::Insights {
+                status: bvr::analysis::MetricStatus::computed(),
+                bottlenecks: Vec::new(),
+                critical_path: Vec::new(),
+                cycles: Vec::new(),
+                slack: Vec::new(),
+                influencers: Vec::new(),
+                betweenness: Vec::new(),
+                hubs: Vec::new(),
+                authorities: Vec::new(),
+                eigenvector: Vec::new(),
+                cores: Vec::new(),
+                articulation_points: Vec::new(),
+            },
+            full_stats: None,
+            top_what_ifs: None,
+            advanced_insights: None,
+            usage_hints: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(
+            json.get("full_stats").is_none(),
+            "full_stats should be absent when None"
+        );
+        assert!(
+            json.get("top_what_ifs").is_none(),
+            "top_what_ifs should be absent when None"
+        );
+        assert!(
+            json.get("advanced_insights").is_none(),
+            "advanced_insights should be absent when None"
+        );
+    }
+
+    #[test]
+    fn top_what_ifs_present_in_insights_output() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "A".to_string(),
+                title: "Blocker".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "B".to_string(),
+                title: "Blocked".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![bvr::model::Dependency {
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            },
+        ];
+        let analyzer = bvr::analysis::Analyzer::new(issues);
+        let what_ifs = analyzer.top_what_ifs(5);
+        assert!(!what_ifs.is_empty());
+        // A should appear since completing it unblocks B.
+        assert!(what_ifs.iter().any(|d| d.issue_id == "A"));
+        let delta_a = what_ifs.iter().find(|d| d.issue_id == "A").unwrap();
+        assert!(!delta_a.direct_unblocks.is_empty());
+        let json = serde_json::to_value(&what_ifs).unwrap();
+        assert!(json.is_array());
+    }
+
+    #[test]
+    fn advanced_insights_present_in_insights_output() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![bvr::model::Dependency {
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            },
+        ];
+        let analyzer = bvr::analysis::Analyzer::new(issues);
+        let advanced = analyzer.advanced_insights();
+        let json = serde_json::to_value(&advanced).unwrap();
+        assert!(json.is_object());
+        assert!(json.get("top_k_set").is_some());
+        assert!(json.get("coverage_set").is_some());
+    }
+
+    #[test]
+    fn label_scope_omitted_when_no_label() {
+        let issues = vec![bvr::model::Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            labels: vec!["backend".to_string()],
+            ..bvr::model::Issue::default()
+        }];
+        let graph = bvr::analysis::graph::IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+
+        let output = super::RobotPlanOutput {
+            envelope: bvr::robot::envelope(&issues),
+            as_of: None,
+            as_of_commit: None,
+            label_scope: None,
+            label_context: None,
+            status: bvr::analysis::MetricStatus::computed(),
+            analysis_config: metrics.config.clone(),
+            plan: bvr::analysis::plan::compute_execution_plan(
+                &graph,
+                &std::collections::HashMap::new(),
+            ),
+            usage_hints: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(
+            json.get("label_scope").is_none(),
+            "label_scope absent when None"
+        );
+        assert!(
+            json.get("label_context").is_none(),
+            "label_context absent when None"
+        );
+    }
+
+    #[test]
+    fn label_scope_present_when_label_set() {
+        let issues = vec![bvr::model::Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            labels: vec!["backend".to_string()],
+            ..bvr::model::Issue::default()
+        }];
+        let graph = bvr::analysis::graph::IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+
+        let health =
+            bvr::analysis::label_intel::compute_single_label_health("backend", &issues, &metrics);
+
+        let output = super::RobotPlanOutput {
+            envelope: bvr::robot::envelope(&issues),
+            as_of: None,
+            as_of_commit: None,
+            label_scope: Some("backend".to_string()),
+            label_context: Some(health),
+            status: bvr::analysis::MetricStatus::computed(),
+            analysis_config: metrics.config.clone(),
+            plan: bvr::analysis::plan::compute_execution_plan(
+                &graph,
+                &std::collections::HashMap::new(),
+            ),
+            usage_hints: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert_eq!(json["label_scope"], "backend");
+        let ctx = &json["label_context"];
+        assert_eq!(ctx["label"], "backend");
+        assert_eq!(ctx["issue_count"], 1);
+        assert!(ctx["health"].is_number(), "health should be a number");
+    }
+
+    #[test]
+    fn label_context_nonexistent_label_produces_zero_health() {
+        let issues = vec![bvr::model::Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            labels: vec!["backend".to_string()],
+            ..bvr::model::Issue::default()
+        }];
+        let graph = bvr::analysis::graph::IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+
+        let health = bvr::analysis::label_intel::compute_single_label_health(
+            "nonexistent",
+            &issues,
+            &metrics,
+        );
+
+        assert_eq!(health.issue_count, 0);
+        assert_eq!(health.health, 0);
+        assert_eq!(health.health_level, "critical");
     }
 }

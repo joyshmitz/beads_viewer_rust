@@ -3,7 +3,6 @@ use serde::Serialize;
 
 use crate::analysis::graph::{GraphMetrics, IssueGraph};
 use crate::model::Issue;
-use crate::robot::compute_data_hash;
 
 const STALE_WARNING_DAYS: f64 = 14.0;
 const STALE_CRITICAL_DAYS: f64 = 30.0;
@@ -84,8 +83,8 @@ pub struct AlertSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RobotAlertsOutput {
-    pub generated_at: String,
-    pub data_hash: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub alerts: Vec<Alert>,
     pub summary: AlertSummary,
     pub usage_hints: Vec<String>,
@@ -105,9 +104,7 @@ pub fn generate_robot_alerts_output(
     metrics: &GraphMetrics,
     options: &AlertOptions,
 ) -> RobotAlertsOutput {
-    let generated_at = Utc::now().to_rfc3339();
     let now = Utc::now();
-    let data_hash = compute_data_hash(issues);
 
     let mut alerts = Vec::<Alert>::new();
     detect_new_cycles(metrics, now, &mut alerts);
@@ -118,8 +115,7 @@ pub fn generate_robot_alerts_output(
     let summary = summarize_alerts(&alerts);
 
     RobotAlertsOutput {
-        generated_at,
-        data_hash,
+        envelope: crate::robot::envelope(issues),
         alerts,
         summary,
         usage_hints: vec![

@@ -10,6 +10,9 @@ pub enum BvrError {
     #[error("json parse error: {0}")]
     Json(#[from] serde_json::Error),
 
+    #[error("sqlite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+
     #[error("beads directory not found: {0}")]
     MissingBeadsDir(PathBuf),
 
@@ -46,6 +49,16 @@ mod tests {
         let serde_err = result.unwrap_err();
         let err: BvrError = serde_err.into();
         assert!(err.to_string().contains("json parse error"));
+    }
+
+    #[test]
+    fn sqlite_error_converts_from_rusqlite() {
+        let conn = rusqlite::Connection::open_in_memory().expect("open in-memory sqlite");
+        let sqlite_err = conn
+            .execute("SELECT definitely_not_valid_sql", [])
+            .expect_err("invalid SQL should fail");
+        let err: BvrError = sqlite_err.into();
+        assert!(err.to_string().contains("sqlite error"));
     }
 
     #[test]

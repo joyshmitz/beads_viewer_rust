@@ -880,60 +880,48 @@ pub fn find_related_work(
 
 #[derive(Debug, Serialize)]
 pub struct RobotOrphansOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub report: OrphanReport,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RobotFileBeadsOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: FileBeadLookupResult,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RobotFileHotspotsOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub hotspots: Vec<FileHotspot>,
     pub stats: FileIndexStats,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RobotImpactOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: ImpactResult,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RobotFileRelationsOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: FileRelationsResult,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RobotRelatedWorkOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     #[serde(flatten)]
     pub result: RelatedWorkResult,
 }

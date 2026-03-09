@@ -498,6 +498,8 @@ fn top_core_items(values: &HashMap<String, u32>, limit: usize) -> Vec<CoreItem> 
 
 #[cfg(test)]
 mod tests {
+    use crate::analysis::graph::AnalysisConfig;
+    use crate::analysis::triage::TriageOptions;
     use crate::model::{Dependency, Issue};
 
     use super::Analyzer;
@@ -551,6 +553,85 @@ mod tests {
         assert_eq!(
             insights.critical_path.first().map(String::as_str),
             Some("bd-3q0")
+        );
+    }
+
+    #[test]
+    fn triage_runtime_config_preserves_plan_and_priority_outputs() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "Root blocker".to_string(),
+                status: "open".to_string(),
+                issue_type: "feature".to_string(),
+                priority: 1,
+                labels: vec!["core".to_string(), "backend".to_string()],
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Depends on A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                labels: vec!["backend".to_string()],
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "C".to_string(),
+                title: "Also depends on A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 3,
+                labels: vec!["frontend".to_string()],
+                dependencies: vec![Dependency {
+                    issue_id: "C".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "D".to_string(),
+                title: "Independent quick win".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                estimated_minutes: Some(30),
+                labels: vec!["ops".to_string()],
+                ..Issue::default()
+            },
+        ];
+
+        let full = Analyzer::new(issues.clone());
+        let lean = Analyzer::new_with_config(issues, &AnalysisConfig::triage_runtime());
+        let triage_options = TriageOptions {
+            max_recommendations: 20,
+            ..TriageOptions::default()
+        };
+
+        let full_triage = full.triage(triage_options.clone());
+        let lean_triage = lean.triage(triage_options);
+
+        let full_plan = full.plan(&full_triage.score_by_id);
+        let lean_plan = lean.plan(&lean_triage.score_by_id);
+        assert_eq!(
+            serde_json::to_value(&full_plan).unwrap(),
+            serde_json::to_value(&lean_plan).unwrap()
+        );
+
+        let full_priority = full.priority(0.0, 20, None, None);
+        let lean_priority = lean.priority(0.0, 20, None, None);
+        assert_eq!(
+            serde_json::to_value(&full_priority).unwrap(),
+            serde_json::to_value(&lean_priority).unwrap()
         );
     }
 }

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use bvr::analysis::Analyzer;
 use bvr::analysis::alerts::AlertOptions;
+use bvr::analysis::graph::AnalysisConfig;
 use bvr::analysis::suggest::SuggestOptions;
 use bvr::analysis::triage::TriageOptions;
 use bvr::loader;
@@ -280,6 +281,29 @@ fn bench_real_fixture(c: &mut Criterion) {
         b.iter(|| black_box(Analyzer::new(issues.clone())));
     });
 
+    let triage_runtime = AnalysisConfig::triage_runtime();
+    group.bench_function("analyzer_new_triage_runtime", |b| {
+        b.iter(|| black_box(Analyzer::new_with_config(issues.clone(), &triage_runtime)));
+    });
+
+    group.finish();
+}
+
+fn bench_stress_fixture(c: &mut Criterion) {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let path = root.join("tests/testdata/stress_large_500.jsonl");
+    let issues = loader::load_issues_from_file(&path).expect("load stress fixture");
+    let mut group = c.benchmark_group("stress_fixture");
+    let triage_runtime = AnalysisConfig::triage_runtime();
+
+    group.bench_function("analyzer_new_full", |b| {
+        b.iter(|| black_box(Analyzer::new(issues.clone())));
+    });
+
+    group.bench_function("analyzer_new_triage_runtime", |b| {
+        b.iter(|| black_box(Analyzer::new_with_config(issues.clone(), &triage_runtime)));
+    });
+
     group.finish();
 }
 
@@ -296,5 +320,6 @@ criterion_group!(
     bench_history,
     bench_cycle_detection,
     bench_real_fixture,
+    bench_stress_fixture,
 );
 criterion_main!(benches);

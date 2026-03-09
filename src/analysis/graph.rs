@@ -91,6 +91,27 @@ impl AnalysisConfig {
             eigenvector_max_nodes: 10_000,
         }
     }
+
+    /// Runtime config for triage-oriented commands.
+    ///
+    /// Keeps exactly the metrics consumed by triage/plan/priority flows while
+    /// skipping metrics only used by richer insight surfaces.
+    #[must_use]
+    pub const fn triage_runtime() -> Self {
+        Self {
+            enable_pagerank: true,
+            enable_betweenness: true,
+            enable_eigenvector: false,
+            enable_hits: false,
+            enable_cycles: true,
+            enable_critical_path: true,
+            enable_k_core: false,
+            enable_articulation: true,
+            enable_slack: false,
+            betweenness_max_nodes: 10_000,
+            eigenvector_max_nodes: 10_000,
+        }
+    }
 }
 
 /// Record of a metric that was skipped during analysis.
@@ -1105,6 +1126,7 @@ fn tarjan_articulation_dfs(
 
 #[cfg(test)]
 mod tests {
+    use crate::analysis::triage::{TriageOptions, compute_triage};
     use crate::model::{Dependency, Issue};
 
     use super::{AnalysisConfig, IssueGraph};
@@ -1581,6 +1603,31 @@ mod tests {
     }
 
     #[test]
+    fn triage_runtime_config_keeps_articulation_but_skips_insight_only_metrics() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+        let config = AnalysisConfig::triage_runtime();
+        let metrics = graph.compute_metrics_with_config(&config);
+
+        assert!(!metrics.pagerank.is_empty());
+        assert!(!metrics.betweenness.is_empty());
+        assert!(metrics.config.enable_articulation);
+
+        let skipped_names: Vec<&str> = metrics.skipped_metrics.iter().map(|s| s.metric).collect();
+        assert!(skipped_names.contains(&"Eigenvector"));
+        assert!(skipped_names.contains(&"HITS"));
+        assert!(skipped_names.contains(&"KCore"));
+        assert!(skipped_names.contains(&"Slack"));
+        assert!(!skipped_names.contains(&"Articulation"));
+    }
+
+    #[test]
     fn config_disables_individual_metrics() {
         let issues = vec![Issue {
             id: "A".to_string(),
@@ -1684,5 +1731,79 @@ mod tests {
         let metrics = graph.compute_metrics_with_config(&config);
         assert!(!metrics.config.enable_eigenvector);
         assert!(metrics.config.enable_pagerank);
+    }
+
+    #[test]
+    fn triage_runtime_metrics_preserve_triage_outputs() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "Root blocker".to_string(),
+                status: "open".to_string(),
+                issue_type: "feature".to_string(),
+                priority: 1,
+                labels: vec!["core".to_string(), "backend".to_string()],
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Depends on A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                labels: vec!["backend".to_string()],
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "C".to_string(),
+                title: "Also depends on A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 3,
+                labels: vec!["frontend".to_string()],
+                dependencies: vec![Dependency {
+                    issue_id: "C".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "D".to_string(),
+                title: "Independent quick win".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                estimated_minutes: Some(30),
+                labels: vec!["ops".to_string()],
+                ..Issue::default()
+            },
+        ];
+
+        let graph = IssueGraph::build(&issues);
+        let full_metrics = graph.compute_metrics();
+        let triage_metrics = graph.compute_metrics_with_config(&AnalysisConfig::triage_runtime());
+        let options = TriageOptions {
+            group_by_track: true,
+            group_by_label: true,
+            max_recommendations: 20,
+            ..TriageOptions::default()
+        };
+
+        let full = compute_triage(&issues, &graph, &full_metrics, &options);
+        let lean = compute_triage(&issues, &graph, &triage_metrics, &options);
+
+        assert_eq!(
+            serde_json::to_value(&full.result).unwrap(),
+            serde_json::to_value(&lean.result).unwrap()
+        );
+        assert_eq!(full.score_by_id, lean.score_by_id);
     }
 }

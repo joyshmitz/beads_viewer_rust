@@ -766,7 +766,7 @@ struct HistoryTimelineEvent {
     issue_title: String,
     issue_status: String,
     event_kind: String,
-    event_timestamp: Option<String>,
+    event_timestamp: Option<DateTime<Utc>>,
     event_details: String,
 }
 
@@ -3262,13 +3262,9 @@ impl BvrApp {
             .collect::<Vec<_>>();
 
         events.sort_by(|left, right| {
-            cmp_opt_datetime(
-                parse_timestamp(left.event_timestamp.as_deref()),
-                parse_timestamp(right.event_timestamp.as_deref()),
-                true,
-            )
-            .then_with(|| left.issue_id.cmp(&right.issue_id))
-            .then_with(|| left.event_kind.cmp(&right.event_kind))
+            cmp_opt_datetime(left.event_timestamp, right.event_timestamp, true)
+                .then_with(|| left.issue_id.cmp(&right.issue_id))
+                .then_with(|| left.event_kind.cmp(&right.event_kind))
         });
 
         events
@@ -3290,8 +3286,7 @@ impl BvrApp {
                     || event.event_details.to_ascii_lowercase().contains(&query)
                     || event
                         .event_timestamp
-                        .as_deref()
-                        .map(str::to_ascii_lowercase)
+                        .map(|dt| dt.to_rfc3339().to_ascii_lowercase())
                         .is_some_and(|timestamp| timestamp.contains(&query))
             })
             .collect()
@@ -3359,14 +3354,14 @@ impl BvrApp {
                             .then_with(|| left_issue.id.cmp(&right_issue.id))
                     }
                     ListSort::CreatedAsc => cmp_opt_datetime(
-                        parse_timestamp(left_issue.created_at.as_deref()),
-                        parse_timestamp(right_issue.created_at.as_deref()),
+                        left_issue.created_at,
+                        right_issue.created_at,
                         false,
                     )
                     .then_with(|| left_issue.id.cmp(&right_issue.id)),
                     ListSort::CreatedDesc => cmp_opt_datetime(
-                        parse_timestamp(left_issue.created_at.as_deref()),
-                        parse_timestamp(right_issue.created_at.as_deref()),
+                        left_issue.created_at,
+                        right_issue.created_at,
                         true,
                     )
                     .then_with(|| left_issue.id.cmp(&right_issue.id)),
@@ -3375,18 +3370,8 @@ impl BvrApp {
                         .cmp(&right_issue.priority)
                         .then_with(|| left_issue.id.cmp(&right_issue.id)),
                     ListSort::Updated => cmp_opt_datetime(
-                        parse_timestamp(
-                            left_issue
-                                .updated_at
-                                .as_deref()
-                                .or(left_issue.created_at.as_deref()),
-                        ),
-                        parse_timestamp(
-                            right_issue
-                                .updated_at
-                                .as_deref()
-                                .or(right_issue.created_at.as_deref()),
-                        ),
+                        left_issue.updated_at.or(left_issue.created_at),
+                        right_issue.updated_at.or(right_issue.created_at),
                         true,
                     )
                     .then_with(|| left_issue.id.cmp(&right_issue.id)),
@@ -6083,7 +6068,7 @@ impl BvrApp {
             "blocked"
         };
         let closed_display = if issue.is_closed_like() {
-            format_compact_timestamp(issue.closed_at.as_deref().or(issue.updated_at.as_deref()))
+            format_compact_timestamp(issue.closed_at.or(issue.updated_at))
         } else {
             "n/a".to_string()
         };
@@ -6112,9 +6097,9 @@ impl BvrApp {
             ),
             format!(
                 "Created: {} | Updated: {} | Due: {}",
-                format_compact_timestamp(issue.created_at.as_deref()),
-                format_compact_timestamp(issue.updated_at.as_deref()),
-                format_compact_timestamp(issue.due_date.as_deref())
+                format_compact_timestamp(issue.created_at),
+                format_compact_timestamp(issue.updated_at),
+                format_compact_timestamp(issue.due_date)
             ),
             format!(
                 "Closed: {} | Labels: {}",
@@ -6145,10 +6130,7 @@ impl BvrApp {
             ),
         ]);
 
-        if let (Some(created), Some(closed)) = (
-            parse_timestamp(issue.created_at.as_deref()),
-            parse_timestamp(issue.closed_at.as_deref()),
-        ) {
+        if let (Some(created), Some(closed)) = (issue.created_at, issue.closed_at) {
             let duration = closed - created;
             lines.push(format!(
                 "  cycle time: {}d {}h",
@@ -7019,16 +7001,13 @@ impl BvrApp {
             ),
             format!(
                 "Created/Updated/Closed: {} / {} / {}",
-                issue.created_at.as_deref().unwrap_or("n/a"),
-                issue.updated_at.as_deref().unwrap_or("n/a"),
-                issue.closed_at.as_deref().unwrap_or("n/a")
+                format_compact_timestamp(issue.created_at),
+                format_compact_timestamp(issue.updated_at),
+                format_compact_timestamp(issue.closed_at)
             ),
         ];
 
-        if let (Some(created), Some(closed)) = (
-            parse_timestamp(issue.created_at.as_deref()),
-            parse_timestamp(issue.closed_at.as_deref()),
-        ) {
+        if let (Some(created), Some(closed)) = (issue.created_at, issue.closed_at) {
             let duration = closed - created;
             lines.push(format!(
                 "Create->Close cycle time: {}d {}h",
@@ -7091,7 +7070,10 @@ impl BvrApp {
             } else {
                 let event_count = history.events.len();
                 for (idx, event) in history.events.into_iter().enumerate() {
-                    let ts = event.timestamp.unwrap_or_else(|| "n/a".to_string());
+                    let ts = event
+                        .timestamp
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| "n/a".to_string());
                     let icon = lifecycle_icon(&event.kind);
                     let connector = if idx + 1 < event_count {
                         "\u{2502}"
@@ -7400,16 +7382,8 @@ fn display_or_fallback(value: &str, fallback: &str) -> String {
     }
 }
 
-fn format_compact_timestamp(raw: Option<&str>) -> String {
-    raw.map_or_else(
-        || "n/a".to_string(),
-        |value| {
-            parse_timestamp(Some(value)).map_or_else(
-                || value.to_string(),
-                |timestamp| timestamp.format("%Y-%m-%d").to_string(),
-            )
-        },
-    )
+fn format_compact_timestamp(dt: Option<DateTime<Utc>>) -> String {
+    dt.map_or_else(|| "n/a".to_string(), |ts| ts.format("%Y-%m-%d").to_string())
 }
 
 fn join_display_values(values: &[String], limit: usize) -> String {
@@ -7453,7 +7427,7 @@ fn push_comment_section(lines: &mut Vec<String>, issue: &Issue) {
         lines.push(format!(
             "  - {} @ {}",
             display_or_fallback(&comment.author, "unknown"),
-            format_compact_timestamp(comment.created_at.as_deref())
+            format_compact_timestamp(comment.created_at)
         ));
         for line in comment.text.lines().take(3) {
             lines.push(format!("      {}", line.trim_end()));
@@ -7482,7 +7456,7 @@ fn push_history_section(lines: &mut Vec<String>, history: Option<&IssueHistory>)
         lines.push(format!(
             "  {} {} {}",
             lifecycle_icon(&event.kind),
-            format_compact_timestamp(event.timestamp.as_deref()),
+            format_compact_timestamp(event.timestamp),
             event.details
         ));
     }
@@ -7739,7 +7713,7 @@ mod tests {
         render_debug_view, should_apply_background_reload,
     };
     use crate::analysis::Analyzer;
-    use crate::model::{Comment, Dependency, Issue};
+    use crate::model::{Comment, Dependency, Issue, ts};
     use ftui::core::event::{KeyCode, Modifiers};
     use ftui::runtime::{Cmd, Model};
 
@@ -7760,8 +7734,8 @@ mod tests {
                 notes: "Fixture used to exercise the richer main detail pane.".to_string(),
                 assignee: "alice".to_string(),
                 estimated_minutes: Some(90),
-                created_at: Some("2026-01-01T00:00:00Z".to_string()),
-                updated_at: Some("2026-01-02T00:00:00Z".to_string()),
+                created_at: ts("2026-01-01T00:00:00Z"),
+                updated_at: ts("2026-01-02T00:00:00Z"),
                 labels: vec!["core".to_string(), "parity".to_string()],
                 comments: vec![
                     Comment {
@@ -7770,7 +7744,7 @@ mod tests {
                         author: "alice".to_string(),
                         text: "Need this baseline before the dependent slice can land."
                             .to_string(),
-                        created_at: Some("2026-01-01T08:00:00Z".to_string()),
+                        created_at: ts("2026-01-01T08:00:00Z"),
                     },
                     Comment {
                         id: 2,
@@ -7778,7 +7752,7 @@ mod tests {
                         author: "bob".to_string(),
                         text: "Verify the detail pane still reads well at narrow widths."
                             .to_string(),
-                        created_at: Some("2026-01-02T09:30:00Z".to_string()),
+                        created_at: ts("2026-01-02T09:30:00Z"),
                     },
                 ],
                 source_repo: "viewer".to_string(),
@@ -7790,8 +7764,8 @@ mod tests {
                 status: "open".to_string(),
                 issue_type: "task".to_string(),
                 description: "Depends on A and should report blocked state clearly.".to_string(),
-                created_at: Some("2026-01-03T00:00:00Z".to_string()),
-                updated_at: Some("2026-01-04T00:00:00Z".to_string()),
+                created_at: ts("2026-01-03T00:00:00Z"),
+                updated_at: ts("2026-01-04T00:00:00Z"),
                 dependencies: vec![Dependency {
                     issue_id: "B".to_string(),
                     depends_on_id: "A".to_string(),
@@ -7805,9 +7779,9 @@ mod tests {
                 title: "Closed".to_string(),
                 status: "closed".to_string(),
                 issue_type: "task".to_string(),
-                created_at: Some("2026-01-01T00:00:00Z".to_string()),
-                updated_at: Some("2026-01-06T00:00:00Z".to_string()),
-                closed_at: Some("2026-01-06T00:00:00Z".to_string()),
+                created_at: ts("2026-01-01T00:00:00Z"),
+                updated_at: ts("2026-01-06T00:00:00Z"),
+                closed_at: ts("2026-01-06T00:00:00Z"),
                 ..Issue::default()
             },
         ]
@@ -7916,8 +7890,8 @@ mod tests {
                 status: "open".to_string(),
                 issue_type: "task".to_string(),
                 priority: 3,
-                created_at: Some("2026-01-01T00:00:00Z".to_string()),
-                updated_at: Some("2026-01-06T00:00:00Z".to_string()),
+                created_at: ts("2026-01-01T00:00:00Z"),
+                updated_at: ts("2026-01-06T00:00:00Z"),
                 ..Issue::default()
             },
             Issue {
@@ -7926,8 +7900,8 @@ mod tests {
                 status: "open".to_string(),
                 issue_type: "task".to_string(),
                 priority: 2,
-                created_at: Some("2026-01-02T00:00:00Z".to_string()),
-                updated_at: Some("2026-01-05T00:00:00Z".to_string()),
+                created_at: ts("2026-01-02T00:00:00Z"),
+                updated_at: ts("2026-01-05T00:00:00Z"),
                 ..Issue::default()
             },
             Issue {
@@ -7936,8 +7910,8 @@ mod tests {
                 status: "open".to_string(),
                 issue_type: "task".to_string(),
                 priority: 1,
-                created_at: Some("2026-01-03T00:00:00Z".to_string()),
-                updated_at: Some("2026-01-04T00:00:00Z".to_string()),
+                created_at: ts("2026-01-03T00:00:00Z"),
+                updated_at: ts("2026-01-04T00:00:00Z"),
                 ..Issue::default()
             },
         ]

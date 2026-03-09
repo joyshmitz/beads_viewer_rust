@@ -11,11 +11,11 @@ bvr | mode=History | focus=list | issues=3/3 | filter=all | sort=default | ? hel
 │ > A            events: 2 open          ││ Issue: A (Root)                                        │
 │   B            events: 3 open          ││ Status: open                                           │
 │   C            events: 3 closed        ││ Min confidence filter: >= 0%                           │
-│                                        ││ Created/Updated/Closed: 2026-01-01T00:00:00Z / 2026-01 │
+│                                        ││ Created/Updated/Closed: 2026-01-01 / 2026-01-02 / n/a  │
 │                                        ││                                                        │
 │                                        ││ LIFECYCLE:                                             │
-│                                        ││   │ + created    2026-01-01T00:00:00Z  Issue A created │
-│                                        ││   └ . updated    2026-01-02T00:00:00Z  Current status: │
+│                                        ││   │ + created    2026-01-01T00:00:00+00:00  Issue A cr │
+│                                        ││   └ . updated    2026-01-02T00:00:00+00:00  Current st │
 │                                        ││                                                        │
 │                                        ││ v: switch to git timeline | J/K: cycle commits         │
 │                                        ││ y: copy bead ID | o: open commit | f: file tree        │

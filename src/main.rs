@@ -15,6 +15,7 @@ use bvr::analysis::git_history::{
     compute_history_stats, correlate_histories_with_git, finalize_history_entries,
     load_git_commits,
 };
+use bvr::analysis::graph::AnalysisConfig;
 use bvr::analysis::suggest::{SuggestOptions, SuggestionType};
 use bvr::analysis::triage::{TriageOptions, TriageScoringOptions};
 use bvr::analysis::{Analyzer, Insights, MetricStatus};
@@ -27,6 +28,24 @@ use bvr::robot::{
 use chrono::{DateTime, Duration, Local, Utc};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+
+fn analysis_config_for_cli(cli: &Cli) -> AnalysisConfig {
+    if cli.robot_next
+        || cli.robot_triage
+        || cli.robot_triage_by_track
+        || cli.robot_triage_by_label
+        || cli.robot_plan
+        || cli.robot_priority
+        || cli.emit_script
+        || cli.feedback_accept.is_some()
+        || cli.feedback_ignore.is_some()
+        || cli.priority_brief.is_some()
+    {
+        AnalysisConfig::triage_runtime()
+    } else {
+        AnalysisConfig::full()
+    }
+}
 
 fn main() -> ExitCode {
     if let Err(error) = tracing_subscriber::fmt()
@@ -246,7 +265,8 @@ fn main() -> ExitCode {
     }
 
     let build_start = std::time::Instant::now();
-    let analyzer = Analyzer::new(issues.clone());
+    let analysis_config = analysis_config_for_cli(&cli);
+    let analyzer = Analyzer::new_with_config(issues.clone(), &analysis_config);
     let build_duration = build_start.elapsed();
 
     if cli.robot_help {
@@ -2266,7 +2286,10 @@ fn build_robot_history_output(
                 .map(|event| HistoryEventCompat {
                     bead_id: history.id.clone(),
                     event_type: event.kind.clone(),
-                    timestamp: event.timestamp.clone().unwrap_or_default(),
+                    timestamp: event
+                        .timestamp
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_default(),
                     commit_sha: String::new(),
                     commit_message: event.details.clone(),
                     author: String::new(),
@@ -2888,10 +2911,8 @@ fn issue_closed_at_or_sprint_start(
 ) -> DateTime<Utc> {
     issue
         .closed_at
-        .as_deref()
-        .and_then(parse_rfc3339_utc)
-        .or_else(|| issue.updated_at.as_deref().and_then(parse_rfc3339_utc))
-        .or_else(|| issue.created_at.as_deref().and_then(parse_rfc3339_utc))
+        .or(issue.updated_at)
+        .or(issue.created_at)
         .unwrap_or(sprint_start)
 }
 
@@ -5157,7 +5178,7 @@ mod tests {
             title: "A".to_string(),
             status: "closed".to_string(),
             issue_type: "task".to_string(),
-            created_at: Some(start.to_rfc3339()),
+            created_at: Some(start),
             ..bvr::model::Issue::default()
         };
         let issues = [issue];
@@ -5290,6 +5311,58 @@ mod tests {
     fn build_background_mode_config_disables_as_of_snapshots() {
         let cli = Cli::parse_from(["bvr", "--as-of", "HEAD~1"]);
         assert!(build_background_mode_config(&cli, true).is_none());
+    }
+
+    fn assert_matches_triage_runtime(config: &bvr::analysis::graph::AnalysisConfig) {
+        assert!(config.enable_pagerank);
+        assert!(config.enable_betweenness);
+        assert!(!config.enable_eigenvector);
+        assert!(!config.enable_hits);
+        assert!(config.enable_cycles);
+        assert!(config.enable_critical_path);
+        assert!(!config.enable_k_core);
+        assert!(config.enable_articulation);
+        assert!(!config.enable_slack);
+        assert_eq!(config.betweenness_max_nodes, 10_000);
+        assert_eq!(config.eigenvector_max_nodes, 10_000);
+    }
+
+    #[test]
+    fn analysis_config_routes_triage_oriented_commands_to_runtime_profile() {
+        let cases = [
+            Cli::parse_from(["bvr", "--robot-next"]),
+            Cli::parse_from(["bvr", "--robot-triage"]),
+            Cli::parse_from(["bvr", "--robot-triage-by-track"]),
+            Cli::parse_from(["bvr", "--robot-triage-by-label"]),
+            Cli::parse_from(["bvr", "--robot-plan"]),
+            Cli::parse_from(["bvr", "--robot-priority"]),
+            Cli::parse_from(["bvr", "--emit-script"]),
+            Cli::parse_from(["bvr", "--feedback-accept", "A-1"]),
+            Cli::parse_from(["bvr", "--feedback-ignore", "A-1"]),
+            Cli::parse_from(["bvr", "--priority-brief", "priority.md"]),
+        ];
+
+        for cli in &cases {
+            let config = super::analysis_config_for_cli(cli);
+            assert_matches_triage_runtime(&config);
+        }
+    }
+
+    #[test]
+    fn analysis_config_keeps_full_profile_for_richer_analysis_surfaces() {
+        for cli in [
+            Cli::parse_from(["bvr"]),
+            Cli::parse_from(["bvr", "--robot-insights"]),
+            Cli::parse_from(["bvr", "--robot-graph"]),
+            Cli::parse_from(["bvr", "--robot-diff"]),
+        ] {
+            let config = super::analysis_config_for_cli(&cli);
+            assert!(config.enable_eigenvector);
+            assert!(config.enable_hits);
+            assert!(config.enable_k_core);
+            assert!(config.enable_slack);
+            assert!(config.enable_articulation);
+        }
     }
 
     #[test]

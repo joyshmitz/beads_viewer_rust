@@ -247,6 +247,10 @@ fn insert_issues(tx: &Transaction<'_>, issues: &[Issue]) -> Result<()> {
     for issue in sorted {
         let labels = serde_json::to_string(&issue.labels)?;
         let source_repo = normalized_source_repo(issue);
+        let created_at = issue.created_at.map(|dt| dt.to_rfc3339());
+        let updated_at = issue.updated_at.map(|dt| dt.to_rfc3339());
+        let due_date = issue.due_date.map(|dt| dt.to_rfc3339());
+        let closed_at = issue.closed_at.map(|dt| dt.to_rfc3339());
         stmt.execute(params![
             issue.id.as_str(),
             issue.title.as_str(),
@@ -260,10 +264,10 @@ fn insert_issues(tx: &Transaction<'_>, issues: &[Issue]) -> Result<()> {
             issue.assignee.as_str(),
             issue.estimated_minutes,
             labels,
-            issue.created_at.as_deref(),
-            issue.updated_at.as_deref(),
-            issue.due_date.as_deref(),
-            issue.closed_at.as_deref(),
+            created_at.as_deref(),
+            updated_at.as_deref(),
+            due_date.as_deref(),
+            closed_at.as_deref(),
             source_repo,
         ])?;
     }
@@ -483,7 +487,7 @@ fn collect_dependency_rows(issues: &[Issue]) -> Vec<ExportDependencyRow> {
                 depends_on_id: dep.depends_on_id.clone(),
                 dep_type: dep.dep_type.clone(),
                 created_by: dep.created_by.clone(),
-                created_at: dep.created_at.clone(),
+                created_at: dep.created_at.map(|dt| dt.to_rfc3339()),
             });
         }
     }
@@ -510,7 +514,7 @@ fn collect_comment_rows(issues: &[Issue]) -> Vec<ExportCommentRow> {
                 issue_id: issue.id.clone(),
                 author: comment.author.clone(),
                 text: comment.text.clone(),
-                created_at: comment.created_at.clone(),
+                created_at: comment.created_at.map(|dt| dt.to_rfc3339()),
             });
         }
     }
@@ -939,7 +943,7 @@ mod tests {
 
     use crate::analysis::Analyzer;
     use crate::analysis::triage::TriageOptions;
-    use crate::model::{Comment, Dependency, Issue};
+    use crate::model::{Comment, Dependency, Issue, ts};
 
     use super::*;
 
@@ -1313,16 +1317,16 @@ mod tests {
                 issue_type: "task".to_string(),
                 assignee: "alex".to_string(),
                 estimated_minutes: Some(45),
-                created_at: Some("2026-03-08T18:00:00Z".to_string()),
-                updated_at: Some("2026-03-08T18:30:00Z".to_string()),
-                due_date: Some("2026-03-10T00:00:00Z".to_string()),
+                created_at: ts("2026-03-08T18:00:00Z"),
+                updated_at: ts("2026-03-08T18:30:00Z"),
+                due_date: ts("2026-03-10T00:00:00Z"),
                 labels: vec!["export".to_string(), "sqlite".to_string()],
                 comments: vec![Comment {
                     id: 7,
                     issue_id: "ISSUE-1".to_string(),
                     author: "alex".to_string(),
                     text: "Need populated export rows".to_string(),
-                    created_at: Some("2026-03-08T18:40:00Z".to_string()),
+                    created_at: ts("2026-03-08T18:40:00Z"),
                 }],
                 source_repo: "services/api".to_string(),
                 ..Issue::default()
@@ -1338,7 +1342,7 @@ mod tests {
                     depends_on_id: "ISSUE-1".to_string(),
                     dep_type: "blocks".to_string(),
                     created_by: "tester".to_string(),
-                    created_at: Some("2026-03-08T18:31:00Z".to_string()),
+                    created_at: ts("2026-03-08T18:31:00Z"),
                 }],
                 source_repo: "services/web".to_string(),
                 ..Issue::default()

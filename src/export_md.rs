@@ -657,8 +657,8 @@ fn compare_issues_for_markdown(left: &Issue, right: &Issue) -> Ordering {
         return left.priority.cmp(&right.priority);
     }
 
-    let left_created = parse_issue_datetime(left.created_at.as_deref());
-    let right_created = parse_issue_datetime(right.created_at.as_deref());
+    let left_created = left.created_at;
+    let right_created = right.created_at;
 
     if left_created != right_created {
         return right_created.cmp(&left_created);

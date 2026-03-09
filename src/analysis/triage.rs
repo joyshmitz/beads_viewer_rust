@@ -77,12 +77,42 @@ impl ScoringContext {
     }
 }
 
+struct TriageLookupCache<'a> {
+    issue_by_id: HashMap<&'a str, &'a Issue>,
+    open_blocker_count_by_issue: HashMap<&'a str, usize>,
+    issues_in_cycles: HashSet<&'a str>,
+}
+
+impl<'a> TriageLookupCache<'a> {
+    fn new(issues: &'a [Issue], graph: &IssueGraph, metrics: &'a GraphMetrics) -> Self {
+        let issue_by_id = issues
+            .iter()
+            .map(|issue| (issue.id.as_str(), issue))
+            .collect();
+        let open_blocker_count_by_issue = issues
+            .iter()
+            .map(|issue| (issue.id.as_str(), graph.open_blockers(&issue.id).len()))
+            .collect();
+        let issues_in_cycles = metrics
+            .cycles
+            .iter()
+            .flat_map(|cycle| cycle.iter().map(String::as_str))
+            .collect();
+
+        Self {
+            issue_by_id,
+            open_blocker_count_by_issue,
+            issues_in_cycles,
+        }
+    }
+}
+
 /// Compute the full 8-component ImpactScore for a single issue.
 fn compute_impact_score(
     issue: &Issue,
     metrics: &GraphMetrics,
-    graph: &IssueGraph,
     ctx: &ScoringContext,
+    lookups: &TriageLookupCache<'_>,
     weight_adjustments: &HashMap<String, f64>,
 ) -> ImpactScore {
     // 1. PageRank (graph centrality)
@@ -153,9 +183,13 @@ fn compute_impact_score(
     };
 
     // 8. Risk (signals that increase execution risk)
-    let open_blockers = graph.open_blockers(&issue.id).len();
-    let is_in_cycle = metrics.cycles.iter().any(|cycle| cycle.contains(&issue.id));
-    let is_articulation = metrics.articulation_points.contains(&issue.id);
+    let open_blockers = lookups
+        .open_blocker_count_by_issue
+        .get(issue.id.as_str())
+        .copied()
+        .unwrap_or_default();
+    let is_in_cycle = lookups.issues_in_cycles.contains(issue.id.as_str());
+    let is_articulation = metrics.articulation_points.contains(issue.id.as_str());
     let mut risk_signals = Vec::new();
     let mut risk_raw = 0.0_f64;
     if open_blockers > 0 {
@@ -433,6 +467,7 @@ pub fn compute_triage(
     let total_open = issues.iter().filter(|issue| issue.is_open_like()).count();
 
     let ctx = ScoringContext::from_metrics(metrics, total_open);
+    let lookups = TriageLookupCache::new(issues, graph, metrics);
 
     let mut recommendations = Vec::<Recommendation>::new();
     let mut score_by_id = HashMap::<String, f64>::new();
@@ -440,7 +475,8 @@ pub fn compute_triage(
     let scoring = &options.scoring;
 
     for issue in issues.iter().filter(|issue| actionable.contains(&issue.id)) {
-        let impact = compute_impact_score(issue, metrics, graph, &ctx, &scoring.weight_adjustments);
+        let impact =
+            compute_impact_score(issue, metrics, &ctx, &lookups, &scoring.weight_adjustments);
         let base_score = impact.score;
 
         let unblocks = metrics
@@ -539,9 +575,9 @@ pub fn compute_triage(
     let quick_wins = recommendations
         .iter()
         .filter(|rec| {
-            issues
-                .iter()
-                .find(|issue| issue.id == rec.id)
+            lookups
+                .issue_by_id
+                .get(rec.id.as_str())
                 .is_some_and(|issue| {
                     issue.estimated_minutes.is_some_and(|mins| mins <= 120)
                         || (issue.priority <= 2 && rec.unblocks > 0)
@@ -551,7 +587,7 @@ pub fn compute_triage(
         .cloned()
         .collect();
 
-    let blockers_to_clear = compute_blockers_to_clear(issues, graph, metrics, &actionable);
+    let blockers_to_clear = compute_blockers_to_clear(issues, metrics, &actionable, &lookups);
 
     let recommendations_by_track = if options.group_by_track {
         compute_recommendations_by_track(graph, &recommendations)
@@ -586,9 +622,9 @@ pub fn compute_triage(
 
 fn compute_blockers_to_clear(
     issues: &[Issue],
-    graph: &IssueGraph,
     metrics: &GraphMetrics,
     actionable: &HashSet<String>,
+    lookups: &TriageLookupCache<'_>,
 ) -> Vec<BlockerToClear> {
     let mut blockers = Vec::<BlockerToClear>::new();
 
@@ -604,7 +640,13 @@ fn compute_blockers_to_clear(
         if unblocks == 0 {
             continue;
         }
-        if graph.open_blockers(&issue.id).is_empty() {
+        if lookups
+            .open_blocker_count_by_issue
+            .get(issue.id.as_str())
+            .copied()
+            .unwrap_or_default()
+            == 0
+        {
             continue;
         }
 

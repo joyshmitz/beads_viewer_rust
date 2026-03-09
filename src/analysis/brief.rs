@@ -253,6 +253,7 @@ mod tests {
                 assignee: String::new(),
                 claim_command: "br update A-1 --status=in_progress".to_string(),
                 show_command: "br show A-1".to_string(),
+                breakdown: None,
             }],
             quick_wins: Vec::new(),
             blockers_to_clear: vec![BlockerToClear {

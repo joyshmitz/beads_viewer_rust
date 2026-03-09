@@ -1,5 +1,7 @@
+pub mod advanced;
 pub mod alerts;
 pub mod brief;
+pub mod cache;
 pub mod causal;
 pub mod correlation;
 pub mod diff;
@@ -15,6 +17,7 @@ pub mod recipe;
 pub mod search;
 pub mod suggest;
 pub mod triage;
+pub mod whatif;
 
 use std::collections::{HashMap, HashSet};
 
@@ -137,6 +140,18 @@ impl Analyzer {
     }
 
     #[must_use]
+    pub fn new_with_config(mut issues: Vec<Issue>, config: &graph::AnalysisConfig) -> Self {
+        issues.sort_by(|left, right| left.id.cmp(&right.id));
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics_with_config(config);
+        Self {
+            issues,
+            graph,
+            metrics,
+        }
+    }
+
+    #[must_use]
     pub fn triage(&self, options: TriageOptions) -> TriageComputation {
         compute_triage(&self.issues, &self.graph, &self.metrics, &options)
     }
@@ -144,6 +159,16 @@ impl Analyzer {
     #[must_use]
     pub fn plan(&self, score_by_id: &HashMap<String, f64>) -> ExecutionPlan {
         plan::compute_execution_plan(&self.graph, score_by_id)
+    }
+
+    #[must_use]
+    pub fn what_if(&self, issue_id: &str) -> Option<whatif::WhatIfDelta> {
+        whatif::compute_what_if(&self.issues, &self.graph, &self.metrics, issue_id)
+    }
+
+    #[must_use]
+    pub fn top_what_ifs(&self, top_n: usize) -> Vec<whatif::WhatIfDelta> {
+        whatif::top_what_if_deltas(&self.issues, &self.graph, &self.metrics, top_n)
     }
 
     #[must_use]
@@ -247,6 +272,11 @@ impl Analyzer {
     }
 
     #[must_use]
+    pub fn advanced_insights(&self) -> advanced::AdvancedInsights {
+        advanced::compute_advanced_insights(&self.graph, &self.metrics)
+    }
+
+    #[must_use]
     pub fn priority(
         &self,
         min_confidence: f64,
@@ -258,6 +288,7 @@ impl Analyzer {
             group_by_track: false,
             group_by_label: false,
             max_recommendations: max_results.max(50),
+            ..TriageOptions::default()
         });
 
         // Priority view should consider all open issues, including currently blocked items.
@@ -357,6 +388,7 @@ impl Analyzer {
                 assignee: issue.assignee.clone(),
                 claim_command: format!("br update {} --status=in_progress", issue.id),
                 show_command: format!("br show {}", issue.id),
+                breakdown: None,
             });
         }
 

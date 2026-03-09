@@ -6,7 +6,6 @@ use serde_json::json;
 
 use crate::analysis::graph::GraphMetrics;
 use crate::model::Issue;
-use crate::robot::compute_data_hash;
 
 const DEFAULT_MAX_SUGGESTIONS: usize = 50;
 const DUPLICATE_JACCARD_THRESHOLD: f64 = 0.7;
@@ -21,6 +20,9 @@ const LABEL_MAX_TOTAL: usize = 30;
 const CYCLE_MAX: usize = 10;
 const HIGH_CONFIDENCE_THRESHOLD: f64 = 0.7;
 const LOW_CONFIDENCE_THRESHOLD: f64 = 0.4;
+const STALE_DAYS_THRESHOLD: i64 = 90;
+const STALE_PAGERANK_PERCENTILE: f64 = 0.25;
+const STALE_MAX_SUGGESTIONS: usize = 20;
 
 const STOP_WORDS: &[&str] = &[
     "the", "and", "for", "with", "this", "that", "from", "are", "was", "were", "been", "have",
@@ -84,6 +86,7 @@ pub enum SuggestionType {
     PotentialDuplicate,
     LabelSuggestion,
     CycleWarning,
+    StaleCleanup,
 }
 
 impl SuggestionType {
@@ -94,6 +97,7 @@ impl SuggestionType {
             Self::PotentialDuplicate => "potential_duplicate",
             Self::LabelSuggestion => "label_suggestion",
             Self::CycleWarning => "cycle_warning",
+            Self::StaleCleanup => "stale_cleanup",
         }
     }
 }
@@ -181,8 +185,8 @@ pub struct SuggestFilter {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RobotSuggestOutput {
-    pub generated_at: String,
-    pub data_hash: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub filters: SuggestFilter,
     pub suggestions: SuggestionSet,
     pub usage_hints: Vec<String>,
@@ -194,12 +198,12 @@ pub fn generate_robot_suggest_output(
     metrics: &GraphMetrics,
     options: &SuggestOptions,
 ) -> RobotSuggestOutput {
-    let generated_at = Utc::now().to_rfc3339();
-    let data_hash = compute_data_hash(issues);
-    let mut suggestions = detect_potential_duplicates(issues, &generated_at);
-    suggestions.extend(detect_missing_dependencies(issues, &generated_at));
-    suggestions.extend(detect_label_suggestions(issues, &generated_at));
-    suggestions.extend(detect_cycle_warnings(metrics, &generated_at));
+    let env = crate::robot::envelope(issues);
+    let mut suggestions = detect_potential_duplicates(issues, &env.generated_at);
+    suggestions.extend(detect_missing_dependencies(issues, &env.generated_at));
+    suggestions.extend(detect_label_suggestions(issues, &env.generated_at));
+    suggestions.extend(detect_cycle_warnings(metrics, &env.generated_at));
+    suggestions.extend(detect_stale_cleanup(issues, metrics, &env.generated_at));
     suggestions.retain(|suggestion| matches_filters(suggestion, options));
     sort_suggestions(&mut suggestions);
     if options.max_suggestions > 0 && suggestions.len() > options.max_suggestions {
@@ -209,8 +213,8 @@ pub fn generate_robot_suggest_output(
     let suggestion_set = SuggestionSet {
         stats: compute_stats(&suggestions),
         suggestions,
-        generated_at: generated_at.clone(),
-        data_hash: data_hash.clone(),
+        generated_at: env.generated_at.clone(),
+        data_hash: env.data_hash.clone(),
     };
 
     let active_bead_filter = options
@@ -230,8 +234,7 @@ pub fn generate_robot_suggest_output(
     };
 
     RobotSuggestOutput {
-        generated_at,
-        data_hash,
+        envelope: env,
         filters,
         suggestions: suggestion_set,
         usage_hints: vec![
@@ -594,6 +597,90 @@ fn detect_cycle_warnings(metrics: &GraphMetrics, generated_at: &str) -> Vec<Sugg
     suggestions
 }
 
+fn detect_stale_cleanup(
+    issues: &[Issue],
+    metrics: &GraphMetrics,
+    generated_at: &str,
+) -> Vec<Suggestion> {
+    let now = Utc::now();
+
+    // Compute the PageRank threshold at the given percentile of open issues.
+    let mut open_pageranks: Vec<f64> = issues
+        .iter()
+        .filter(|i| i.is_open_like())
+        .map(|i| metrics.pagerank.get(&i.id).copied().unwrap_or(0.0))
+        .collect();
+    open_pageranks.sort_by(|a, b| a.total_cmp(b));
+    let pagerank_threshold = if open_pageranks.is_empty() {
+        0.0
+    } else {
+        let idx = ((open_pageranks.len() as f64 * STALE_PAGERANK_PERCENTILE).ceil() as usize)
+            .min(open_pageranks.len() - 1);
+        open_pageranks[idx]
+    };
+
+    let mut suggestions = Vec::new();
+
+    for issue in issues.iter().filter(|i| i.is_open_like()) {
+        let updated = parse_timestamp(issue.updated_at.as_deref());
+        let days_stale = match updated {
+            Some(ts) => (now - ts).num_days(),
+            None => {
+                // Fall back to created_at; if neither exists, skip.
+                match parse_timestamp(issue.created_at.as_deref()) {
+                    Some(ts) => (now - ts).num_days(),
+                    None => continue,
+                }
+            }
+        };
+
+        if days_stale < STALE_DAYS_THRESHOLD {
+            continue;
+        }
+
+        let pagerank = metrics.pagerank.get(&issue.id).copied().unwrap_or(0.0);
+        if pagerank > pagerank_threshold {
+            continue;
+        }
+
+        // Higher confidence for older, lower-impact issues.
+        let age_factor = ((days_stale as f64 - STALE_DAYS_THRESHOLD as f64) / 180.0).min(1.0);
+        let confidence = (0.4 + 0.3 * age_factor).clamp(0.0, 1.0);
+
+        let mut suggestion = base_suggestion(
+            generated_at,
+            SuggestionType::StaleCleanup,
+            issue.id.clone(),
+            format!(
+                "{} has been stale for {} days with low graph impact",
+                issue.id, days_stale
+            ),
+            format!(
+                "Last updated {} days ago, PageRank {:.4} (below threshold {:.4})",
+                days_stale, pagerank, pagerank_threshold
+            ),
+            confidence,
+        );
+        suggestion.action_command =
+            Some(format!("br close {} --reason \"stale cleanup\"", issue.id));
+        suggestion
+            .metadata
+            .insert("days_stale".to_string(), json!(days_stale));
+        suggestion
+            .metadata
+            .insert("pagerank".to_string(), json!(pagerank));
+        suggestions.push(suggestion);
+    }
+
+    suggestions.sort_by(|a, b| {
+        b.confidence
+            .total_cmp(&a.confidence)
+            .then_with(|| a.target_bead.cmp(&b.target_bead))
+    });
+    suggestions.truncate(STALE_MAX_SUGGESTIONS);
+    suggestions
+}
+
 fn base_suggestion(
     generated_at: &str,
     suggestion_type: SuggestionType,
@@ -894,5 +981,87 @@ mod tests {
         assert_eq!(suggestions[0].target_bead, "bd-a");
         assert_eq!(suggestions[1].target_bead, "bd-m");
         assert_eq!(suggestions[2].target_bead, "bd-z");
+    }
+
+    fn make_issue_with_dates(id: &str, status: &str, updated_days_ago: i64) -> Issue {
+        let updated = Utc::now() - chrono::Duration::days(updated_days_ago);
+        Issue {
+            id: id.to_string(),
+            title: format!("Issue {id}"),
+            status: status.to_string(),
+            issue_type: "task".to_string(),
+            priority: 3,
+            updated_at: Some(updated.to_rfc3339()),
+            created_at: Some(updated.to_rfc3339()),
+            ..Issue::default()
+        }
+    }
+
+    #[test]
+    fn stale_cleanup_detects_old_low_impact_issues() {
+        use crate::analysis::graph::IssueGraph;
+
+        let issues = vec![
+            make_issue_with_dates("A", "open", 120),
+            make_issue_with_dates("B", "open", 10),
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now().to_rfc3339();
+
+        let results = detect_stale_cleanup(&issues, &metrics, &now);
+        // A is stale (120 days > 90), B is fresh
+        assert!(
+            results.iter().any(|s| s.target_bead == "A"),
+            "should detect stale issue A"
+        );
+        assert!(
+            !results.iter().any(|s| s.target_bead == "B"),
+            "should not flag fresh issue B"
+        );
+    }
+
+    #[test]
+    fn stale_cleanup_skips_closed_issues() {
+        use crate::analysis::graph::IssueGraph;
+
+        let issues = vec![make_issue_with_dates("A", "closed", 200)];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now().to_rfc3339();
+
+        let results = detect_stale_cleanup(&issues, &metrics, &now);
+        assert!(results.is_empty(), "closed issues should not be flagged");
+    }
+
+    #[test]
+    fn stale_cleanup_has_action_command() {
+        use crate::analysis::graph::IssueGraph;
+
+        let issues = vec![make_issue_with_dates("X", "open", 100)];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now().to_rfc3339();
+
+        let results = detect_stale_cleanup(&issues, &metrics, &now);
+        assert!(!results.is_empty());
+        assert_eq!(
+            results[0].action_command.as_deref(),
+            Some("br close X --reason \"stale cleanup\"")
+        );
+        assert_eq!(results[0].suggestion_type, SuggestionType::StaleCleanup);
+    }
+
+    #[test]
+    fn stale_cleanup_empty_issues() {
+        use crate::analysis::graph::IssueGraph;
+
+        let issues: Vec<Issue> = vec![];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now().to_rfc3339();
+
+        let results = detect_stale_cleanup(&issues, &metrics, &now);
+        assert!(results.is_empty());
     }
 }

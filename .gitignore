@@ -24,3 +24,5 @@ core.*
 
 # Alternative build targets
 target-*/
+.env
+.claude/settings.local.json

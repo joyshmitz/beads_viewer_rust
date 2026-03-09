@@ -4,8 +4,101 @@ use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use petgraph::algo::kosaraju_scc;
 use petgraph::graph::DiGraph;
 use petgraph::visit::EdgeRef;
+use serde::{Deserialize, Serialize};
 
 use crate::model::Issue;
+
+// ---------------------------------------------------------------------------
+// AnalysisConfig – per-metric enable/disable toggles and size thresholds
+// ---------------------------------------------------------------------------
+
+/// Configuration controlling which graph metrics are computed and their resource bounds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalysisConfig {
+    pub enable_pagerank: bool,
+    pub enable_betweenness: bool,
+    pub enable_eigenvector: bool,
+    pub enable_hits: bool,
+    pub enable_cycles: bool,
+    pub enable_critical_path: bool,
+    pub enable_k_core: bool,
+    pub enable_articulation: bool,
+    pub enable_slack: bool,
+
+    /// Skip betweenness for graphs exceeding this node count (expensive: O(V*E)).
+    pub betweenness_max_nodes: usize,
+    /// Skip eigenvector for graphs exceeding this node count.
+    pub eigenvector_max_nodes: usize,
+}
+
+impl Default for AnalysisConfig {
+    fn default() -> Self {
+        Self::full()
+    }
+}
+
+impl AnalysisConfig {
+    /// All metrics enabled, generous size limits (matches current behavior).
+    #[must_use]
+    pub const fn full() -> Self {
+        Self {
+            enable_pagerank: true,
+            enable_betweenness: true,
+            enable_eigenvector: true,
+            enable_hits: true,
+            enable_cycles: true,
+            enable_critical_path: true,
+            enable_k_core: true,
+            enable_articulation: true,
+            enable_slack: true,
+            betweenness_max_nodes: 10_000,
+            eigenvector_max_nodes: 10_000,
+        }
+    }
+
+    /// Adaptive config based on graph size.
+    #[must_use]
+    pub const fn for_size(node_count: usize) -> Self {
+        Self {
+            enable_pagerank: true,
+            enable_betweenness: node_count <= 10_000,
+            enable_eigenvector: node_count <= 10_000,
+            enable_hits: node_count <= 50_000,
+            enable_cycles: true,
+            enable_critical_path: true,
+            enable_k_core: true,
+            enable_articulation: true,
+            enable_slack: true,
+            betweenness_max_nodes: 10_000,
+            eigenvector_max_nodes: 10_000,
+        }
+    }
+
+    /// Minimal config for triage scoring (only PageRank + betweenness + basic).
+    #[must_use]
+    pub const fn triage_only() -> Self {
+        Self {
+            enable_pagerank: true,
+            enable_betweenness: true,
+            enable_eigenvector: false,
+            enable_hits: false,
+            enable_cycles: true,
+            enable_critical_path: true,
+            enable_k_core: false,
+            enable_articulation: false,
+            enable_slack: false,
+            betweenness_max_nodes: 10_000,
+            eigenvector_max_nodes: 10_000,
+        }
+    }
+}
+
+/// Record of a metric that was skipped during analysis.
+#[derive(Debug, Clone, Serialize)]
+pub struct SkippedMetric {
+    pub metric: &'static str,
+    pub reason: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct IssueGraph {
@@ -33,6 +126,8 @@ pub struct GraphMetrics {
     pub articulation_points: HashSet<String>,
     pub slack: HashMap<String, f64>,
     pub cycles: Vec<Vec<String>>,
+    pub skipped_metrics: Vec<SkippedMetric>,
+    pub config: AnalysisConfig,
 }
 
 impl IssueGraph {
@@ -281,13 +376,75 @@ impl IssueGraph {
         components
     }
 
+    /// Compute all metrics using the default (full) config.
     #[must_use]
     pub fn compute_metrics(&self) -> GraphMetrics {
-        let pagerank = self.compute_pagerank();
-        let betweenness = self.compute_betweenness();
-        let eigenvector = self.compute_eigenvector();
-        let (hubs, authorities) = self.compute_hits();
+        self.compute_metrics_with_config(&AnalysisConfig::default())
+    }
 
+    /// Compute metrics respecting the provided configuration.
+    #[must_use]
+    pub fn compute_metrics_with_config(&self, config: &AnalysisConfig) -> GraphMetrics {
+        let n = self.node_count();
+        let mut skipped = Vec::<SkippedMetric>::new();
+
+        let pagerank = if config.enable_pagerank {
+            self.compute_pagerank()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "PageRank",
+                reason: "disabled by config".to_string(),
+            });
+            HashMap::new()
+        };
+
+        let betweenness = if config.enable_betweenness && n <= config.betweenness_max_nodes {
+            self.compute_betweenness()
+        } else {
+            let reason = if !config.enable_betweenness {
+                "disabled by config".to_string()
+            } else {
+                format!(
+                    "graph too large ({n} nodes > {} max)",
+                    config.betweenness_max_nodes
+                )
+            };
+            skipped.push(SkippedMetric {
+                metric: "Betweenness",
+                reason,
+            });
+            HashMap::new()
+        };
+
+        let eigenvector = if config.enable_eigenvector && n <= config.eigenvector_max_nodes {
+            self.compute_eigenvector()
+        } else {
+            let reason = if !config.enable_eigenvector {
+                "disabled by config".to_string()
+            } else {
+                format!(
+                    "graph too large ({n} nodes > {} max)",
+                    config.eigenvector_max_nodes
+                )
+            };
+            skipped.push(SkippedMetric {
+                metric: "Eigenvector",
+                reason,
+            });
+            HashMap::new()
+        };
+
+        let (hubs, authorities) = if config.enable_hits {
+            self.compute_hits()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "HITS",
+                reason: "disabled by config".to_string(),
+            });
+            (HashMap::new(), HashMap::new())
+        };
+
+        // blocks_count and blocked_by_count are always computed (cheap: O(V)).
         let mut blocks_count = HashMap::new();
         let mut blocked_by_count = HashMap::new();
         for id in self.issue_ids_sorted() {
@@ -295,11 +452,55 @@ impl IssueGraph {
             blocked_by_count.insert(id.clone(), self.blockers(&id).len());
         }
 
-        let critical_depth = self.compute_critical_depth();
-        let k_core = self.compute_k_core();
-        let articulation_points = self.compute_articulation_points();
-        let slack = self.compute_slack();
-        let cycles = self.find_cycles();
+        let critical_depth = if config.enable_critical_path {
+            self.compute_critical_depth()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "CriticalPath",
+                reason: "disabled by config".to_string(),
+            });
+            HashMap::new()
+        };
+
+        let k_core = if config.enable_k_core {
+            self.compute_k_core()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "KCore",
+                reason: "disabled by config".to_string(),
+            });
+            HashMap::new()
+        };
+
+        let articulation_points = if config.enable_articulation {
+            self.compute_articulation_points()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "Articulation",
+                reason: "disabled by config".to_string(),
+            });
+            HashSet::new()
+        };
+
+        let slack = if config.enable_slack {
+            self.compute_slack()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "Slack",
+                reason: "disabled by config".to_string(),
+            });
+            HashMap::new()
+        };
+
+        let cycles = if config.enable_cycles {
+            self.find_cycles()
+        } else {
+            skipped.push(SkippedMetric {
+                metric: "Cycles",
+                reason: "disabled by config".to_string(),
+            });
+            Vec::new()
+        };
 
         GraphMetrics {
             pagerank,
@@ -314,6 +515,8 @@ impl IssueGraph {
             articulation_points,
             slack,
             cycles,
+            skipped_metrics: skipped,
+            config: config.clone(),
         }
     }
 
@@ -866,7 +1069,7 @@ fn tarjan_articulation_dfs(
 mod tests {
     use crate::model::{Dependency, Issue};
 
-    use super::IssueGraph;
+    use super::{AnalysisConfig, IssueGraph};
 
     #[test]
     fn critical_depth_matches_dependency_direction() {
@@ -1277,5 +1480,171 @@ mod tests {
             (total - 1.0).abs() < 0.1,
             "PageRank should sum near 1.0, got {total}"
         );
+    }
+
+    // -- AnalysisConfig tests --
+
+    #[test]
+    fn default_config_computes_all_metrics() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        assert!(metrics.skipped_metrics.is_empty());
+        assert!(!metrics.pagerank.is_empty());
+        assert!(!metrics.betweenness.is_empty());
+    }
+
+    #[test]
+    fn triage_config_skips_non_essential_metrics() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+        let config = AnalysisConfig::triage_only();
+        let metrics = graph.compute_metrics_with_config(&config);
+
+        // PageRank and betweenness should be computed.
+        assert!(!metrics.pagerank.is_empty());
+        assert!(!metrics.betweenness.is_empty());
+
+        // Eigenvector, HITS, KCore, Articulation, Slack should be skipped.
+        let skipped_names: Vec<&str> = metrics.skipped_metrics.iter().map(|s| s.metric).collect();
+        assert!(skipped_names.contains(&"Eigenvector"));
+        assert!(skipped_names.contains(&"HITS"));
+        assert!(skipped_names.contains(&"KCore"));
+        assert!(skipped_names.contains(&"Articulation"));
+        assert!(skipped_names.contains(&"Slack"));
+        assert!(metrics.eigenvector.is_empty());
+        assert!(metrics.hubs.is_empty());
+    }
+
+    #[test]
+    fn config_disables_individual_metrics() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+        let mut config = AnalysisConfig::full();
+        config.enable_pagerank = false;
+        config.enable_cycles = false;
+
+        let metrics = graph.compute_metrics_with_config(&config);
+        assert!(metrics.pagerank.is_empty());
+        assert!(metrics.cycles.is_empty());
+        let skipped_names: Vec<&str> = metrics.skipped_metrics.iter().map(|s| s.metric).collect();
+        assert!(skipped_names.contains(&"PageRank"));
+        assert!(skipped_names.contains(&"Cycles"));
+        // Other metrics still computed.
+        assert!(!metrics.betweenness.is_empty());
+    }
+
+    #[test]
+    fn config_size_threshold_skips_betweenness() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+
+        // Set threshold to 0 so even 1 node exceeds it.
+        let mut config = AnalysisConfig::full();
+        config.betweenness_max_nodes = 0;
+
+        let metrics = graph.compute_metrics_with_config(&config);
+        assert!(metrics.betweenness.is_empty());
+        let bt_skip = metrics
+            .skipped_metrics
+            .iter()
+            .find(|s| s.metric == "Betweenness");
+        assert!(bt_skip.is_some());
+        assert!(bt_skip.unwrap().reason.contains("too large"));
+    }
+
+    #[test]
+    fn config_for_size_adapts_to_graph() {
+        let small = AnalysisConfig::for_size(100);
+        assert!(small.enable_betweenness);
+        assert!(small.enable_eigenvector);
+        assert!(small.enable_hits);
+
+        let large = AnalysisConfig::for_size(50_001);
+        assert!(!large.enable_betweenness);
+        assert!(!large.enable_eigenvector);
+        assert!(!large.enable_hits);
+    }
+
+    #[test]
+    fn config_serializes_to_json() {
+        let config = AnalysisConfig::full();
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"enable_pagerank\":true"));
+        assert!(json.contains("\"betweenness_max_nodes\":10000"));
+    }
+
+    #[test]
+    fn config_deserializes_from_json() {
+        let json = r#"{
+            "enable_pagerank": false,
+            "enable_betweenness": true,
+            "enable_eigenvector": true,
+            "enable_hits": true,
+            "enable_cycles": true,
+            "enable_critical_path": true,
+            "enable_k_core": true,
+            "enable_articulation": true,
+            "enable_slack": true,
+            "betweenness_max_nodes": 5000,
+            "eigenvector_max_nodes": 5000
+        }"#;
+        let config: AnalysisConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.enable_pagerank);
+        assert_eq!(config.betweenness_max_nodes, 5000);
+    }
+
+    #[test]
+    fn metrics_config_field_matches_input() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "A".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+        let config = AnalysisConfig::triage_only();
+        let metrics = graph.compute_metrics_with_config(&config);
+        assert!(!metrics.config.enable_eigenvector);
+        assert!(metrics.config.enable_pagerank);
     }
 }

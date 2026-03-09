@@ -316,10 +316,8 @@ pub struct RecipeSummary {
 
 #[derive(Debug, Serialize)]
 pub struct RobotRecipesOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub recipes: Vec<RecipeSummary>,
 }
 
@@ -472,10 +470,8 @@ pub struct FeedbackStats {
 
 #[derive(Debug, Serialize)]
 pub struct RobotFeedbackOutput {
-    pub generated_at: String,
-    pub data_hash: String,
-    pub output_format: String,
-    pub version: String,
+    #[serde(flatten)]
+    pub envelope: crate::robot::RobotEnvelope,
     pub stats: FeedbackStats,
 }
 
@@ -559,6 +555,17 @@ impl FeedbackData {
         }
     }
 
+    /// Returns the weight adjustments as a map suitable for TriageScoringOptions.
+    /// Maps component name (e.g. "PageRank") to a multiplier (0.5–2.0).
+    /// Returns an empty map if no feedback has been recorded.
+    #[must_use]
+    pub fn weight_adjustment_map(&self) -> std::collections::HashMap<String, f64> {
+        self.adjustments
+            .iter()
+            .map(|adj| (adj.name.clone(), adj.adjustment))
+            .collect()
+    }
+
     fn update_adjustments(&mut self) {
         // Simple exponential smoothing on accept/ignore ratio
         let weight_names = [
@@ -628,6 +635,7 @@ mod tests {
             assignee: String::new(),
             claim_command: String::new(),
             show_command: String::new(),
+            breakdown: None,
         }
     }
 

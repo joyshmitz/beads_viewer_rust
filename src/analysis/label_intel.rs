@@ -550,6 +550,15 @@ fn compute_label_health(
     }
 }
 
+/// Compute health for a single label.
+pub fn compute_single_label_health(
+    label: &str,
+    issues: &[Issue],
+    metrics: &GraphMetrics,
+) -> LabelHealth {
+    compute_label_health(label, issues, metrics, Utc::now())
+}
+
 /// Compute health for all labels in the issue set.
 pub fn compute_all_label_health(
     issues: &[Issue],

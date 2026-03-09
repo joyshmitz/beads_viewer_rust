@@ -40,13 +40,13 @@ pub struct Issue {
     #[serde(default)]
     pub estimated_minutes: Option<i32>,
     #[serde(default)]
-    pub created_at: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
-    pub updated_at: Option<String>,
+    pub updated_at: Option<DateTime<Utc>>,
     #[serde(default)]
-    pub due_date: Option<String>,
+    pub due_date: Option<DateTime<Utc>>,
     #[serde(default)]
-    pub closed_at: Option<String>,
+    pub closed_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub labels: Vec<String>,
     #[serde(default)]
@@ -74,7 +74,7 @@ pub struct Dependency {
     #[serde(default)]
     pub created_by: String,
     #[serde(default)]
-    pub created_at: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -88,7 +88,7 @@ pub struct Comment {
     #[serde(default)]
     pub text: String,
     #[serde(default)]
-    pub created_at: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 impl Dependency {
@@ -103,6 +103,25 @@ impl Dependency {
         let t = self.dep_type.trim().to_ascii_lowercase();
         t == "parent-child"
     }
+}
+
+/// Parse an RFC 3339 timestamp string into `DateTime<Utc>`.
+///
+/// Accepts both `"2025-01-10T10:00:00Z"` and `"2025-01-10T10:00:00+00:00"`.
+pub fn parse_timestamp(s: &str) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+/// Shorthand to create `Some(DateTime<Utc>)` from an RFC 3339 string.
+/// Panics if the string is invalid — intended for test fixtures.
+pub fn ts(s: &str) -> Option<DateTime<Utc>> {
+    Some(
+        DateTime::parse_from_rfc3339(s)
+            .unwrap_or_else(|e| panic!("invalid timestamp {s:?}: {e}"))
+            .with_timezone(&Utc),
+    )
 }
 
 impl Issue {

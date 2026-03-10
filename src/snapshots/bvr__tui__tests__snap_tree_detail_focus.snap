@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Tree | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Dependency Tree─────────────────────────┐┌Issue Detail [focus]────────────────────────────────────┐
+│                                        ││                                                        │
+│ Dependency tree (3 nodes) | Enter expa ││ ID: A                                                  │
+│                                        ││ Title: Root                                            │
+│ > [-] (o) A Root                       ││ Status: open                                           │
+│    |   `-     (o) B Dependent          ││ Type: task                                             │
+│       (x) C Closed                     ││ Depth: 0                                               │
+│                                        ││ Labels: core, parity                                   │
+│                                        ││                                                        │
+│                                        ││ Dependents (1):                                        │
+│                                        ││   B - Dependent                                        │
+│                                        ││                                                        │
+│                                        ││ Description:                                           │
+│                                        ││ Top-level issue that unblocks downstream work once the │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Tree: 3 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back

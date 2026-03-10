@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Attention | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Label Attention─────────────────────────┐┌Label Detail [focus]────────────────────────────────────┐
+│                                        ││                                                        │
+│ Rank  Label                 Score  Rea ││ Label: backend                                         │
+│ ────────────────────────────────────── ││ Rank: #1                                               │
+│ ▸  1  backend                0.7  2 op ││ Attention Score: 0.667                                 │
+│    2  frontend               0.3  1 op ││ Normalized: 1.000                                      │
+│    3  urgent                 0.3  1 op ││                                                        │
+│                                        ││ Breakdown:                                             │
+│                                        ││   Open:     2                                          │
+│                                        ││   Blocked:  0                                          │
+│                                        ││   Stale:    0                                          │
+│                                        ││                                                        │
+│                                        ││ Factors:                                               │
+│                                        ││   PageRank sum:     0.6667                             │
+│                                        ││   Staleness factor: 1.00                               │
+│                                        ││   Block impact:     0.0                                │
+│                                        ││   Velocity factor:  1.00                               │
+│                                        ││                                                        │
+│                                        ││ Reason: 2 open issue(s)                                │
+│                                        ││                                                        │
+│                                        ││ Open issues (2):                                       │
+│                                        ││   A                                                    │
+│                                        ││   B                                                    │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Attention: 3 labels ranked | j/k navigate | Tab focus | !/Esc back

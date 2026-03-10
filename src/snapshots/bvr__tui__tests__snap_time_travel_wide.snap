@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=TimeTravel | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Diff Categories [focus]────────────────────────────┐┌Diff Detail──────────────────────────────────────────────────────────────────────────┐
+│                                                   ││                                                                                     │
+│  No diff loaded. Press t to enter a ref.          ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+│                                                   ││                                                                                     │
+└───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
+Time-travel: no diff loaded | t to enter ref | Esc back

@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Sprint | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Sprints [focus]─────────────────────────┐┌Sprint Detail───────────────────────────────────────────┐
+│                                        ││                                                        │
+│  No sprints found.                     ││  Select a sprint from the list.                        │
+│                                        ││                                                        │
+│  Sprints are defined in .beads/sprints ││                                                        │
+│  Each line: {"id":"sprint-1","name":"S ││                                                        │
+│  "start_date":"...","end_date":"..."," ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Sprint: 0 sprint(s) | j/k navigate | Tab focus | S/Esc back

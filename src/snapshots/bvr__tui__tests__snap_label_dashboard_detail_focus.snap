@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Labels | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Label Health────────────────────────────┐┌Label Detail [focus]────────────────────────────────────┐
+│                                        ││                                                        │
+│ Label health (3 labels) | healthy:0 wa ││ Label: backend                                         │
+│                                        ││ Health: 63/100 (warning)                               │
+│ > !  [######....]  63  backend         ││ Issues: 2 total (2 open, 0 closed, 0 blocked)          │
+│   !  [######....]  63  frontend        ││                                                        │
+│   !  [######....]  63  urgent          ││ Velocity (score: 0/100):                               │
+│                                        ││   Closed 7d: 0 | 30d: 0                                │
+│                                        ││   Trend: stable (+0%)                                  │
+│                                        ││                                                        │
+│                                        ││ Freshness (score: 100/100):                            │
+│                                        ││   Avg days since update: 0.0                           │
+│                                        ││   Stale: 0 (threshold: 14d)                            │
+│                                        ││                                                        │
+│                                        ││ Flow (score: 100/100):                                 │
+│                                        ││   Deps in: 0 | out: 0                                  │
+│                                        ││   Blocked by external: 0 | Blocking external: 0        │
+│                                        ││                                                        │
+│                                        ││ Criticality (score: 50/100):                           │
+│                                        ││   Avg PageRank: 0.3333 | Avg betweenness: 0.0000       │
+│                                        ││   Critical paths: 2 | Bottlenecks: 0                   │
+│                                        ││                                                        │
+│                                        ││ Issues (2):                                            │
+│                                        ││   A - Feature work                                     │
+│                                        ││   B - Bug fix                                          │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Labels: 3 | j/k navigate | Tab focus | [/Esc back

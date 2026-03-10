@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=TimeTravel | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Diff Categories [focus]─────────────────┐┌Diff Detail─────────────────────────────────────────────┐
+│                                        ││                                                        │
+│  Diff from: HEAD~1                     ││  New issues                                            │
+│  Summary: 3 changes                    ││                                                        │
+│                                        ││  > A [open] Root                                       │
+│  > New issues (3)                      ││    B [open] Dependent                                  │
+│                                        ││    C [closed] Closed                                   │
+│  METRIC DELTAS                         ││                                                        │
+│    Total issues: +3                    ││                                                        │
+│    Open issues:  +2                    ││                                                        │
+│    Edges:        +1                    ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Time-travel: j/k navigate | Tab focus | T reload | t/Esc back

@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Recipe Picker─────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+│  ▸ actionable       Issues ready to work on (no open blockers)                                   │
+│    blocked          Issues waiting on dependencies                                               │
+│    default          All open issues sorted by priority                                           │
+│    high-impact      Issues with highest graph centrality                                         │
+│    quick-wins       Easy low-priority actionable items                                           │
+│    stale            Issues not updated in 30+ days                                               │
+│    triage           Sorted by computed triage score                                              │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+j/k=navigate | Enter=apply | Esc=close

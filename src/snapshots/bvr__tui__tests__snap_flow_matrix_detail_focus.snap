@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Flow | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Flow Matrix─────────────────────────────┐┌Flow Detail [focus]─────────────────────────────────────┐
+│                                        ││                                                        │
+│ Cross-label flow (2 labels, 0 deps) |  ││ Label: core                                            │
+│                                        ││                                                        │
+│          vcore    parity               ││ Issues with this label: 1                              │
+│ ------------------------               ││   A - Root                                             │
+│ > core        .      -                 ││                                                        │
+│   parity      -      .                 ││                                                        │
+│                                        ││                                                        │
+│ j/k rows | h/l cols | Tab focus | ] or ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Flow: 2 labels, 0 cross-deps | j/k rows | h/l cols | Tab focus | ]/Esc back

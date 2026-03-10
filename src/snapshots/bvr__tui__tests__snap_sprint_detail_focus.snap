@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Sprint | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Sprints─────────────────────────────────┐┌Sprint Detail [focus]───────────────────────────────────┐
+│                                        ││                                                        │
+│  1 sprint(s)                           ││  SPRINT: Sprint Alpha                                  │
+│                                        ││  Status: ACTIVE                                        │
+│  ▸ Sprint Alpha | 3 issues | 2026-03-0 ││  Dates: 2026-03-02 → 2026-03-16                        │
+│    1/3 done (33%)                      ││  Days: 14 total, 7 elapsed, 7 remaining                │
+│                                        ││                                                        │
+│                                        ││  Issues: 3 total, 2 open, 1 closed                     │
+│                                        ││                                                        │
+│                                        ││  ▸ ○ A [P0] Root                                       │
+│                                        ││    ○ B [P0] Dependent                                  │
+│                                        ││    ✓ C [P0] Closed                                     │
+│                                        ││                                                        │
+│                                        ││  Progress: [██████░░░░░░░░░░░░░░] 33%                  │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Sprint: 1 sprint(s) | j/k navigate | Tab focus | S/Esc back

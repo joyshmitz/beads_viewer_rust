@@ -244,10 +244,12 @@ fn main() -> ExitCode {
         let stdin = std::io::stdin();
         let mut reader = std::io::BufReader::new(stdin.lock());
         let mut writer = std::io::stderr();
+        let saved_config = bvr::pages_wizard::load_wizard_config().ok().flatten();
         match bvr::pages_wizard::run_wizard_interactive(
             &mut reader,
             &mut writer,
             beads_path,
+            saved_config,
             |config| {
                 let output = config.output_path.as_deref().unwrap_or(Path::new("./bv-pages"));
                 let issues = load_issues(&cli)?;
@@ -309,8 +311,9 @@ fn main() -> ExitCode {
 
     let build_start = std::time::Instant::now();
     let analysis_config = analysis_config_for_cli(&cli);
-    let analyzer = Analyzer::new_with_config(issues.clone(), &analysis_config);
+    let analyzer = Analyzer::new_with_config(issues, &analysis_config);
     let build_duration = build_start.elapsed();
+    let issues = &analyzer.issues;
 
     if cli.robot_help {
         print_robot_help();
@@ -321,7 +324,7 @@ fn main() -> ExitCode {
     let (label_scope, label_context) = if let Some(ref label) = cli.label {
         let health = bvr::analysis::label_intel::compute_single_label_health(
             label,
-            &issues,
+            issues,
             &analyzer.metrics,
         );
         (Some(label.clone()), Some(health))
@@ -1872,7 +1875,7 @@ fn main() -> ExitCode {
     }
 
     if let Some(ref view_name) = cli.debug_render {
-        match bvr::tui::render_debug_view(issues, view_name, cli.debug_width, cli.debug_height) {
+        match bvr::tui::render_debug_view(issues.to_vec(), view_name, cli.debug_width, cli.debug_height) {
             Ok(output) => {
                 println!("{output}");
                 return ExitCode::SUCCESS;
@@ -1892,7 +1895,7 @@ fn main() -> ExitCode {
             config.poll_interval_ms
         );
     }
-    match bvr::tui::run_tui_with_background(issues, background_runtime) {
+    match bvr::tui::run_tui_with_background(issues.to_vec(), background_runtime) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");

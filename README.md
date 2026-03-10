@@ -100,7 +100,13 @@ cargo run
 | `h` | All | Toggle history view |
 | `s` | Main | Cycle sort (created asc/desc, priority, updated, default) |
 | `o/c/r/a` | All | Filter by open/closed/review/all |
-| `/` | Graph, Insights | Search with n/N cycling |
+| `a` | All | Toggle actionable view |
+| `!` | All | Toggle attention view |
+| `T` | All | Toggle tree view |
+| `[` | All | Toggle label dashboard |
+| `]` | All | Toggle flow matrix |
+| `t` | All | Toggle time-travel diff |
+| `/` | Board, Graph, Insights, History | Search with n/N cycling |
 | `J/K` | Board, Graph, Insights | Navigate dependency detail pane |
 | `1/2/3/4` | Board | Jump to lane |
 | `H/L` | Board | First/last lane |
@@ -161,13 +167,13 @@ cargo test --test conformance stress_fixture_manifest_has_provenance_and_validat
 
 | Suite | Command | Count |
 |---|---|---|
-| Unit tests | `cargo test --lib` | 356 |
+| Unit tests | `cargo test --lib` | 872 |
 | Snapshots | `cargo test --lib snap_` | 21 |
-| Conformance | `cargo test --test conformance` | 74 |
-| Schema validation | `cargo test --test schema_validation` | 31 |
-| E2E robot matrix | `cargo test --test e2e_robot_matrix` | 45 |
+| Conformance | `cargo test --test conformance` | 75 |
+| Schema validation | `cargo test --test schema_validation` | 36 |
+| E2E tests | `cargo test --test e2e_robot_matrix --test e2e_workspace_history --test e2e_export_pages` | 82 |
 | Stress fixtures | `cargo test --test stress_fixtures` | 49 |
-| Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode` | 42 |
+| Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode --test cli_model_validation` | 148 |
 
 Full suite:
 
@@ -197,7 +203,7 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs on push/PR to main:
 cargo bench --bench triage
 ```
 
-11 benchmark groups covering analyzer construction, triage, insights, plan, diff, forecast, suggest, alerts, history, cycle detection, and real fixture. Synthetic generators create sparse/dense/cyclic graphs at 100/500/1000 issues.
+12 benchmark groups covering analyzer construction, triage, insights, plan, diff, forecast, suggest, alerts, history, cycle detection, real fixture, and stress fixture. Synthetic generators create sparse/dense/cyclic graphs at 100/500/1000 issues.
 
 ## License
 

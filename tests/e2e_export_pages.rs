@@ -739,3 +739,116 @@ fn e2e_watch_export_failure_reports_last_good_served() {
         "expected failure/warning message: {stderr}"
     );
 }
+
+// ── Pages wizard integration tests ──────────────────────────────────
+
+#[test]
+fn e2e_pages_wizard_non_tty_prints_help() {
+    // When stdin is not a TTY (piped), --pages should print help info
+    let output = bvr()
+        .arg("--pages")
+        .arg("--beads-file")
+        .arg(FIXTURE)
+        .output()
+        .expect("execute bvr");
+
+    assert!(output.status.success(), "should exit 0 in non-TTY mode");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should print the wizard steps overview / deploy targets info
+    assert!(
+        stdout.contains("Deploy targets") || stdout.contains("bvr --export-pages"),
+        "expected wizard help output: {stdout}"
+    );
+}
+
+#[test]
+fn e2e_watch_export_no_change_cycle_stays_quiet() {
+    // When the file doesn't change, watch should not regenerate
+    let (_beads_dir, beads_path) = create_mutable_beads_file("nochange");
+    let export_tmp = fresh_export_dir("watch_nochange");
+    let export_path = export_tmp.path().join("pages");
+
+    let output = bvr()
+        .arg("--export-pages")
+        .arg(&export_path)
+        .arg("--watch-export")
+        .arg("--beads-file")
+        .arg(&beads_path)
+        .env("BVR_WATCH_MAX_LOOPS", "3")
+        .env("BVR_WATCH_INTERVAL_MS", "50")
+        .env("BVR_WATCH_DEBOUNCE_MS", "20")
+        .timeout(std::time::Duration::from_secs(10))
+        .output()
+        .expect("execute bvr");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Initial export should happen
+    assert!(
+        stderr.contains("Exported pages bundle"),
+        "initial export should succeed: {stderr}"
+    );
+    // Count regenerations — should be exactly 1 (initial only)
+    let regen_count = stderr.matches("watch: regenerated").count();
+    assert!(
+        regen_count <= 1,
+        "expected at most 1 regeneration without file changes, got {regen_count}: {stderr}"
+    );
+}
+
+#[test]
+fn e2e_export_pages_missing_beads_file_fails_cleanly() {
+    let export_tmp = fresh_export_dir("missing_beads");
+    let export_path = export_tmp.path().join("pages");
+
+    let output = bvr()
+        .arg("--export-pages")
+        .arg(&export_path)
+        .arg("--beads-file")
+        .arg("/nonexistent/path/issues.jsonl")
+        .output()
+        .expect("execute bvr");
+
+    assert!(
+        !output.status.success(),
+        "should fail with missing beads file"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not found")
+            || stderr.contains("No such file")
+            || stderr.contains("does not exist")
+            || stderr.contains("Error"),
+        "expected error message for missing file: {stderr}"
+    );
+}
+
+#[test]
+fn e2e_export_pages_twice_to_same_dir_overwrites_cleanly() {
+    let export_tmp = fresh_export_dir("overwrite");
+    let export_path = export_tmp.path().join("pages");
+
+    // First export
+    let output1 = bvr()
+        .arg("--export-pages")
+        .arg(&export_path)
+        .arg("--beads-file")
+        .arg(FIXTURE)
+        .output()
+        .expect("execute bvr");
+    assert!(output1.status.success(), "first export should succeed");
+    assert!(export_path.join("index.html").exists());
+
+    // Second export to same path
+    let output2 = bvr()
+        .arg("--export-pages")
+        .arg(&export_path)
+        .arg("--beads-file")
+        .arg(FIXTURE)
+        .output()
+        .expect("execute bvr");
+    assert!(
+        output2.status.success(),
+        "second export should overwrite cleanly"
+    );
+    assert!(export_path.join("index.html").exists());
+}

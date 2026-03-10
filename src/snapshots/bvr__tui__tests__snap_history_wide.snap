@@ -1,34 +1,35 @@
 ---
 source: src/tui.rs
+assertion_line: 13661
 expression: text
 ---
-bvr | mode=History | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
-┌History Beads [focus]──────────────────────────────┐┌History Timeline─────────────────────────────────────────────────────────────────────┐
-│                                                   ││                                                                                     │
-│ Bead history list (3 beads) | v toggles to git ti ││ History Summary: beads=3 closed-like=1 selected=A                                   │
-│                                                   ││                                                                                     │
-│ > A            events: 2 open                     ││ Issue: A (Root)                                                                     │
-│   B            events: 3 open                     ││ Status: open                                                                        │
-│   C            events: 3 closed                   ││ Min confidence filter: >= 0%                                                        │
-│                                                   ││ Created/Updated/Closed: 2026-01-01 / 2026-01-02 / n/a                               │
-│                                                   ││                                                                                     │
-│                                                   ││ LIFECYCLE:                                                                          │
-│                                                   ││   │ + created    2026-01-01T00:00:00Z  Issue A created                              │
-│                                                   ││   └ . updated    2026-01-02T00:00:00Z  Current status: open                         │
-│                                                   ││                                                                                     │
-│                                                   ││ v: switch to git timeline | J/K: cycle commits                                      │
-│                                                   ││ y: copy bead ID | o: open commit | f: file tree                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-│                                                   ││                                                                                     │
-└───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
+bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Beads With History [focus]──────────────┐┌Commits────────────────────────────────────────┐┌Commit Details─────────────────────────────────┐
+│                                        ││                                               ││                                               │
+│ Bead history list (3 beads) | v toggle ││ No commits correlated with A.                 ││ History Summary: beads=3 closed-like=1 select │
+│                                        ││                                               ││                                               │
+│ > A            events: 2 open          ││                                               ││ Issue: A (Root)                               │
+│   B            events: 3 open          ││                                               ││ Status: open                                  │
+│   C            events: 3 closed        ││                                               ││ Min confidence filter: >= 0%                  │
+│                                        ││                                               ││ Created/Updated/Closed: 2026-01-01 / 2026-01- │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││ LIFECYCLE:                                    │
+│                                        ││                                               ││   │ + created    2026-01-01T00:00:00Z  Issue  │
+│                                        ││                                               ││   └ . updated    2026-01-02T00:00:00Z  Curren │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││ v: switch to git timeline | J/K: cycle commit │
+│                                        ││                                               ││ y: copy bead ID | o: open commit | f: file tr │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+│                                        ││                                               ││                                               │
+└────────────────────────────────────────┘└───────────────────────────────────────────────┘└───────────────────────────────────────────────┘
 History (bead): c confidence (>= 0%) | v bead/git | / search (Tab mode) | f file-tree | h/Esc back

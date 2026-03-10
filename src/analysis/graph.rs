@@ -166,8 +166,9 @@ pub struct SkippedMetric {
 #[derive(Debug, Clone)]
 pub struct IssueGraph {
     graph: DiGraph<(), ()>,
-    node_to_id: Vec<String>,
-    issues: HashMap<String, Issue>,
+    pub(crate) node_to_id: Vec<String>,
+    pub(crate) id_to_index: HashMap<String, usize>,
+    pub(crate) issues: Vec<Issue>,
     blockers_by_issue: HashMap<String, Vec<String>>,
     dependents_by_issue: HashMap<String, Vec<String>>,
     successors: Vec<Vec<usize>>,   // issue -> blockers
@@ -269,15 +270,15 @@ impl IssueGraph {
         let mut node_indices = Vec::with_capacity(issues.len());
         let mut node_to_id = Vec::with_capacity(issues.len());
         let mut id_to_index = HashMap::with_capacity(issues.len());
-        let mut issue_map = HashMap::with_capacity(issues.len());
 
         for (index, issue) in issues.iter().enumerate() {
             let node = graph.add_node(());
             node_indices.push(node);
             node_to_id.push(issue.id.clone());
             id_to_index.insert(issue.id.clone(), index);
-            issue_map.insert(issue.id.clone(), issue.clone());
         }
+
+        let issue_vec: Vec<Issue> = issues.to_vec();
 
         let mut blockers_by_issue: HashMap<String, Vec<String>> = HashMap::new();
         let mut dependents_by_issue: HashMap<String, Vec<String>> = HashMap::new();
@@ -339,7 +340,8 @@ impl IssueGraph {
         Self {
             graph,
             node_to_id,
-            issues: issue_map,
+            id_to_index,
+            issues: issue_vec,
             blockers_by_issue,
             dependents_by_issue,
             successors,
@@ -350,12 +352,14 @@ impl IssueGraph {
 
     #[must_use]
     pub fn issue(&self, id: &str) -> Option<&Issue> {
-        self.issues.get(id)
+        self.id_to_index.get(id).map(|&i| &self.issues[i])
     }
 
     #[must_use]
     pub fn issue_ids_sorted(&self) -> Vec<String> {
-        let mut ids: Vec<String> = self.issues.keys().cloned().collect();
+        // node_to_id is already in insertion order (sorted by caller);
+        // clone and sort for safety.
+        let mut ids = self.node_to_id.clone();
         ids.sort();
         ids
     }
@@ -390,7 +394,7 @@ impl IssueGraph {
     pub fn open_blockers(&self, issue_id: &str) -> Vec<String> {
         self.blockers(issue_id)
             .into_iter()
-            .filter(|blocker_id| self.issues.get(blocker_id).is_some_and(Issue::is_open_like))
+            .filter(|blocker_id| self.issue(blocker_id).is_some_and(Issue::is_open_like))
             .collect()
     }
 
@@ -398,7 +402,8 @@ impl IssueGraph {
     pub fn actionable_ids(&self) -> Vec<String> {
         // Phase 1: Compute directly blocked issues (open blocking dependencies).
         let mut directly_blocked = HashSet::<String>::new();
-        for (id, issue) in &self.issues {
+        for issue in &self.issues {
+            let id = &issue.id;
             if issue.is_closed_like() {
                 continue;
             }
@@ -411,11 +416,11 @@ impl IssueGraph {
         // A child has a dep with dep_type="parent-child" and depends_on_id pointing
         // to the parent. We invert: parent -> [children].
         let mut children_of: HashMap<String, Vec<String>> = HashMap::new();
-        for issue in self.issues.values() {
+        for issue in &self.issues {
             for dep in &issue.dependencies {
                 if dep.is_parent_child()
                     && !dep.depends_on_id.trim().is_empty()
-                    && self.issues.contains_key(&dep.depends_on_id)
+                    && self.id_to_index.contains_key(&dep.depends_on_id)
                 {
                     children_of
                         .entry(dep.depends_on_id.clone())
@@ -436,8 +441,7 @@ impl IssueGraph {
                     for child_id in children {
                         if !blocked.contains(child_id)
                             && self
-                                .issues
-                                .get(child_id)
+                                .issue(child_id)
                                 .is_some_and(|issue| !issue.is_closed_like())
                         {
                             newly_blocked.push(child_id.clone());
@@ -456,7 +460,7 @@ impl IssueGraph {
         // Phase 4: Collect actionable issues (open, not blocked).
         let mut ids = self.issue_ids_sorted();
         ids.retain(|id| {
-            self.issues.get(id).is_some_and(Issue::is_open_like) && !blocked.contains(id)
+            self.issue(id).is_some_and(Issue::is_open_like) && !blocked.contains(id)
         });
         ids
     }
@@ -465,7 +469,7 @@ impl IssueGraph {
     pub fn connected_open_components(&self) -> Vec<Vec<String>> {
         let open_ids: HashSet<String> = self
             .issues
-            .values()
+            .iter()
             .filter(|issue| issue.is_open_like())
             .map(|issue| issue.id.clone())
             .collect();

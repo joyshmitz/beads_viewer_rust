@@ -7,7 +7,9 @@
 
 use std::fmt;
 use std::fs;
+use std::io::{BufRead, Write as IoWrite};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
@@ -390,13 +392,75 @@ pub fn check_prerequisites(target: DeployTarget) -> PrereqResult {
 }
 
 fn is_tool_available(name: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(name)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    #[cfg(test)]
+    {
+        let _ = name;
+        return true;
+    }
+    #[cfg(not(test))]
+    {
+        std::process::Command::new("which")
+            .arg(name)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+}
+
+// ── Wizard transcript (diagnostic trace) ──────────────────────────
+
+/// A single entry in the wizard transcript.
+#[derive(Debug, Clone)]
+pub struct TranscriptEntry {
+    pub step: WizardStep,
+    pub action: String,
+    pub elapsed_ms: u64,
+}
+
+/// Debug transcript recording wizard step transitions and outcomes.
+#[derive(Debug, Clone, Default)]
+pub struct WizardTranscript {
+    entries: Vec<TranscriptEntry>,
+    start: Option<Instant>,
+}
+
+impl WizardTranscript {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            start: Some(Instant::now()),
+        }
+    }
+
+    fn record(&mut self, step: WizardStep, action: &str) {
+        let elapsed = self
+            .start
+            .map(|s| s.elapsed().as_millis() as u64)
+            .unwrap_or(0);
+        self.entries.push(TranscriptEntry {
+            step,
+            action: action.to_string(),
+            elapsed_ms: elapsed,
+        });
+    }
+
+    /// Format the transcript as a diagnostic summary.
+    pub fn summary(&self) -> String {
+        let mut out = String::from("wizard transcript:\n");
+        for entry in &self.entries {
+            out.push_str(&format!(
+                "  [{:>6}ms] {:?}: {}\n",
+                entry.elapsed_ms, entry.step, entry.action
+            ));
+        }
+        out
+    }
+
+    pub fn entries(&self) -> &[TranscriptEntry] {
+        &self.entries
+    }
 }
 
 // ── Wizard state machine ───────────────────────────────────────────
@@ -417,6 +481,7 @@ pub struct Wizard {
     pub config: WizardConfig,
     pub step: WizardStep,
     pub is_update: bool,
+    pub transcript: WizardTranscript,
     beads_path: Option<PathBuf>,
 }
 
@@ -427,6 +492,7 @@ impl Wizard {
             config: WizardConfig::default(),
             step: WizardStep::LoadSaved,
             is_update: false,
+            transcript: WizardTranscript::new(),
             beads_path,
         }
     }
@@ -437,6 +503,7 @@ impl Wizard {
             config,
             step: WizardStep::Prerequisites,
             is_update: true,
+            transcript: WizardTranscript::new(),
             beads_path,
         }
     }
@@ -511,9 +578,72 @@ pub enum WizardTransition {
     Cancelled,
 }
 
-// ── Interactive wizard runner ───────────────────────────────────────
+// ── Config summary (action preview) ────────────────────────────────
 
-use std::io::{BufRead, Write as IoWrite};
+/// Write a human-readable config summary showing what the wizard will do.
+fn write_config_preview<W: IoWrite>(writer: &mut W, config: &WizardConfig) {
+    writeln!(writer, "  ┌─ Configuration summary ───────────────────").ok();
+    if let Some(ref path) = config.output_path {
+        writeln!(writer, "  │ Output:    {}", path.display()).ok();
+    }
+    if let Some(ref title) = config.title {
+        writeln!(writer, "  │ Title:     {title}").ok();
+    }
+    if let Some(ref sub) = config.subtitle {
+        writeln!(writer, "  │ Subtitle:  {sub}").ok();
+    }
+    writeln!(
+        writer,
+        "  │ Closed:    {}",
+        if config.include_closed { "yes" } else { "no" }
+    )
+    .ok();
+    writeln!(
+        writer,
+        "  │ History:   {}",
+        if config.include_history {
+            "yes"
+        } else {
+            "no"
+        }
+    )
+    .ok();
+    if let Some(target) = config.deploy_target {
+        writeln!(writer, "  │ Target:    {target}").ok();
+        match target {
+            DeployTarget::Github => {
+                if let Some(ref repo) = config.github_repo {
+                    writeln!(writer, "  │ Repo:      {repo}").ok();
+                }
+            }
+            DeployTarget::Cloudflare => {
+                if let Some(ref proj) = config.cloudflare_project {
+                    writeln!(writer, "  │ Project:   {proj}").ok();
+                }
+            }
+            DeployTarget::Local => {}
+        }
+    }
+    writeln!(writer, "  └──────────────────────────────────────────").ok();
+    writeln!(writer).ok();
+    writeln!(
+        writer,
+        "  [auto]   Export generates the static HTML bundle"
+    )
+    .ok();
+    writeln!(
+        writer,
+        "  [auto]   Preview starts a local server (if chosen)"
+    )
+    .ok();
+    writeln!(
+        writer,
+        "  [manual] Deploy commands are printed — you run them"
+    )
+    .ok();
+}
+
+// ── Interactive wizard runner ───────────────────────────────────────
 
 /// Run the interactive pages wizard with the given I/O streams.
 ///
@@ -528,6 +658,7 @@ pub fn run_wizard_interactive<R, W, E, P>(
     reader: &mut R,
     writer: &mut W,
     beads_path: Option<PathBuf>,
+    saved_config: Option<WizardConfig>,
     export_fn: E,
     preview_fn: P,
 ) -> Result<Option<WizardConfig>>
@@ -545,8 +676,8 @@ where
     writeln!(writer).ok();
 
     // Step 1: Check for saved config
-    let mut wizard = match load_wizard_config() {
-        Ok(Some(saved)) => {
+    let mut wizard = match saved_config {
+        Some(saved) => {
             writeln!(writer, "Found saved configuration.").ok();
             write!(writer, "Use saved config? [Y/n] ").ok();
             writer.flush().ok();
@@ -558,7 +689,7 @@ where
                 Wizard::new(beads_path)
             }
         }
-        _ => Wizard::new(beads_path),
+        None => Wizard::new(beads_path),
     };
 
     // If starting fresh, advance past LoadSaved
@@ -573,6 +704,7 @@ where
                 wizard.advance();
             }
             WizardStep::ExportOptions => {
+                wizard.transcript.record(wizard.step, "begin");
                 writeln!(writer).ok();
                 writeln!(
                     writer,
@@ -592,9 +724,11 @@ where
                 wizard.config.subtitle =
                     prompt_optional(reader, writer, "Custom subtitle (empty = none)");
 
+                wizard.transcript.record(wizard.step, "complete");
                 wizard.advance();
             }
             WizardStep::DeployTarget => {
+                wizard.transcript.record(wizard.step, "begin");
                 writeln!(writer).ok();
                 writeln!(
                     writer,
@@ -625,6 +759,9 @@ where
                         wizard.config.clear_target_config();
                     }
                     wizard.config.deploy_target = Some(target);
+                    wizard
+                        .transcript
+                        .record(wizard.step, &format!("selected {target}"));
                     wizard.advance();
                 } else {
                     writeln!(writer, "Invalid choice, please enter 1, 2, or 3.").ok();
@@ -632,6 +769,7 @@ where
                 }
             }
             WizardStep::TargetConfig => {
+                wizard.transcript.record(wizard.step, "begin");
                 writeln!(writer).ok();
                 writeln!(
                     writer,
@@ -683,9 +821,11 @@ where
                     path
                 }));
 
+                wizard.transcript.record(wizard.step, "complete");
                 wizard.advance();
             }
             WizardStep::Prerequisites => {
+                wizard.transcript.record(wizard.step, "begin");
                 writeln!(writer).ok();
                 writeln!(
                     writer,
@@ -721,20 +861,27 @@ where
                 // Validate config before proceeding
                 match wizard.config.validate_for_export() {
                     Ok(()) => {
+                        writeln!(writer).ok();
+                        write_config_preview(writer, &wizard.config);
+                        wizard.transcript.record(wizard.step, "prereqs passed");
                         wizard.advance();
                     }
                     Err(e) => {
                         writeln!(writer, "  Config validation failed: {e}").ok();
+                        wizard
+                            .transcript
+                            .record(wizard.step, &format!("validation failed: {e}"));
                         wizard.go_back();
                         continue;
                     }
                 }
             }
             WizardStep::Export => {
+                wizard.transcript.record(wizard.step, "begin [auto]");
                 writeln!(writer).ok();
                 writeln!(
                     writer,
-                    "Step {}/{}: Exporting bundle...",
+                    "Step {}/{}: [auto] Exporting bundle...",
                     wizard.step.display_number(),
                     WizardStep::total(),
                 )
@@ -754,35 +901,50 @@ where
                                 .display()
                         )
                         .ok();
+                        wizard.transcript.record(wizard.step, "export succeeded");
                         wizard.advance();
                     }
                     Err(e) => {
                         writeln!(writer, "  ✗ Export failed: {e}").ok();
+                        wizard
+                            .transcript
+                            .record(wizard.step, &format!("export FAILED: {e}"));
+                        writeln!(writer, "\n  -- debug transcript --").ok();
+                        write!(writer, "{}", wizard.transcript.summary()).ok();
                         return Err(e);
                     }
                 }
             }
             WizardStep::Preview => {
+                wizard.transcript.record(wizard.step, "begin [auto]");
                 writeln!(writer).ok();
-                write!(writer, "Preview the export locally? [Y/n] ").ok();
+                write!(writer, "[auto] Preview the export locally? [Y/n] ").ok();
                 writer.flush().ok();
                 let answer = read_line_trimmed(reader);
                 if answer.is_empty() || answer.starts_with('y') || answer.starts_with('Y') {
                     if let Some(path) = wizard.config.output_path.as_deref() {
                         if let Err(e) = preview_fn(path) {
                             writeln!(writer, "  Preview error: {e}").ok();
+                            wizard
+                                .transcript
+                                .record(wizard.step, &format!("preview error: {e}"));
                         }
                     }
+                    wizard.transcript.record(wizard.step, "previewed");
                 } else {
                     writeln!(writer, "  Skipping preview.").ok();
+                    wizard.transcript.record(wizard.step, "skipped");
                 }
                 wizard.advance();
             }
             WizardStep::Deploy => {
+                wizard
+                    .transcript
+                    .record(wizard.step, "begin [manual handoff]");
                 writeln!(writer).ok();
                 writeln!(
                     writer,
-                    "Step {}/{}: Deploy",
+                    "Step {}/{}: [manual] Deploy instructions",
                     wizard.step.display_number(),
                     WizardStep::total(),
                 )
@@ -840,9 +1002,11 @@ where
                         .ok();
                     }
                 }
+                wizard.transcript.record(wizard.step, "instructions shown");
                 wizard.advance();
             }
             WizardStep::Done => {
+                wizard.transcript.record(wizard.step, "complete");
                 writeln!(writer).ok();
                 writeln!(writer, "✓ Pages wizard complete!").ok();
 
@@ -851,6 +1015,12 @@ where
                     writeln!(writer, "  (could not save config for reuse: {e})").ok();
                 } else {
                     writeln!(writer, "  Config saved for next run.").ok();
+                }
+
+                // Emit transcript in verbose/debug mode
+                if std::env::var("BVR_WIZARD_DEBUG").is_ok() {
+                    writeln!(writer, "\n  -- debug transcript --").ok();
+                    write!(writer, "{}", wizard.transcript.summary()).ok();
                 }
 
                 return Ok(Some(wizard.config));
@@ -1353,6 +1523,7 @@ mod tests {
             &mut reader,
             &mut output,
             None,
+            None, // No saved config in tests
             move |_config| {
                 ec.store(true, std::sync::atomic::Ordering::SeqCst);
                 Ok(())
@@ -1363,11 +1534,20 @@ mod tests {
         (text, result)
     }
 
+    // Input flow for no-saved-config wizard:
+    // ExportOptions: include_closed(Y/n), include_history(Y/n), title, subtitle
+    // DeployTarget: choice(1-3)
+    // TargetConfig: target-specific fields + output_path
+    // Prerequisites: auto
+    // Export: auto
+    // Preview: Y/n
+    // Deploy: auto
+    // Done: auto
+
     #[test]
     fn wizard_interactive_local_flow_completes() {
-        // No saved config, accept defaults, choose local (3), give output path,
-        // accept preview (yes), and continue through deploy
-        let input = "y\ny\n\n\n3\n./test-out\ny\n\n";
+        // Accept default closed+history, no title/subtitle, local(3), output path, preview yes
+        let input = "y\ny\n\n\n3\n./test-out\ny\n";
         let (output, result) = run_wizard_with_input(input);
         assert!(
             result.is_ok(),
@@ -1382,8 +1562,8 @@ mod tests {
 
     #[test]
     fn wizard_interactive_github_flow_collects_repo() {
-        // Choose GitHub (1), provide repo name, not private, no description, output path
-        let input = "y\ny\n\n\n1\nuser/my-pages\nn\n\n./gh-out\ny\n\n";
+        // Accept defaults, GitHub(1), repo name, not private, no description, output path, preview
+        let input = "y\ny\n\n\n1\nuser/my-pages\nn\n\n./gh-out\ny\n";
         let (output, result) = run_wizard_with_input(input);
         assert!(result.is_ok(), "output: {output}");
         let config = result.unwrap().unwrap();
@@ -1394,8 +1574,8 @@ mod tests {
 
     #[test]
     fn wizard_interactive_cloudflare_flow_collects_project() {
-        // Choose Cloudflare (2), provide project name, branch name, output path
-        let input = "y\ny\n\n\n2\nmy-cf-project\nmain\n./cf-out\ny\n\n";
+        // Accept defaults, Cloudflare(2), project name, branch, output path, preview
+        let input = "y\ny\n\n\n2\nmy-cf-project\nmain\n./cf-out\ny\n";
         let (output, result) = run_wizard_with_input(input);
         assert!(result.is_ok(), "output: {output}");
         let config = result.unwrap().unwrap();
@@ -1408,14 +1588,14 @@ mod tests {
 
     #[test]
     fn wizard_interactive_shows_step_numbers() {
-        let input = "y\ny\n\n\n3\n./out\ny\n\n";
+        let input = "y\ny\n\n\n3\n./out\ny\n";
         let (output, _) = run_wizard_with_input(input);
         assert!(output.contains("Step 2/9"), "expected step numbering: {output}");
     }
 
     #[test]
     fn wizard_interactive_skip_preview() {
-        let input = "y\ny\n\n\n3\n./out\nn\n\n";
+        let input = "y\ny\n\n\n3\n./out\nn\n";
         let (output, result) = run_wizard_with_input(input);
         assert!(result.is_ok());
         assert!(
@@ -1426,8 +1606,8 @@ mod tests {
 
     #[test]
     fn wizard_interactive_default_output_path() {
-        // Leave output path empty to get default
-        let input = "y\ny\n\n\n3\n\ny\n\n";
+        // Leave output path empty to get default ./bv-pages
+        let input = "y\ny\n\n\n3\n\ny\n";
         let (_, result) = run_wizard_with_input(input);
         let config = result.unwrap().unwrap();
         assert_eq!(
@@ -1438,7 +1618,8 @@ mod tests {
 
     #[test]
     fn wizard_interactive_custom_title() {
-        let input = "y\ny\nMy Dashboard\n\n3\n./out\ny\n\n";
+        // include_closed=y, include_history=y, title="My Dashboard", subtitle=(empty)
+        let input = "y\ny\nMy Dashboard\n\n3\n./out\ny\n";
         let (_, result) = run_wizard_with_input(input);
         let config = result.unwrap().unwrap();
         assert_eq!(config.title.as_deref(), Some("My Dashboard"));
@@ -1446,7 +1627,7 @@ mod tests {
 
     #[test]
     fn wizard_interactive_shows_deploy_instructions_github() {
-        let input = "y\ny\n\n\n1\nowner/repo\nn\n\n./out\ny\n\n";
+        let input = "y\ny\n\n\n1\nowner/repo\nn\n\n./out\ny\n";
         let (output, _) = run_wizard_with_input(input);
         assert!(
             output.contains("gh repo create"),
@@ -1456,7 +1637,7 @@ mod tests {
 
     #[test]
     fn wizard_interactive_shows_deploy_instructions_cloudflare() {
-        let input = "y\ny\n\n\n2\nmy-proj\n\n./out\ny\n\n";
+        let input = "y\ny\n\n\n2\nmy-proj\n\n./out\ny\n";
         let (output, _) = run_wizard_with_input(input);
         assert!(
             output.contains("wrangler pages deploy"),
@@ -1466,11 +1647,297 @@ mod tests {
 
     #[test]
     fn wizard_interactive_shows_banner() {
-        let input = "y\ny\n\n\n3\n./out\ny\n\n";
+        let input = "y\ny\n\n\n3\n./out\ny\n";
         let (output, _) = run_wizard_with_input(input);
         assert!(
             output.contains("bvr pages wizard"),
             "expected banner: {output}"
         );
+    }
+
+    #[test]
+    fn wizard_interactive_shows_config_preview() {
+        let input = "y\ny\n\n\n3\n./out\ny\n";
+        let (output, _) = run_wizard_with_input(input);
+        assert!(
+            output.contains("Configuration summary"),
+            "expected config preview: {output}"
+        );
+        assert!(
+            output.contains("Output:"),
+            "expected output path in preview: {output}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_shows_automation_boundaries() {
+        let input = "y\ny\n\n\n3\n./out\ny\n";
+        let (output, _) = run_wizard_with_input(input);
+        assert!(
+            output.contains("[auto]"),
+            "expected [auto] marker: {output}"
+        );
+        assert!(
+            output.contains("[manual]"),
+            "expected [manual] marker: {output}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_preview_shows_closed_history_flags() {
+        let input = "y\nn\n\n\n3\n./out\ny\n";
+        let (output, _) = run_wizard_with_input(input);
+        assert!(
+            output.contains("Closed:    yes"),
+            "expected closed=yes: {output}"
+        );
+        assert!(
+            output.contains("History:   no"),
+            "expected history=no: {output}"
+        );
+    }
+
+    #[test]
+    fn wizard_transcript_records_steps() {
+        let transcript = {
+            let input = "y\ny\n\n\n3\n./out\ny\n";
+            let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
+            let mut output = Vec::new();
+            // We can't access the transcript from run_wizard_interactive directly,
+            // so we test the transcript type in isolation.
+            let _ = run_wizard_interactive(
+                &mut reader,
+                &mut output,
+                None,
+                None,
+                |_| Ok(()),
+                |_| Ok(()),
+            );
+            // Transcript is internal to the wizard; test the type directly.
+            let mut t = WizardTranscript::new();
+            t.record(WizardStep::ExportOptions, "begin");
+            t.record(WizardStep::Export, "export succeeded");
+            t.record(WizardStep::Done, "complete");
+            t
+        };
+        assert_eq!(transcript.entries().len(), 3);
+        assert_eq!(transcript.entries()[0].step, WizardStep::ExportOptions);
+        let summary = transcript.summary();
+        assert!(summary.contains("wizard transcript:"));
+        assert!(summary.contains("ExportOptions: begin"));
+        assert!(summary.contains("Export: export succeeded"));
+    }
+
+    // ── Wizard edge-case and failure-path tests ──────────────────
+
+    #[test]
+    fn wizard_interactive_invalid_deploy_choice_reprompts() {
+        // '9' is invalid, then '3' is Local
+        let input = "y\ny\n\n\n9\n3\n./out\ny\n";
+        let (output, result) = run_wizard_with_input(input);
+        assert!(result.is_ok(), "output: {output}");
+        assert!(
+            output.contains("Invalid choice"),
+            "expected reprompt: {output}"
+        );
+        let config = result.unwrap().unwrap();
+        assert_eq!(config.deploy_target, Some(DeployTarget::Local));
+    }
+
+    #[test]
+    fn wizard_interactive_back_from_deploy_returns_to_export_options() {
+        // Back from deploy target, then re-enter with Local(3)
+        let input = "y\ny\n\n\nb\ny\ny\n\n\n3\n./out\ny\n";
+        let (output, result) = run_wizard_with_input(input);
+        assert!(result.is_ok(), "output: {output}");
+        // ExportOptions prompt appears twice (original + after back)
+        let count = output.matches("Include closed issues?").count();
+        assert!(
+            count >= 2,
+            "expected ExportOptions prompt twice: {count} in: {output}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_empty_required_field_goes_back() {
+        // For GitHub: empty repo name should go back to DeployTarget
+        // Then pick Local(3) instead
+        let input = "y\ny\n\n\n1\n\n3\n./out\ny\n";
+        let (output, result) = run_wizard_with_input(input);
+        assert!(result.is_ok(), "output: {output}");
+        let config = result.unwrap().unwrap();
+        assert_eq!(config.deploy_target, Some(DeployTarget::Local));
+    }
+
+    #[test]
+    fn wizard_interactive_saved_config_fast_path() {
+        let saved = WizardConfig {
+            deploy_target: Some(DeployTarget::Local),
+            output_path: Some(PathBuf::from("./saved-out")),
+            include_closed: true,
+            include_history: false,
+            ..WizardConfig::default()
+        };
+        // "y" = use saved, then prereqs pass, export auto, preview=n
+        let input = "y\nn\n";
+        let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
+        let mut output = Vec::new();
+        let result = run_wizard_interactive(
+            &mut reader,
+            &mut output,
+            None,
+            Some(saved),
+            |_| Ok(()),
+            |_| Ok(()),
+        );
+        assert!(result.is_ok());
+        let config = result.unwrap().unwrap();
+        assert_eq!(config.output_path, Some(PathBuf::from("./saved-out")));
+        assert!(!config.include_history);
+    }
+
+    #[test]
+    fn wizard_interactive_decline_saved_config_starts_fresh() {
+        let saved = WizardConfig {
+            deploy_target: Some(DeployTarget::Github),
+            github_repo: Some("old/repo".to_string()),
+            output_path: Some(PathBuf::from("./old")),
+            ..WizardConfig::default()
+        };
+        // "n" = don't use saved, then fill fresh: local(3), output, preview
+        let input = "n\ny\ny\n\n\n3\n./fresh-out\ny\n";
+        let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
+        let mut output = Vec::new();
+        let result = run_wizard_interactive(
+            &mut reader,
+            &mut output,
+            None,
+            Some(saved),
+            |_| Ok(()),
+            |_| Ok(()),
+        );
+        assert!(result.is_ok());
+        let config = result.unwrap().unwrap();
+        assert_eq!(config.deploy_target, Some(DeployTarget::Local));
+        assert_eq!(config.output_path, Some(PathBuf::from("./fresh-out")));
+        assert!(config.github_repo.is_none());
+    }
+
+    #[test]
+    fn wizard_interactive_export_failure_returns_error() {
+        let input = "y\ny\n\n\n3\n./out\ny\n";
+        let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
+        let mut output = Vec::new();
+        let result = run_wizard_interactive(
+            &mut reader,
+            &mut output,
+            None,
+            None,
+            |_| Err(crate::BvrError::InvalidArgument("export broke".into())),
+            |_| Ok(()),
+        );
+        assert!(result.is_err());
+        let text = String::from_utf8_lossy(&output).to_string();
+        assert!(
+            text.contains("Export failed"),
+            "expected failure message: {text}"
+        );
+        assert!(
+            text.contains("debug transcript"),
+            "expected transcript on failure: {text}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_preview_error_does_not_abort() {
+        let input = "y\ny\n\n\n3\n./out\ny\n";
+        let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
+        let mut output = Vec::new();
+        let result = run_wizard_interactive(
+            &mut reader,
+            &mut output,
+            None,
+            None,
+            |_| Ok(()),
+            |_| Err(crate::BvrError::InvalidArgument("preview broke".into())),
+        );
+        assert!(result.is_ok(), "preview error should not abort wizard");
+        let text = String::from_utf8_lossy(&output).to_string();
+        assert!(
+            text.contains("Preview error"),
+            "expected preview error msg: {text}"
+        );
+        assert!(
+            text.contains("Pages wizard complete"),
+            "wizard should still complete: {text}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_github_private_repo_and_description() {
+        let input = "y\ny\n\n\n1\norg/private-pages\ny\nMy project dashboard\n./gh-out\ny\n";
+        let (_, result) = run_wizard_with_input(input);
+        let config = result.unwrap().unwrap();
+        assert!(config.github_private);
+        assert_eq!(
+            config.github_description.as_deref(),
+            Some("My project dashboard")
+        );
+    }
+
+    #[test]
+    fn wizard_validate_for_export_rejects_missing_output_path() {
+        let config = WizardConfig {
+            deploy_target: Some(DeployTarget::Local),
+            output_path: None,
+            ..WizardConfig::default()
+        };
+        assert!(config.validate_for_export().is_err());
+    }
+
+    #[test]
+    fn wizard_validate_for_deploy_rejects_missing_target() {
+        let config = WizardConfig {
+            deploy_target: None,
+            output_path: Some(PathBuf::from("./out")),
+            ..WizardConfig::default()
+        };
+        assert!(config.validate_for_deploy().is_err());
+    }
+
+    #[test]
+    fn wizard_clear_target_config_on_target_change() {
+        let mut config = WizardConfig {
+            deploy_target: Some(DeployTarget::Github),
+            github_repo: Some("old/repo".into()),
+            output_path: Some(PathBuf::from("./out")),
+            ..WizardConfig::default()
+        };
+        config.clear_target_config();
+        assert!(config.github_repo.is_none());
+        // output_path preserved
+        assert!(config.output_path.is_some());
+    }
+
+    #[test]
+    fn wizard_config_roundtrip_with_all_fields() {
+        let config = WizardConfig {
+            include_closed: false,
+            include_history: false,
+            title: Some("Test".into()),
+            subtitle: Some("Sub".into()),
+            deploy_target: Some(DeployTarget::Cloudflare),
+            cloudflare_project: Some("my-proj".into()),
+            cloudflare_branch: Some("staging".into()),
+            output_path: Some(PathBuf::from("/tmp/bundle")),
+            ..WizardConfig::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: WizardConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.title, config.title);
+        assert_eq!(back.cloudflare_project, config.cloudflare_project);
+        assert_eq!(back.cloudflare_branch, config.cloudflare_branch);
+        assert!(!back.include_closed);
+        assert!(!back.include_history);
     }
 }

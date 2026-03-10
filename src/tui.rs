@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::BTreeMap;
 #[cfg(not(test))]
 use std::collections::VecDeque;
@@ -228,6 +229,20 @@ impl Breakpoint {
     }
 }
 
+thread_local! {
+    static LAST_VIEW_WIDTH: Cell<u16> = const { Cell::new(80) };
+    static LAST_VIEW_HEIGHT: Cell<u16> = const { Cell::new(24) };
+}
+
+fn record_view_size(width: u16, height: u16) {
+    LAST_VIEW_WIDTH.with(|cell| cell.set(width));
+    LAST_VIEW_HEIGHT.with(|cell| cell.set(height));
+}
+
+fn cached_view_width() -> u16 {
+    LAST_VIEW_WIDTH.with(Cell::get)
+}
+
 /// Semantic colour tokens (dark-background palette).
 #[allow(dead_code)]
 mod tokens {
@@ -379,6 +394,7 @@ impl ViewMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FocusPane {
     List,
+    Middle,
     Detail,
 }
 
@@ -386,6 +402,7 @@ impl FocusPane {
     fn label(self) -> &'static str {
         match self {
             Self::List => "list",
+            Self::Middle => "middle",
             Self::Detail => "detail",
         }
     }
@@ -515,11 +532,41 @@ impl HistoryViewMode {
         }
     }
 
+    fn indicator(self) -> &'static str {
+        match self {
+            Self::Bead => "◈ Beads",
+            Self::Git => "◉ Git",
+        }
+    }
+
     fn toggle(self) -> Self {
         match self {
             Self::Bead => Self::Git,
             Self::Git => Self::Bead,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HistoryLayout {
+    Narrow,
+    Standard,
+    Wide,
+}
+
+impl HistoryLayout {
+    fn from_width(width: u16) -> Self {
+        if width < 100 {
+            Self::Narrow
+        } else if width < 150 {
+            Self::Standard
+        } else {
+            Self::Wide
+        }
+    }
+
+    fn has_middle_pane(self) -> bool {
+        !matches!(self, Self::Narrow)
     }
 }
 
@@ -989,6 +1036,7 @@ impl Model for BvrApp {
 
     fn view(&self, frame: &mut Frame) {
         let full = Rect::from_size(frame.buffer.width(), frame.buffer.height());
+        record_view_size(full.width, full.height);
         let visible_count = self.visible_issue_indices().len();
         let bp = Breakpoint::from_width(full.width);
 
@@ -1022,9 +1070,14 @@ impl Model for BvrApp {
                 } else {
                     ""
                 };
+                let mode_label = if matches!(self.mode, ViewMode::History) {
+                    format!("{} {}", self.mode.label(), self.history_view_mode.indicator())
+                } else {
+                    self.mode.label().to_string()
+                };
                 format!(
                     "bvr | mode={} | focus={} | issues={}/{} | filter={} | sort={}{} | ? help | Tab focus |",
-                    self.mode.label(),
+                    mode_label,
                     self.focus.label(),
                     visible_count,
                     self.analyzer.issues.len(),
@@ -1235,6 +1288,13 @@ impl Model for BvrApp {
         let body = rows[1];
         let graph_single_pane =
             matches!(self.mode, ViewMode::Graph) && matches!(bp, Breakpoint::Narrow);
+        let history_layout = if matches!(self.mode, ViewMode::History) {
+            HistoryLayout::from_width(body.width)
+        } else {
+            HistoryLayout::Narrow
+        };
+        let history_multi_pane =
+            matches!(self.mode, ViewMode::History) && history_layout.has_middle_pane();
         let mut detail_viewport_height = body.height.saturating_sub(2) as usize;
         let mut board_detail_line = None;
 
@@ -1243,7 +1303,7 @@ impl Model for BvrApp {
             ViewMode::Insights => "Insight Detail",
             ViewMode::Graph if graph_single_pane => "Graph View",
             ViewMode::Graph => "Graph Focus",
-            ViewMode::History => "History Timeline",
+            ViewMode::History => self.history_detail_panel_title(),
             ViewMode::Actionable => "Track Detail",
             ViewMode::Attention => "Label Detail",
             ViewMode::Tree => "Issue Detail",
@@ -1253,7 +1313,9 @@ impl Model for BvrApp {
             ViewMode::Sprint => "Sprint Detail",
             ViewMode::Main => "Details",
         };
-        let detail_focused = self.focus == FocusPane::Detail || graph_single_pane;
+        let detail_focused = self.focus == FocusPane::Detail
+            || graph_single_pane
+            || (matches!(self.mode, ViewMode::History) && self.history_file_tree_focus);
         let detail_title = if detail_focused {
             format!("{detail_title} [focus]")
         } else {
@@ -1279,6 +1341,125 @@ impl Model for BvrApp {
                         .style(detail_title_style),
                 )
                 .render(body, frame);
+        } else if history_multi_pane {
+            let render_history_panel =
+                |frame: &mut Frame, area: Rect, title: String, focused: bool, text: String| {
+                    let border = if focused {
+                        tokens::panel_border_focused()
+                    } else {
+                        tokens::panel_border()
+                    };
+                    let title_style = if focused {
+                        tokens::panel_title_focused()
+                    } else {
+                        tokens::panel_title()
+                    };
+                    Paragraph::new(text)
+                        .block(
+                            Block::bordered()
+                                .title(title.as_str())
+                                .border_style(border)
+                                .style(title_style),
+                        )
+                        .render(area, frame);
+                };
+
+            if matches!(history_layout, HistoryLayout::Wide)
+                && matches!(self.history_view_mode, HistoryViewMode::Bead)
+            {
+                let panes = Flex::horizontal()
+                    .constraints([
+                        Constraint::Percentage(20.0),
+                        Constraint::Percentage(22.0),
+                        Constraint::Percentage(25.0),
+                        Constraint::Percentage(33.0),
+                    ])
+                    .split(body);
+
+                render_history_panel(
+                    frame,
+                    panes[0],
+                    if matches!(self.focus, FocusPane::List) {
+                        format!("{} [focus]", self.history_list_panel_title())
+                    } else {
+                        self.history_list_panel_title().to_string()
+                    },
+                    matches!(self.focus, FocusPane::List),
+                    self.history_list_text(),
+                );
+                render_history_panel(
+                    frame,
+                    panes[1],
+                    self.history_timeline_panel_title(),
+                    false,
+                    self.history_timeline_text(panes[1].width, panes[1].height),
+                );
+                render_history_panel(
+                    frame,
+                    panes[2],
+                    if matches!(self.focus, FocusPane::Middle) {
+                        format!("{} [focus]", self.history_middle_panel_title())
+                    } else {
+                        self.history_middle_panel_title().to_string()
+                    },
+                    matches!(self.focus, FocusPane::Middle),
+                    self.history_middle_text(panes[2].width, panes[2].height),
+                );
+                detail_viewport_height = panes[3].height.saturating_sub(2) as usize;
+                render_history_panel(
+                    frame,
+                    panes[3],
+                    detail_title.clone(),
+                    detail_focused,
+                    self.detail_panel_text(),
+                );
+            } else {
+                let pane_widths = if matches!(history_layout, HistoryLayout::Wide)
+                    && matches!(self.history_view_mode, HistoryViewMode::Git)
+                {
+                    [25.0, 30.0, 45.0]
+                } else {
+                    [30.0, 35.0, 35.0]
+                };
+                let panes = Flex::horizontal()
+                    .constraints([
+                        Constraint::Percentage(pane_widths[0]),
+                        Constraint::Percentage(pane_widths[1]),
+                        Constraint::Percentage(pane_widths[2]),
+                    ])
+                    .split(body);
+
+                render_history_panel(
+                    frame,
+                    panes[0],
+                    if matches!(self.focus, FocusPane::List) {
+                        format!("{} [focus]", self.history_list_panel_title())
+                    } else {
+                        self.history_list_panel_title().to_string()
+                    },
+                    matches!(self.focus, FocusPane::List),
+                    self.history_list_text(),
+                );
+                render_history_panel(
+                    frame,
+                    panes[1],
+                    if matches!(self.focus, FocusPane::Middle) {
+                        format!("{} [focus]", self.history_middle_panel_title())
+                    } else {
+                        self.history_middle_panel_title().to_string()
+                    },
+                    matches!(self.focus, FocusPane::Middle),
+                    self.history_middle_text(panes[1].width, panes[1].height),
+                );
+                detail_viewport_height = panes[2].height.saturating_sub(2) as usize;
+                render_history_panel(
+                    frame,
+                    panes[2],
+                    detail_title.clone(),
+                    detail_focused,
+                    self.detail_panel_text(),
+                );
+            }
         } else {
             let panes = Flex::horizontal()
                 .constraints([
@@ -1292,13 +1473,7 @@ impl Model for BvrApp {
                 ViewMode::Board => "Board Lanes",
                 ViewMode::Insights => "Insight Queue",
                 ViewMode::Graph => "Graph Nodes",
-                ViewMode::History => {
-                    if matches!(self.history_view_mode, HistoryViewMode::Git) {
-                        "History Events"
-                    } else {
-                        "History Beads"
-                    }
-                }
+                ViewMode::History => self.history_list_panel_title(),
                 ViewMode::Actionable => "Execution Tracks",
                 ViewMode::Attention => "Label Attention",
                 ViewMode::Tree => "Dependency Tree",
@@ -1480,6 +1655,40 @@ impl Model for BvrApp {
 }
 
 impl BvrApp {
+    fn history_layout(&self) -> HistoryLayout {
+        HistoryLayout::from_width(cached_view_width())
+    }
+
+    fn history_has_middle_pane(&self) -> bool {
+        matches!(self.mode, ViewMode::History) && self.history_layout().has_middle_pane()
+    }
+
+    fn history_list_panel_title(&self) -> &'static str {
+        if matches!(self.history_view_mode, HistoryViewMode::Git) {
+            "Commits"
+        } else {
+            "Beads With History"
+        }
+    }
+
+    fn history_middle_panel_title(&self) -> &'static str {
+        if matches!(self.history_view_mode, HistoryViewMode::Git) {
+            "Related Beads"
+        } else {
+            "Commits"
+        }
+    }
+
+    fn history_detail_panel_title(&self) -> &'static str {
+        "Commit Details"
+    }
+
+    fn history_timeline_panel_title(&self) -> String {
+        self.selected_issue()
+            .map(|issue| format!("Timeline: {}", issue.id))
+            .unwrap_or_else(|| "Timeline".to_string())
+    }
+
     #[cfg(not(test))]
     fn wrap_quit_with_background_cancel(&self, cmd: Cmd<Msg>) -> Cmd<Msg> {
         if matches!(cmd, Cmd::Quit)
@@ -2235,9 +2444,8 @@ impl BvrApp {
                 if matches!(self.mode, ViewMode::History)
                     && matches!(self.history_view_mode, HistoryViewMode::Git)
                     && let Some(bead_id) = self
-                        .selected_history_event()
-                        .map(|event| event.issue_id)
-                        .or_else(|| self.selected_history_git_related_bead_id())
+                        .selected_history_git_related_bead_id()
+                        .or_else(|| self.selected_history_event().map(|event| event.issue_id))
                 {
                     self.select_issue_by_id(&bead_id);
                 }
@@ -2307,18 +2515,30 @@ impl BvrApp {
             }
             KeyCode::Tab => {
                 if matches!(self.mode, ViewMode::History) && self.history_show_file_tree {
-                    // 3-way cycle: List → Detail → FileTree → List
                     if self.history_file_tree_focus {
                         self.history_file_tree_focus = false;
                         self.focus = FocusPane::List;
+                    } else if self.history_has_middle_pane() {
+                        match self.focus {
+                            FocusPane::List => self.focus = FocusPane::Middle,
+                            FocusPane::Middle => self.focus = FocusPane::Detail,
+                            FocusPane::Detail => self.history_file_tree_focus = true,
+                        }
                     } else if self.focus == FocusPane::Detail {
                         self.history_file_tree_focus = true;
                     } else {
                         self.focus = FocusPane::Detail;
                     }
+                } else if self.history_has_middle_pane() {
+                    self.focus = match self.focus {
+                        FocusPane::List => FocusPane::Middle,
+                        FocusPane::Middle => FocusPane::Detail,
+                        FocusPane::Detail => FocusPane::List,
+                    };
                 } else {
                     self.focus = match self.focus {
                         FocusPane::List => FocusPane::Detail,
+                        FocusPane::Middle => FocusPane::Detail,
                         FocusPane::Detail => FocusPane::List,
                     };
                 }
@@ -2670,14 +2890,14 @@ impl BvrApp {
             KeyCode::Char('j') | KeyCode::Down
                 if matches!(self.mode, ViewMode::History)
                     && matches!(self.history_view_mode, HistoryViewMode::Git)
-                    && self.focus == FocusPane::Detail =>
+                    && matches!(self.focus, FocusPane::Middle | FocusPane::Detail) =>
             {
                 self.move_history_related_bead_relative(1);
             }
             KeyCode::Char('k') | KeyCode::Up
                 if matches!(self.mode, ViewMode::History)
                     && matches!(self.history_view_mode, HistoryViewMode::Git)
-                    && self.focus == FocusPane::Detail =>
+                    && matches!(self.focus, FocusPane::Middle | FocusPane::Detail) =>
             {
                 self.move_history_related_bead_relative(-1);
             }
@@ -2696,14 +2916,14 @@ impl BvrApp {
             KeyCode::Char('j') | KeyCode::Down
                 if matches!(self.mode, ViewMode::History)
                     && matches!(self.history_view_mode, HistoryViewMode::Bead)
-                    && self.focus == FocusPane::Detail =>
+                    && matches!(self.focus, FocusPane::Middle | FocusPane::Detail) =>
             {
                 self.move_history_bead_commit_relative(1);
             }
             KeyCode::Char('k') | KeyCode::Up
                 if matches!(self.mode, ViewMode::History)
                     && matches!(self.history_view_mode, HistoryViewMode::Bead)
-                    && self.focus == FocusPane::Detail =>
+                    && matches!(self.focus, FocusPane::Middle | FocusPane::Detail) =>
             {
                 self.move_history_bead_commit_relative(-1);
             }
@@ -5508,6 +5728,133 @@ impl BvrApp {
         lines.join("\n")
     }
 
+    fn history_middle_text(&self, width: u16, height: u16) -> String {
+        let inner_width = usize::from(width.saturating_sub(4)).max(12);
+        let visible_rows = usize::from(height.saturating_sub(4)).max(1);
+
+        if matches!(self.history_view_mode, HistoryViewMode::Git) {
+            let Some(commit) = self.selected_history_git_commit() else {
+                return "Select a commit to view related beads.".to_string();
+            };
+
+            let related = self.history_git_related_beads_for_commit(&commit.sha);
+            if related.is_empty() {
+                return format!("No beads correlated with {}.", commit.short_sha);
+            }
+
+            let slot = self
+                .history_related_bead_cursor
+                .min(related.len().saturating_sub(1));
+            let start = slot.saturating_sub(visible_rows.saturating_sub(1));
+            let end = (start + visible_rows).min(related.len());
+            let mut lines = vec![
+                format!("{} related bead(s) for {}", related.len(), commit.short_sha),
+                String::new(),
+            ];
+
+            for (idx, bead_id) in related.iter().enumerate().skip(start).take(end - start) {
+                let marker = if idx == slot && matches!(self.focus, FocusPane::Middle) {
+                    '>'
+                } else {
+                    ' '
+                };
+                let issue = self.issue_by_id(bead_id);
+                let status = issue.map_or("?", |issue| status_icon(&issue.status));
+                let title = issue
+                    .map(|issue| truncate_str(&issue.title, inner_width.saturating_sub(18)))
+                    .unwrap_or_else(|| bead_id.clone());
+                lines.push(format!("{marker} [{status}] {bead_id:<8} {title}"));
+            }
+
+            if end < related.len() {
+                lines.push(format!("+{} more", related.len() - end));
+            }
+
+            return lines.join("\n");
+        }
+
+        let Some(issue) = self.selected_issue() else {
+            return "Select a bead to view correlated commits.".to_string();
+        };
+        let commits = self.history_filtered_bead_commits(&issue.id);
+        if commits.is_empty() {
+            return format!("No commits correlated with {}.", issue.id);
+        }
+
+        let slot = self
+            .history_bead_commit_cursor
+            .min(commits.len().saturating_sub(1));
+        let start = slot.saturating_sub(visible_rows.saturating_sub(1));
+        let end = (start + visible_rows).min(commits.len());
+        let mut lines = vec![
+            format!("{} commit(s) for {}", commits.len(), issue.id),
+            String::new(),
+        ];
+
+        for (idx, commit) in commits.iter().enumerate().skip(start).take(end - start) {
+            let marker = if idx == slot && matches!(self.focus, FocusPane::Middle) {
+                '>'
+            } else {
+                ' '
+            };
+            let summary = truncate_str(&commit.message, inner_width.saturating_sub(18));
+            lines.push(format!(
+                "{marker} {} {:>3.0}% {}",
+                commit.short_sha,
+                commit.confidence * 100.0,
+                summary
+            ));
+        }
+
+        if end < commits.len() {
+            lines.push(format!("+{} more", commits.len() - end));
+        }
+
+        lines.join("\n")
+    }
+
+    fn history_timeline_text(&self, width: u16, height: u16) -> String {
+        let Some(issue) = self.selected_issue() else {
+            return "Select a bead to view its timeline.".to_string();
+        };
+        let inner_width = usize::from(width.saturating_sub(4)).max(12);
+        let visible_rows = usize::from(height.saturating_sub(4)).max(1);
+        let selected_history = self.analyzer.history(Some(&issue.id), 1).into_iter().next();
+
+        let mut entries = Vec::new();
+        if let Some(history) = selected_history {
+            for event in history.events {
+                let ts = event
+                    .timestamp
+                    .map(|dt| format_compact_timestamp(Some(dt)))
+                    .unwrap_or_else(|| "n/a".to_string());
+                let detail = truncate_str(&event.details, inner_width.saturating_sub(16));
+                entries.push(format!("{} {ts} {}", lifecycle_icon(&event.kind), detail));
+            }
+        }
+
+        for commit in self
+            .history_filtered_bead_commits(&issue.id)
+            .into_iter()
+            .take(visible_rows)
+        {
+            let summary = truncate_str(&commit.message, inner_width.saturating_sub(14));
+            entries.push(format!("• {} {}", commit.short_sha, summary));
+        }
+
+        if entries.is_empty() {
+            return format!("No timeline data for {}.", issue.id);
+        }
+
+        let hidden = entries.len().saturating_sub(visible_rows);
+        let mut lines = vec![format!("Cycle view for {}", issue.id), String::new()];
+        lines.extend(entries.into_iter().take(visible_rows));
+        if hidden > 0 {
+            lines.push(format!("+{hidden} more"));
+        }
+        lines.join("\n")
+    }
+
     // -- Actionable view --------------------------------------------------
 
     fn compute_actionable_plan(&mut self) {
@@ -8019,6 +8366,9 @@ impl BvrApp {
                     )
                 }
             }
+            FocusPane::Middle => {
+                "Focused edge: list focus (Tab to inspect relationships)".to_string()
+            }
             FocusPane::List => {
                 "Focused edge: list focus (Tab to inspect relationships)".to_string()
             }
@@ -9124,10 +9474,11 @@ fn buffer_to_text(buf: &ftui::Buffer, pool: &ftui::GraphemePool) -> String {
 mod tests {
     use super::{
         BackgroundTickDecision, BoardGrouping, BvrApp, EmptyLaneVisibility, FocusPane,
-        GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache,
+        GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
         ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
-        decide_background_tick, render_debug_view, should_apply_background_reload,
+        buffer_to_text, decide_background_tick, record_view_size, render_debug_view,
+        should_apply_background_reload,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::HistoryFileChangeCompat;
@@ -11931,6 +12282,14 @@ mod tests {
         assert!(Breakpoint::Wide.detail_pct() > Breakpoint::Medium.detail_pct());
     }
 
+    #[test]
+    fn history_layout_breakpoints_match_legacy() {
+        assert_eq!(HistoryLayout::from_width(99), HistoryLayout::Narrow);
+        assert_eq!(HistoryLayout::from_width(100), HistoryLayout::Standard);
+        assert_eq!(HistoryLayout::from_width(149), HistoryLayout::Standard);
+        assert_eq!(HistoryLayout::from_width(150), HistoryLayout::Wide);
+    }
+
     // -- Visual token tests --------------------------------------------------
 
     #[test]
@@ -12450,6 +12809,106 @@ mod tests {
     }
 
     #[test]
+    fn history_standard_tab_cycles_list_middle_detail() {
+        let mut app = new_app(ViewMode::History, 0);
+        app.mode = ViewMode::History;
+        record_view_size(120, 30);
+
+        assert_eq!(app.focus, FocusPane::List);
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Middle);
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::List);
+    }
+
+    #[test]
+    fn history_standard_file_tree_cycle_includes_middle_before_detail() {
+        let mut app = new_app(ViewMode::History, 0);
+        app.mode = ViewMode::History;
+        record_view_size(120, 30);
+        app.history_show_file_tree = true;
+        app.focus = FocusPane::List;
+
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Middle);
+        assert!(!app.history_file_tree_focus);
+
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        assert!(!app.history_file_tree_focus);
+
+        app.update(key(KeyCode::Tab));
+        assert!(app.history_file_tree_focus);
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        app.update(key(KeyCode::Tab));
+        assert!(!app.history_file_tree_focus);
+        assert_eq!(app.focus, FocusPane::List);
+    }
+
+    #[test]
+    fn history_middle_navigation_moves_bead_commit_cursor() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        record_view_size(120, 30);
+        app.focus = FocusPane::Middle;
+
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(app.history_bead_commit_cursor, 1);
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(app.history_bead_commit_cursor, 0);
+    }
+
+    #[test]
+    fn history_middle_navigation_moves_git_related_bead_cursor() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.mode = ViewMode::History;
+        record_view_size(120, 30);
+        app.focus = FocusPane::Middle;
+        if let Some(cache) = app.history_git_cache.as_mut() {
+            cache.commit_bead_confidence.insert(
+                "aaaa1111".to_string(),
+                vec![("A".to_string(), 0.95), ("B".to_string(), 0.91)],
+            );
+        }
+
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(app.history_related_bead_cursor, 1);
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(app.history_related_bead_cursor, 0);
+    }
+
+    #[test]
+    fn history_standard_bead_renders_three_legacy_panes() {
+        let app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        let text = render_app(&app, 120, 30);
+        assert!(text.contains("Beads With History [focus]"));
+        assert!(text.contains("Commits"));
+        assert!(text.contains("Commit Details"));
+    }
+
+    #[test]
+    fn history_standard_git_renders_three_legacy_panes() {
+        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        let text = render_app(&app, 120, 30);
+        assert!(text.contains("Commits [focus]"));
+        assert!(text.contains("Related Beads"));
+        assert!(text.contains("Commit Details"));
+    }
+
+    #[test]
+    fn history_wide_bead_renders_timeline_pane() {
+        let app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        let text = render_app(&app, 160, 30);
+        assert!(text.contains("Beads With History [focus]"));
+        assert!(text.contains("Timeline: A"));
+        assert!(text.contains("Commits"));
+        assert!(text.contains("Commit Details"));
+    }
+
+    #[test]
     fn history_detail_shows_yof_hints() {
         let app = new_app(ViewMode::History, 0);
         let detail = app.detail_panel_text();
@@ -12654,6 +13113,27 @@ mod tests {
             mode = mode.cycle();
         }
         assert_eq!(mode, HistorySearchMode::All);
+    }
+
+    #[test]
+    fn history_view_mode_indicator_matches_legacy_icons() {
+        assert_eq!(HistoryViewMode::Bead.indicator(), "◈ Beads");
+        assert_eq!(HistoryViewMode::Git.indicator(), "◉ Git");
+    }
+
+    #[test]
+    fn history_status_line_shows_legacy_mode_indicator() {
+        let bead_view =
+            render_debug_view(sample_issues(), "history", 100, 30).expect("history view renders");
+        assert!(bead_view.contains("mode=History ◈ Beads"));
+
+        let mut app = new_app(ViewMode::History, 0);
+        app.handle_key(KeyCode::Char('v'), Modifiers::NONE);
+        let mut pool = ftui::GraphemePool::default();
+        let mut frame = ftui::render::frame::Frame::new(100, 30, &mut pool);
+        app.view(&mut frame);
+        let git_view = buffer_to_text(&frame.buffer, &pool);
+        assert!(git_view.contains("mode=History ◉ Git"));
     }
 
     #[test]

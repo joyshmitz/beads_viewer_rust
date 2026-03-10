@@ -1,10 +1,10 @@
 ---
 source: src/tui.rs
-assertion_line: 9896
+assertion_line: 13626
 expression: text
 ---
 bvr History | 3/3 | all
-┌History Beads [focu┐┌History Timeline─────────────────────┐
+┌Beads With History ┐┌Commit Details───────────────────────┐
 │                   ││                                     │
 │ Bead history list ││ History Summary: beads=3 closed-lik │
 │                   ││                                     │

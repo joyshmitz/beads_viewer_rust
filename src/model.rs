@@ -148,6 +148,12 @@ impl Issue {
         self.normalized_status() == "tombstone"
     }
 
+    /// Returns true when the issue is already being worked on.
+    #[must_use]
+    pub fn is_in_progress(&self) -> bool {
+        self.normalized_status() == "in_progress"
+    }
+
     #[must_use]
     pub fn is_open_like(&self) -> bool {
         !self.is_closed_like()

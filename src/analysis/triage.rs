@@ -474,7 +474,10 @@ pub fn compute_triage(
 
     let scoring = &options.scoring;
 
-    for issue in issues.iter().filter(|issue| actionable.contains(&issue.id)) {
+    for issue in issues
+        .iter()
+        .filter(|issue| actionable.contains(&issue.id) && !issue.is_in_progress())
+    {
         let impact =
             compute_impact_score(issue, metrics, &ctx, &lookups, &scoring.weight_adjustments);
         let base_score = impact.score;

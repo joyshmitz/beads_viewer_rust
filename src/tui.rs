@@ -937,6 +937,8 @@ struct BvrApp {
     board_search_query: String,
     board_search_match_cursor: usize,
     board_detail_scroll_offset: usize,
+    list_scroll_offset: Cell<usize>,
+    list_viewport_height: Cell<usize>,
     graph_search_active: bool,
     graph_search_query: String,
     graph_search_match_cursor: usize,
@@ -1014,7 +1016,11 @@ impl Model for BvrApp {
     fn update(&mut self, msg: Self::Message) -> Cmd<Self::Message> {
         match msg {
             Msg::KeyPress(code, modifiers) => {
+                let mode_before = self.mode;
                 let cmd = self.handle_key(code, modifiers);
+                if self.mode != mode_before {
+                    self.list_scroll_offset.set(0);
+                }
                 #[cfg(test)]
                 self.key_trace.push(KeyTraceEntry {
                     key: format!("{code:?}"),
@@ -1516,6 +1522,28 @@ impl Model for BvrApp {
             } else {
                 tokens::panel_title()
             };
+            let vp_height = panes[0].height.saturating_sub(2) as usize;
+            self.list_viewport_height.set(vp_height);
+            // Auto-scroll: find the line with the '>' cursor marker and
+            // ensure it is within the visible viewport.
+            if vp_height > 0 {
+                let scroll = self.list_scroll_offset.get();
+                if let Some(cursor_line) = list_text.lines().position(|line| {
+                    line.starts_with('>')
+                        || line.starts_with(" >")
+                        || line.starts_with("  >")
+                        || line.starts_with("   >")
+                        || line.starts_with("    >")
+                        || line.contains('\u{25b6}')
+                }) {
+                    if cursor_line < scroll {
+                        self.list_scroll_offset.set(cursor_line);
+                    } else if cursor_line >= scroll + vp_height {
+                        self.list_scroll_offset
+                            .set(cursor_line.saturating_sub(vp_height - 1));
+                    }
+                }
+            }
             Paragraph::new(list_text)
                 .block(
                     Block::bordered()
@@ -1523,6 +1551,7 @@ impl Model for BvrApp {
                         .border_style(list_border)
                         .style(list_title_style),
                 )
+                .scroll((self.list_scroll_offset.get() as u16, 0))
                 .render(panes[0], frame);
 
             detail_viewport_height = panes[1].height.saturating_sub(2) as usize;
@@ -4158,6 +4187,7 @@ impl BvrApp {
     fn select_first_visible(&mut self) {
         if let Some(index) = self.visible_issue_indices_for_list_nav().first().copied() {
             self.set_selected_index(index);
+            self.list_scroll_offset.set(0);
         }
     }
 
@@ -4183,6 +4213,7 @@ impl BvrApp {
             self.modal_label_filter = None;
             self.modal_repo_filter = None;
         }
+        self.list_scroll_offset.set(0);
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
@@ -9804,6 +9835,8 @@ fn new_app_with_background(
         board_search_query: String::new(),
         board_search_match_cursor: 0,
         board_detail_scroll_offset: 0,
+        list_scroll_offset: Cell::new(0),
+        list_viewport_height: Cell::new(0),
         graph_search_active: false,
         graph_search_query: String::new(),
         graph_search_match_cursor: 0,
@@ -9951,6 +9984,7 @@ mod tests {
     use chrono::Utc;
     use ftui::core::event::{KeyCode, Modifiers};
     use ftui::runtime::{Cmd, Model};
+    use std::cell::Cell;
     use std::collections::BTreeMap;
 
     fn sample_issues() -> Vec<Issue> {
@@ -10244,6 +10278,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11392,6 +11428,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11489,6 +11527,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11580,6 +11620,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11689,6 +11731,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11782,6 +11826,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11876,6 +11922,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -11971,6 +12019,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -12061,6 +12111,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -12166,6 +12218,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -12257,6 +12311,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -12419,6 +12475,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,
@@ -12516,6 +12574,8 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            list_scroll_offset: Cell::new(0),
+            list_viewport_height: Cell::new(0),
             graph_search_active: false,
             graph_search_query: String::new(),
             graph_search_match_cursor: 0,

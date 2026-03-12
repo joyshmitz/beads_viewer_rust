@@ -10,7 +10,9 @@
 mod test_utils;
 
 use assert_cmd::Command;
+use bvr::analysis::drift::{Baseline, BaselineGraphStats, BaselineTopMetrics};
 use serde_json::Value;
+use std::fs;
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
@@ -98,6 +100,53 @@ fn drift_with_saved_baseline_exits_zero() {
         "drift has_drift field present"
     );
     assert!(json.get("alerts").is_some(), "drift alerts field present");
+}
+
+#[test]
+fn baseline_info_reads_saved_baseline_without_issue_data() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let baseline = Baseline {
+        version: 1,
+        created_at: "2026-03-12T00:00:00Z".to_string(),
+        description: "saved snapshot".to_string(),
+        stats: BaselineGraphStats {
+            node_count: 3,
+            edge_count: 2,
+            density: 0.3333,
+            open_count: 2,
+            closed_count: 1,
+            blocked_count: 1,
+            cycle_count: 0,
+            actionable_count: 1,
+        },
+        top_metrics: BaselineTopMetrics {
+            pagerank: Vec::new(),
+            betweenness: Vec::new(),
+            hubs: Vec::new(),
+            authorities: Vec::new(),
+        },
+        cycles: Vec::new(),
+    };
+
+    let baseline_dir = tmp.path().join(".bv");
+    fs::create_dir_all(&baseline_dir).expect("create .bv");
+    fs::write(
+        baseline_dir.join("baseline.json"),
+        serde_json::to_vec_pretty(&baseline).expect("serialize baseline"),
+    )
+    .expect("write baseline");
+
+    bvr()
+        .args([
+            "--baseline-info",
+            "--repo-path",
+            tmp.path().to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Baseline info:"))
+        .stdout(predicates::str::contains("saved snapshot"))
+        .stdout(predicates::str::contains("Nodes: 3"));
 }
 
 // ============================================================================

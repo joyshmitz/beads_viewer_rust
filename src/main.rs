@@ -78,6 +78,22 @@ fn main() -> ExitCode {
         cli.robot_diff = true;
     }
 
+    // --no-cache: silently accepted for Go CLI compatibility (Rust port has no disk cache layer).
+
+    // --db: resolve path and use as beads_file override when --beads-file not explicitly set.
+    if let Some(ref db_path) = cli.db {
+        if cli.beads_file.is_none() {
+            let resolved = if db_path.is_absolute() {
+                db_path.clone()
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(db_path)
+            };
+            cli.beads_file = Some(resolved);
+        }
+    }
+
     if cli.version {
         print_version();
         return ExitCode::SUCCESS;
@@ -298,6 +314,33 @@ fn main() -> ExitCode {
     if cli.watch_export && cli.export_pages.is_none() {
         eprintln!("error: --watch-export requires --export-pages <dir>");
         return ExitCode::from(2);
+    }
+
+    // --baseline-info doesn't need issues loaded — just reads the saved baseline file.
+    if cli.baseline_info {
+        let project_dir = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+        match bvr::analysis::drift::Baseline::load(&project_dir) {
+            Ok(bl) => {
+                println!("Baseline info:");
+                println!("  Created: {}", bl.created_at);
+                if !bl.description.is_empty() {
+                    println!("  Description: {}", bl.description);
+                }
+                println!("  Nodes: {}", bl.stats.node_count);
+                println!("  Edges: {}", bl.stats.edge_count);
+                println!("  Open: {}", bl.stats.open_count);
+                println!("  Closed: {}", bl.stats.closed_count);
+                println!("  Blocked: {}", bl.stats.blocked_count);
+                println!("  Actionable: {}", bl.stats.actionable_count);
+                println!("  Cycles: {}", bl.stats.cycle_count);
+                println!("  Density: {:.4}", bl.stats.density);
+                return ExitCode::SUCCESS;
+            }
+            Err(_) => {
+                println!("No baseline found. Run --save-baseline to create one.");
+                return ExitCode::SUCCESS;
+            }
+        }
     }
 
     let load_start = std::time::Instant::now();
@@ -1269,11 +1312,12 @@ fn main() -> ExitCode {
         }
 
         if let Some(ref bead_id) = cli.robot_related {
-            let result = bvr::analysis::file_intel::find_related_work(
+            let result = bvr::analysis::file_intel::find_related_work_with_options(
                 bead_id,
                 &history_output.histories_map,
                 cli.related_min_relevance,
                 cli.related_max_results,
+                cli.related_include_closed,
             );
             let output = bvr::analysis::file_intel::RobotRelatedWorkOutput {
                 envelope: envelope(&issues),
@@ -1374,6 +1418,41 @@ fn main() -> ExitCode {
                 return ExitCode::from(1);
             }
         }
+    }
+
+    if cli.check_drift {
+        let project_dir = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+        let baseline = match bvr::analysis::drift::Baseline::load(&project_dir) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("error: {e}");
+                eprintln!("hint: run --save-baseline first to create a baseline");
+                return ExitCode::from(1);
+            }
+        };
+        let result = bvr::analysis::drift::compute_drift(
+            &baseline,
+            &issues,
+            &analyzer.graph,
+            &analyzer.metrics,
+        );
+        if !result.has_drift {
+            println!("No drift detected.");
+        } else {
+            println!(
+                "Drift detected: {} critical, {} warning, {} info",
+                result.summary.critical, result.summary.warning, result.summary.info
+            );
+            for alert in &result.alerts {
+                println!(
+                    "  [{}] {}: {}",
+                    alert.severity.to_uppercase(),
+                    alert.alert_type,
+                    alert.message
+                );
+            }
+        }
+        return ExitCode::from(result.exit_code);
     }
 
     if cli.robot_drift {

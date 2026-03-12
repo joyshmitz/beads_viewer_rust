@@ -366,6 +366,28 @@ fn workspace_discovery_from_nested_subdir() {
 }
 
 #[test]
+fn workspace_discovery_from_workspace_root_without_flag() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+
+    let api_beads = format!("{}\n", issue_line("API-1", "API task", "open", 1));
+    let web_beads = format!("{}\n", issue_line("WEB-1", "Web task", "open", 2));
+    setup_workspace_with_discovery(
+        root,
+        &[("services/api", &api_beads), ("apps/web", &web_beads)],
+    );
+
+    let json = run_json(&["--robot-triage"], root);
+    let total = json["triage"]["quick_ref"]["total_open"]
+        .as_u64()
+        .unwrap_or(0);
+    assert_eq!(
+        total, 2,
+        "workspace root should auto-discover .bv/workspace.yaml"
+    );
+}
+
+#[test]
 fn workspace_explicit_flag_overrides_discovery() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();

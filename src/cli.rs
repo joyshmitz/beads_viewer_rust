@@ -471,6 +471,26 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub profile_json: bool,
 
+    /// Bypass disk cache for this invocation.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub no_cache: bool,
+
+    /// Resolve database path (sets BEADS_DB env var from flag value).
+    #[arg(long)]
+    pub db: Option<PathBuf>,
+
+    /// Show baseline metadata (when it was saved, description, stats).
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub baseline_info: bool,
+
+    /// Compare current state against saved baseline with human-readable output.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub check_drift: bool,
+
+    /// Include closed issues in related work discovery.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub related_include_closed: bool,
+
     #[arg(long, hide = true)]
     pub beads_file: Option<PathBuf>,
 
@@ -541,6 +561,7 @@ impl Cli {
             || self.robot_causality.is_some()
             || self.save_baseline.is_some()
             || self.robot_drift
+            || self.check_drift
             || self.robot_search
             || self.robot_recipes
             || self.emit_script
@@ -707,5 +728,41 @@ mod tests {
             .expect_err("invalid env should fail");
         assert!(error.contains("BV_OUTPUT_FORMAT"));
         assert!(error.contains("json|toon"));
+    }
+
+    #[test]
+    fn parse_no_cache_flag() {
+        let cli = Cli::parse_from(["bvr", "--no-cache", "--robot-triage"]);
+        assert!(cli.no_cache);
+    }
+
+    #[test]
+    fn parse_db_flag() {
+        let cli = Cli::parse_from(["bvr", "--db", "/tmp/test.jsonl", "--robot-triage"]);
+        assert_eq!(
+            cli.db.as_deref().and_then(std::path::Path::to_str),
+            Some("/tmp/test.jsonl")
+        );
+    }
+
+    #[test]
+    fn parse_baseline_info_flag() {
+        let cli = Cli::parse_from(["bvr", "--baseline-info"]);
+        assert!(cli.baseline_info);
+        // baseline_info doesn't need issues loaded, so it's not a robot command
+        assert!(!cli.is_robot_command());
+    }
+
+    #[test]
+    fn parse_check_drift_flag() {
+        let cli = Cli::parse_from(["bvr", "--check-drift"]);
+        assert!(cli.check_drift);
+        assert!(cli.is_robot_command());
+    }
+
+    #[test]
+    fn parse_related_include_closed_flag() {
+        let cli = Cli::parse_from(["bvr", "--robot-related", "bd-1", "--related-include-closed"]);
+        assert!(cli.related_include_closed);
     }
 }

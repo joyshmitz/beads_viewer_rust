@@ -796,12 +796,26 @@ pub struct RelatedWorkResult {
 }
 
 /// Find beads related to a given bead based on shared file modifications.
+///
+/// Includes closed beads. Use [`find_related_work_with_options`] to control this.
 #[must_use]
 pub fn find_related_work(
     bead_id: &str,
     histories: &BTreeMap<String, HistoryBeadCompat>,
     min_relevance: u32,
     max_results: usize,
+) -> RelatedWorkResult {
+    find_related_work_with_options(bead_id, histories, min_relevance, max_results, true)
+}
+
+/// Find beads related to a given bead, with explicit closed-issue control.
+#[must_use]
+pub fn find_related_work_with_options(
+    bead_id: &str,
+    histories: &BTreeMap<String, HistoryBeadCompat>,
+    min_relevance: u32,
+    max_results: usize,
+    include_closed: bool,
 ) -> RelatedWorkResult {
     let Some(source) = histories.get(bead_id) else {
         return RelatedWorkResult {
@@ -830,6 +844,11 @@ pub fn find_related_work(
     let mut related = Vec::new();
     for (other_id, other_history) in histories {
         if other_id == bead_id {
+            continue;
+        }
+
+        // Skip closed beads unless include_closed is set
+        if !include_closed && other_history.status == "closed" {
             continue;
         }
 
@@ -1311,5 +1330,31 @@ mod tests {
         let histories = BTreeMap::new();
         let result = find_related_work("nonexistent", &histories, 0, 10);
         assert!(result.related.is_empty());
+    }
+
+    #[test]
+    fn related_work_excludes_closed_when_flag_unset() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "bd-1".to_string(),
+            make_history("bd-1", "open", &["shared.rs"]),
+        );
+        histories.insert(
+            "bd-2".to_string(),
+            make_history("bd-2", "closed", &["shared.rs"]),
+        );
+        histories.insert(
+            "bd-3".to_string(),
+            make_history("bd-3", "open", &["shared.rs"]),
+        );
+
+        // include_closed=false should exclude bd-2
+        let result = find_related_work_with_options("bd-1", &histories, 0, 10, false);
+        assert_eq!(result.related.len(), 1);
+        assert_eq!(result.related[0].bead_id, "bd-3");
+
+        // include_closed=true should include bd-2
+        let result = find_related_work_with_options("bd-1", &histories, 0, 10, true);
+        assert_eq!(result.related.len(), 2);
     }
 }

@@ -91,8 +91,17 @@ struct HookContext {
 
 impl HookContext {
     fn new(export_path: &Path, export_format: &str, issue_count: usize) -> Self {
+        // Resolve to absolute so BV_EXPORT_PATH is valid regardless of the
+        // hook's working directory (which may differ when --repo-path is used).
+        let abs_path = if export_path.is_absolute() {
+            export_path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(export_path)
+        };
         Self {
-            export_path: export_path.to_string_lossy().to_string(),
+            export_path: abs_path.to_string_lossy().to_string(),
             export_format: export_format.to_string(),
             issue_count,
             timestamp: Utc::now().to_rfc3339(),
@@ -155,7 +164,7 @@ where
     let mut hook_results = Vec::<HookRunResult>::new();
 
     for hook in normalize_hooks(&hooks.pre_export, HookPhase::PreExport) {
-        let result = run_hook(&hook, &hook_context)?;
+        let result = run_hook(&hook, &hook_context, &project_dir)?;
         let should_fail = !result.success && hook.on_error == HookOnError::Fail;
         let error_message = result.error.clone();
         let hook_name = result.name.clone();
@@ -173,7 +182,7 @@ where
 
     let mut post_failure = None::<String>;
     for hook in normalize_hooks(&hooks.post_export, HookPhase::PostExport) {
-        let result = run_hook(&hook, &hook_context)?;
+        let result = run_hook(&hook, &hook_context, &project_dir)?;
         if !result.success && hook.on_error == HookOnError::Fail && post_failure.is_none() {
             let reason = result
                 .error
@@ -196,10 +205,18 @@ where
 }
 
 fn resolve_project_dir(repo_path: Option<&Path>) -> Result<PathBuf> {
-    if let Some(path) = repo_path {
-        return Ok(path.to_path_buf());
+    let base = if let Some(path) = repo_path {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?
+    };
+    // Ensure absolute so hooks always run from a fully-resolved directory,
+    // even when --repo-path is a relative path.
+    if base.is_absolute() {
+        Ok(base)
+    } else {
+        Ok(std::env::current_dir()?.join(base))
     }
-    Ok(std::env::current_dir()?)
 }
 
 fn load_hooks(path: &Path) -> Result<HookPhases> {
@@ -305,7 +322,11 @@ fn parse_timeout_text(raw: &str) -> Option<Duration> {
     None
 }
 
-fn run_hook(hook: &HookRuntime, context: &HookContext) -> Result<HookRunResult> {
+fn run_hook(
+    hook: &HookRuntime,
+    context: &HookContext,
+    project_dir: &Path,
+) -> Result<HookRunResult> {
     let (shell, shell_flag) = if cfg!(windows) {
         ("cmd", "/C")
     } else {
@@ -314,6 +335,7 @@ fn run_hook(hook: &HookRuntime, context: &HookContext) -> Result<HookRunResult> 
 
     let mut command = Command::new(shell);
     command.arg(shell_flag).arg(&hook.command);
+    command.current_dir(project_dir);
     command.env_clear();
     command.envs(build_hook_env(hook, context));
     command.stdout(Stdio::piped());
@@ -718,5 +740,50 @@ mod tests {
         );
 
         assert_eq!(expanded, "path=/tmp/out.md count=12 missing=");
+    }
+
+    #[test]
+    fn resolve_project_dir_returns_absolute_for_relative_input() {
+        let result = resolve_project_dir(Some(Path::new("relative/path"))).unwrap();
+        assert!(
+            result.is_absolute(),
+            "expected absolute path, got: {result:?}"
+        );
+        assert!(
+            result.ends_with("relative/path"),
+            "should preserve the relative suffix: {result:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_project_dir_preserves_absolute_input() {
+        let result = resolve_project_dir(Some(Path::new("/absolute/path"))).unwrap();
+        assert_eq!(result, PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn resolve_project_dir_falls_back_to_cwd_when_none() {
+        let result = resolve_project_dir(None).unwrap();
+        assert!(result.is_absolute());
+    }
+
+    #[test]
+    fn hook_context_resolves_relative_export_path_to_absolute() {
+        let ctx = HookContext::new(Path::new("output/report.md"), "markdown", 5);
+        let path = Path::new(&ctx.export_path);
+        assert!(
+            path.is_absolute(),
+            "BV_EXPORT_PATH should be absolute, got: {path:?}"
+        );
+        assert!(
+            path.ends_with("output/report.md"),
+            "should preserve the relative suffix: {path:?}"
+        );
+    }
+
+    #[test]
+    fn hook_context_preserves_absolute_export_path() {
+        let ctx = HookContext::new(Path::new("/tmp/report.md"), "markdown", 5);
+        assert_eq!(ctx.export_path, "/tmp/report.md");
     }
 }

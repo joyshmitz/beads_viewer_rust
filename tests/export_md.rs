@@ -161,3 +161,40 @@ fn export_md_hook_timeout_marks_failure() {
         "timeout hook should fail quickly; took {elapsed:?}"
     );
 }
+
+#[test]
+fn export_md_hooks_run_from_repo_path_when_invoked_elsewhere() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path().join("repo");
+    let caller_dir = temp.path().join("caller");
+    let export_path = repo_dir.join("report.md");
+    fs::create_dir_all(&repo_dir).expect("create repo dir");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    write_minimal_beads(&repo_dir);
+
+    write_hooks(
+        &repo_dir,
+        "hooks:\n  pre-export:\n    - name: relative-cwd\n      command: 'printf repo > hook-ran.txt'\n",
+    );
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let mut command = Command::new(bvr_bin);
+    command
+        .current_dir(&caller_dir)
+        .arg("--repo-path")
+        .arg(&repo_dir)
+        .arg("--export-md")
+        .arg(&export_path);
+
+    command.assert().success();
+
+    assert!(export_path.exists());
+    assert!(
+        repo_dir.join("hook-ran.txt").exists(),
+        "hook should run in repo dir when --repo-path is used"
+    );
+    assert!(
+        !caller_dir.join("hook-ran.txt").exists(),
+        "hook should not run in caller current dir"
+    );
+}

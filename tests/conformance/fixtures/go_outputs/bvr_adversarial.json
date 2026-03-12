@@ -170,18 +170,6 @@
             "unblocks": 1
           },
           {
-            "id": "ADV-100",
-            "reasons": [
-              "🔓 Unblocks 1 item(s): ADV-109",
-              "🕐 No activity in 779 days - may need review",
-              "🚧 In progress - already being worked",
-              "🚨 High priority (P0) - prioritize this work"
-            ],
-            "score": 0.315022338169175,
-            "title": "Core orchestration rewrite",
-            "unblocks": 1
-          },
-          {
             "id": "ADV-105",
             "reasons": [
               "🕐 No activity in 777 days - may need review",
@@ -189,6 +177,16 @@
             ],
             "score": 0.17827250068161787,
             "title": "API label normalization",
+            "unblocks": 0
+          },
+          {
+            "id": "ADV-108",
+            "reasons": [
+              "🕐 No activity in 777 days - may need review",
+              "✅ Currently unclaimed - available for work"
+            ],
+            "score": 0.16018525801754174,
+            "title": "UI validation edge case",
             "unblocks": 0
           }
         ]
@@ -754,7 +752,7 @@
     "generated_at": "2026-02-28T03:41:46Z",
     "plan": {
       "summary": {
-        "highest_impact": "ADV-100",
+        "highest_impact": "ADV-104",
         "impact_reason": "Unblocks 1 task",
         "unblocks_count": 1
       },

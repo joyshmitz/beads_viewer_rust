@@ -475,7 +475,7 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_cache: bool,
 
-    /// Resolve database path (used as beads file override).
+    /// Legacy compatibility alias for `--beads-file`.
     #[arg(long)]
     pub db: Option<PathBuf>,
 
@@ -487,7 +487,7 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub check_drift: bool,
 
-    /// Include closed issues in related work discovery.
+    /// Accepted for compatibility; related work already includes closed issues by default.
     #[arg(long, action = ArgAction::SetTrue)]
     pub related_include_closed: bool,
 

@@ -80,7 +80,7 @@ fn main() -> ExitCode {
 
     // --no-cache: silently accepted for Go CLI compatibility (Rust port has no disk cache layer).
 
-    // --db: resolve path and use as beads_file override when --beads-file not explicitly set.
+    // --db: legacy compatibility alias for --beads-file.
     if let Some(ref db_path) = cli.db {
         if cli.beads_file.is_none() {
             let resolved = if db_path.is_absolute() {
@@ -1312,7 +1312,7 @@ fn main() -> ExitCode {
         }
 
         if let Some(ref bead_id) = cli.robot_related {
-            let result = bvr::analysis::file_intel::find_related_work_with_options(
+            let result = compute_related_work_result(
                 bead_id,
                 &history_output.histories_map,
                 cli.related_min_relevance,
@@ -2698,6 +2698,22 @@ fn build_robot_history_output(
         histories_map,
         commit_index,
     })
+}
+
+fn compute_related_work_result(
+    bead_id: &str,
+    histories_map: &BTreeMap<String, HistoryBeadCompat>,
+    min_relevance: u32,
+    max_results: usize,
+    include_closed: bool,
+) -> bvr::analysis::file_intel::RelatedWorkResult {
+    bvr::analysis::file_intel::find_related_work_with_options(
+        bead_id,
+        histories_map,
+        min_relevance,
+        max_results,
+        include_closed,
+    )
 }
 
 fn resolve_repo_root(cli: &Cli) -> Option<PathBuf> {
@@ -5396,17 +5412,62 @@ mod tests {
     use std::fs;
     use std::process::ExitCode;
 
-    use bvr::analysis::git_history::extract_ids_from_message;
+    use bvr::analysis::git_history::{
+        HistoryBeadCompat, HistoryCommitCompat, HistoryEventCompat, HistoryFileChangeCompat,
+        HistoryMilestonesCompat, extract_ids_from_message,
+    };
     use clap::Parser;
     use tempfile::tempdir;
 
     use super::{
         BackgroundModeSource, Cli, IssueLoadTarget, build_background_mode_config,
-        discover_workspace_config_from_starts, filter_by_repo, generate_daily_burndown_points,
-        handle_operational_commands, parse_background_mode_bool, parse_scope_git_header_line,
-        resolve_background_mode, resolve_git_toplevel, resolve_issue_load_target,
-        resolve_reference_file_path, resolve_workspace_config_path,
+        compute_related_work_result, discover_workspace_config_from_starts, filter_by_repo,
+        generate_daily_burndown_points, handle_operational_commands, parse_background_mode_bool,
+        parse_scope_git_header_line, resolve_background_mode, resolve_git_toplevel,
+        resolve_issue_load_target, resolve_reference_file_path, resolve_workspace_config_path,
     };
+
+    fn make_history(bead_id: &str, status: &str, files: &[&str]) -> HistoryBeadCompat {
+        let commits = vec![HistoryCommitCompat {
+            sha: format!("sha-{bead_id}"),
+            short_sha: "abc123".to_string(),
+            message: format!("work on {bead_id}"),
+            author: "TestUser".to_string(),
+            author_email: "test@example.com".to_string(),
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            files: files
+                .iter()
+                .map(|path| HistoryFileChangeCompat {
+                    path: (*path).to_string(),
+                    action: "M".to_string(),
+                    insertions: 1,
+                    deletions: 0,
+                })
+                .collect(),
+            method: "explicit_id".to_string(),
+            confidence: 1.0,
+            reason: "test".to_string(),
+        }];
+
+        HistoryBeadCompat {
+            bead_id: bead_id.to_string(),
+            title: bead_id.to_string(),
+            status: status.to_string(),
+            events: vec![HistoryEventCompat {
+                bead_id: bead_id.to_string(),
+                event_type: status.to_string(),
+                timestamp: "2026-01-01T00:00:00Z".to_string(),
+                commit_sha: String::new(),
+                commit_message: String::new(),
+                author: String::new(),
+                author_email: String::new(),
+            }],
+            milestones: HistoryMilestonesCompat::default(),
+            commits: Some(commits),
+            cycle_time: None,
+            last_author: "TestUser".to_string(),
+        }
+    }
 
     #[test]
     fn resolve_reference_file_path_checks_repo_relative_paths() {
@@ -5758,6 +5819,47 @@ mod tests {
     fn build_background_mode_config_disables_as_of_snapshots() {
         let cli = Cli::parse_from(["bvr", "--as-of", "HEAD~1"]);
         assert!(build_background_mode_config(&cli, true).is_none());
+    }
+
+    #[test]
+    fn compute_related_work_result_excludes_closed_by_default() {
+        let histories = BTreeMap::from([
+            (
+                "bd-1".to_string(),
+                make_history("bd-1", "open", &["shared.rs"]),
+            ),
+            (
+                "bd-2".to_string(),
+                make_history("bd-2", "closed", &["shared.rs"]),
+            ),
+            (
+                "bd-3".to_string(),
+                make_history("bd-3", "open", &["shared.rs"]),
+            ),
+        ]);
+
+        // include_closed=false (default) should exclude closed beads
+        let result = compute_related_work_result("bd-1", &histories, 0, 10, false);
+        let ids: Vec<&str> = result
+            .related
+            .iter()
+            .map(|related| related.bead_id.as_str())
+            .collect();
+        assert!(
+            !ids.contains(&"bd-2"),
+            "closed beads should be excluded when include_closed=false: {ids:?}"
+        );
+        assert!(ids.contains(&"bd-3"));
+
+        // include_closed=true should include closed beads
+        let result = compute_related_work_result("bd-1", &histories, 0, 10, true);
+        let ids: Vec<&str> = result
+            .related
+            .iter()
+            .map(|related| related.bead_id.as_str())
+            .collect();
+        assert!(ids.contains(&"bd-2"));
+        assert!(ids.contains(&"bd-3"));
     }
 
     fn assert_matches_triage_runtime(config: &bvr::analysis::graph::AnalysisConfig) {

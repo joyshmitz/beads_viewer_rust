@@ -847,9 +847,12 @@ pub fn find_related_work_with_options(
             continue;
         }
 
-        // Skip closed beads unless include_closed is set
-        if !include_closed && other_history.status == "closed" {
-            continue;
+        // Skip closed/tombstone beads unless include_closed is set
+        if !include_closed {
+            let normalized = other_history.status.trim().to_ascii_lowercase();
+            if normalized == "closed" || normalized == "tombstone" {
+                continue;
+            }
         }
 
         let other_files: BTreeSet<String> = other_history

@@ -1,0 +1,34 @@
+---
+source: src/tui.rs
+expression: text
+---
+bvr | mode=Flow | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+┌Flow Matrix [focus]─────────────────────┐┌Flow Detail─────────────────────────────────────────────┐
+│                                        ││                                                        │
+│ Cross-label flow (3 labels, 0 deps) |  ││ Label: backend                                         │
+│                                        ││                                                        │
+│            vbackend   frontend  urgent ││ Issues with this label: 2                              │
+│ -------------------------------------- ││   A - Feature work                                     │
+│ > backend         .        -        -  ││   B - Bug fix                                          │
+│   frontend        -        .        -  ││                                                        │
+│   urgent          -        -        .  ││                                                        │
+│                                        ││                                                        │
+│ j/k rows | h/l cols | Tab focus | ] or ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+│                                        ││                                                        │
+└────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
+Flow: 3 labels, 0 cross-deps | j/k rows | h/l cols | Tab focus | ]/Esc back

@@ -11210,6 +11210,72 @@ mod tests {
     }
 
     #[test]
+    fn main_mode_search_query_and_match_cycling_work() {
+        let mut app = new_app(ViewMode::Main, 0);
+        assert!(!app.main_search_active);
+
+        app.update(key(KeyCode::Char('/')));
+        assert!(app.main_search_active);
+        assert!(app.main_search_query.is_empty());
+
+        app.update(key(KeyCode::Char('d')));
+        assert_eq!(app.main_search_query, "d");
+        assert_eq!(selected_issue_id(&app), "B");
+
+        app.update(key(KeyCode::Enter));
+        assert!(!app.main_search_active);
+        assert_eq!(app.main_search_query, "d");
+        assert!(app.list_panel_text().contains("Matches: 1/2"));
+
+        app.update(key(KeyCode::Char('n')));
+        assert_eq!(selected_issue_id(&app), "C");
+        assert!(app.list_panel_text().contains("Matches: 2/2"));
+
+        app.update(key(KeyCode::Char('N')));
+        assert_eq!(selected_issue_id(&app), "B");
+        assert!(app.list_panel_text().contains("Matches: 1/2"));
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('z')));
+        assert_eq!(app.main_search_query, "z");
+        app.update(key(KeyCode::Escape));
+        assert!(!app.main_search_active);
+        assert!(app.main_search_query.is_empty());
+    }
+
+    #[test]
+    fn main_mode_search_no_match_message_is_explicit() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('z')));
+
+        let active = app.list_panel_text();
+        assert!(active.contains("Search (active): /z"));
+        assert!(active.contains("Matches: none"));
+
+        app.update(key(KeyCode::Enter));
+        let finished = app.list_panel_text();
+        assert!(finished.contains("Search: /z (n/N cycles)"));
+        assert!(finished.contains("Matches: none"));
+        assert_eq!(selected_issue_id(&app), "A");
+    }
+
+    #[test]
+    fn main_mode_search_requires_list_focus() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+
+        app.update(key(KeyCode::Char('/')));
+        assert!(!app.main_search_active);
+
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::List);
+        app.update(key(KeyCode::Char('/')));
+        assert!(app.main_search_active);
+    }
+
+    #[test]
     fn graph_mode_list_header_shows_keybinding_hints() {
         let app = new_app(ViewMode::Graph, 0);
         let list_text = app.list_panel_text();
@@ -14949,6 +15015,35 @@ mod tests {
     }
 
     #[test]
+    fn keyflow_main_search_reacts_to_filter_changes() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key(KeyCode::Char('o')));
+        assert_eq!(app.list_filter, ListFilter::Open);
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('d')));
+        assert_eq!(selected_issue_id(&app), "B");
+        app.update(key(KeyCode::Enter));
+
+        let open_only = app.list_panel_text();
+        assert!(open_only.contains("Search: /d (n/N cycles)"));
+        assert!(open_only.contains("Matches: 1/1"));
+
+        app.update(key(KeyCode::Char('a')));
+        assert_eq!(app.mode, ViewMode::Main);
+        assert_eq!(app.list_filter, ListFilter::All);
+
+        let all_issues = app.list_panel_text();
+        assert!(all_issues.contains("Search: /d (n/N cycles)"));
+        assert!(all_issues.contains("Matches: 1/2"));
+
+        app.update(key(KeyCode::Char('n')));
+        assert_eq!(selected_issue_id(&app), "C");
+        assert!(app.list_panel_text().contains("Matches: 2/2"));
+    }
+
+    #[test]
     fn actionable_all_shortcut_clears_filter_before_toggling_view() {
         let mut app = new_app(ViewMode::Main, 0);
 
@@ -16572,6 +16667,454 @@ mod tests {
             !text.contains("computing"),
             "header should not show computing after metrics applied: {text}"
         );
+    }
+
+    // -- LabelDashboard expanded coverage (bd-7oo.4.5) ----------------------
+
+    #[test]
+    fn keyflow_label_dashboard_full_journey() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        assert_eq!(app.mode, ViewMode::Main);
+
+        // Enter LabelDashboard
+        app.update(key(KeyCode::Char('[')));
+        assert_eq!(app.mode, ViewMode::LabelDashboard);
+        assert!(app.label_dashboard.is_some());
+        assert_eq!(app.focus, FocusPane::List);
+
+        // Verify list shows health header
+        let list = app.list_panel_text();
+        assert!(
+            list.contains("Label health") || list.contains("no labels"),
+            "list should show label health header: {list}"
+        );
+
+        // Navigate labels
+        let count = app.label_dashboard.as_ref().map_or(0, |r| r.labels.len());
+        if count > 1 {
+            app.update(key(KeyCode::Char('j')));
+            assert_eq!(app.label_dashboard_cursor, 1);
+        }
+
+        // Switch to detail focus
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        // Detail should show label info
+        let detail = app.detail_panel_text();
+        if count > 0 {
+            assert!(
+                detail.contains("Label:") || detail.contains("Health:"),
+                "detail should show label health info: {detail}"
+            );
+        }
+
+        // Navigate back
+        app.update(key(KeyCode::Char('k')));
+        if count > 1 {
+            assert_eq!(app.label_dashboard_cursor, 0);
+        }
+
+        // Switch back to list
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::List);
+
+        // Open help overlay
+        app.update(key(KeyCode::Char('?')));
+        assert!(app.show_help);
+        app.update(key(KeyCode::Char('?')));
+        assert!(!app.show_help);
+
+        // Return to Main via [
+        app.update(key(KeyCode::Char('[')));
+        assert_eq!(app.mode, ViewMode::Main);
+    }
+
+    #[test]
+    fn label_dashboard_narrow_width_rendering_no_panic() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('[')));
+        assert_eq!(app.mode, ViewMode::LabelDashboard);
+
+        let text = render_app(&app, 40, 20);
+        assert!(
+            !text.is_empty(),
+            "narrow label dashboard should produce output"
+        );
+
+        let text_tiny = render_app(&app, 20, 10);
+        assert!(
+            !text_tiny.is_empty(),
+            "very narrow label dashboard should produce output"
+        );
+    }
+
+    #[test]
+    fn label_dashboard_detail_changes_on_navigation() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('[')));
+
+        let count = app.label_dashboard.as_ref().map_or(0, |r| r.labels.len());
+        if count >= 2 {
+            let detail_0 = app.detail_panel_text();
+            app.update(key(KeyCode::Char('j')));
+            let detail_1 = app.detail_panel_text();
+            assert_ne!(
+                detail_0, detail_1,
+                "navigating labels should change detail content"
+            );
+        }
+    }
+
+    // -- Sprint expanded coverage (bd-7oo.4.5) -----------------------------
+
+    #[test]
+    fn sprint_narrow_width_rendering_no_panic() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![
+            make_sprint("s1", "Sprint Alpha", vec!["A", "B"]),
+            make_sprint("s2", "Sprint Beta", vec!["C"]),
+        ];
+
+        let text = render_app(&app, 40, 20);
+        assert!(
+            !text.is_empty(),
+            "narrow sprint render should produce output"
+        );
+
+        let text_tiny = render_app(&app, 20, 10);
+        assert!(
+            !text_tiny.is_empty(),
+            "very narrow sprint render should produce output"
+        );
+    }
+
+    #[test]
+    fn sprint_detail_focus_navigation_no_panic() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.mode = ViewMode::Sprint;
+        app.sprint_data = vec![
+            make_sprint("s1", "Sprint Alpha", vec!["A", "B", "C"]),
+            make_sprint("s2", "Sprint Beta", vec!["D"]),
+        ];
+
+        // Navigate sprints in list focus
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(app.sprint_cursor, 1);
+
+        // Switch to detail and navigate issues
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        app.update(key(KeyCode::Char('j')));
+        app.update(key(KeyCode::Char('k')));
+
+        // Switch back and navigate to first sprint
+        app.update(key(KeyCode::Tab));
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(app.sprint_cursor, 0);
+
+        // Render at multiple widths should not panic
+        for width in [40, 80, 120] {
+            let _ = render_app(&app, width, 30);
+        }
+    }
+
+    // -- Attention mode expanded coverage (bd-7oo.4.5) ----------------------
+
+    #[test]
+    fn keyflow_attention_full_journey() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        assert_eq!(app.mode, ViewMode::Main);
+
+        // Enter Attention mode
+        app.update(key(KeyCode::Char('!')));
+        assert_eq!(app.mode, ViewMode::Attention);
+        assert!(app.attention_result.is_some());
+        assert_eq!(app.focus, FocusPane::List);
+
+        // Verify list has ranked labels
+        let list = app.list_panel_text();
+        assert!(list.contains("Rank"), "list should show rank header");
+        assert!(list.contains("Score"), "list should show score header");
+
+        // Navigate down through labels
+        let label_count = app.attention_result.as_ref().unwrap().labels.len();
+        assert!(label_count >= 2);
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(app.attention_cursor, 1);
+
+        // Switch to detail focus
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        // Detail should show breakdown for the navigated-to label
+        let detail = app.detail_panel_text();
+        assert!(detail.contains("Attention Score:"));
+        assert!(detail.contains("Breakdown:"));
+        assert!(detail.contains("Factors:"));
+
+        // Navigate back up in detail focus
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(app.attention_cursor, 0);
+
+        // Switch back to list
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::List);
+
+        // Open help from Attention mode
+        app.update(key(KeyCode::Char('?')));
+        assert!(app.show_help);
+        app.update(key(KeyCode::Char('?')));
+        assert!(!app.show_help);
+
+        // Return to Main
+        app.update(key(KeyCode::Char('!')));
+        assert_eq!(app.mode, ViewMode::Main);
+    }
+
+    #[test]
+    fn attention_narrow_width_rendering_no_panic() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('!')));
+        assert_eq!(app.mode, ViewMode::Attention);
+
+        // Render at narrow width — should not panic
+        let text = render_app(&app, 40, 20);
+        assert!(
+            !text.is_empty(),
+            "narrow attention render should produce output"
+        );
+
+        // Also at very narrow width
+        let text_tiny = render_app(&app, 20, 10);
+        assert!(
+            !text_tiny.is_empty(),
+            "very narrow attention render should produce output"
+        );
+    }
+
+    #[test]
+    fn attention_tab_focus_updates_detail_context() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('!')));
+
+        // In list focus, get detail for cursor 0
+        let detail_at_0 = app.detail_panel_text();
+
+        // Navigate to cursor 1 and switch to detail focus
+        app.update(key(KeyCode::Char('j')));
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        let detail_at_1 = app.detail_panel_text();
+
+        // Detail content should differ between labels
+        assert_ne!(
+            detail_at_0, detail_at_1,
+            "detail pane should reflect cursor position change"
+        );
+
+        // Verify detail shows open issues for the focused label
+        assert!(
+            detail_at_1.contains("Open issues") || detail_at_1.contains("Label:"),
+            "detail should show label info: {detail_at_1}"
+        );
+    }
+
+    #[test]
+    fn attention_cursor_clamp_at_boundary() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('!')));
+
+        let label_count = app.attention_result.as_ref().unwrap().labels.len();
+
+        // Navigate past the end — should clamp
+        for _ in 0..label_count + 5 {
+            app.update(key(KeyCode::Char('j')));
+        }
+        assert!(
+            app.attention_cursor < label_count,
+            "cursor should be clamped: {} < {}",
+            app.attention_cursor,
+            label_count
+        );
+
+        // Navigate back past the start — should clamp to 0
+        for _ in 0..label_count + 5 {
+            app.update(key(KeyCode::Char('k')));
+        }
+        assert_eq!(app.attention_cursor, 0, "cursor should clamp to 0");
+    }
+
+    #[test]
+    fn snap_attention_list_overview() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char('!')));
+        // List focus, cursor at 0
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
+    }
+
+    // -- Flow Matrix mode expanded coverage (bd-7oo.4.5) --------------------
+
+    #[test]
+    fn keyflow_flow_matrix_full_journey() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        assert_eq!(app.mode, ViewMode::Main);
+
+        // Enter FlowMatrix mode
+        app.update(key(KeyCode::Char(']')));
+        assert_eq!(app.mode, ViewMode::FlowMatrix);
+        assert!(app.flow_matrix.is_some());
+        assert_eq!(app.focus, FocusPane::List);
+
+        // Verify list has flow header
+        let list = app.list_panel_text();
+        assert!(
+            list.contains("Cross-label flow") || list.contains("no labels"),
+            "list should show flow header: {list}"
+        );
+
+        // Navigate rows with j/k
+        let label_count = app.flow_matrix.as_ref().map_or(0, |f| f.labels.len());
+        if label_count > 1 {
+            app.update(key(KeyCode::Char('j')));
+            assert_eq!(app.flow_matrix_row_cursor, 1);
+
+            // Navigate columns with h/l
+            app.update(key(KeyCode::Char('l')));
+            assert_eq!(app.flow_matrix_col_cursor, 1);
+
+            // Switch to detail focus
+            app.update(key(KeyCode::Tab));
+            assert_eq!(app.focus, FocusPane::Detail);
+
+            // Detail should show cross-label info for selected cell
+            let detail = app.detail_panel_text();
+            assert!(
+                !detail.is_empty(),
+                "detail should have content for selected cell"
+            );
+
+            // Navigate column back
+            app.update(key(KeyCode::Char('h')));
+            assert_eq!(app.flow_matrix_col_cursor, 0);
+
+            // Switch back to list
+            app.update(key(KeyCode::Tab));
+            assert_eq!(app.focus, FocusPane::List);
+        }
+
+        // Open help from FlowMatrix mode
+        app.update(key(KeyCode::Char('?')));
+        assert!(app.show_help);
+        app.update(key(KeyCode::Char('?')));
+        assert!(!app.show_help);
+
+        // Return to Main
+        app.update(key(KeyCode::Char(']')));
+        assert_eq!(app.mode, ViewMode::Main);
+    }
+
+    #[test]
+    fn flow_matrix_narrow_width_rendering_no_panic() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char(']')));
+        assert_eq!(app.mode, ViewMode::FlowMatrix);
+
+        // Render at narrow width — should not panic
+        let text = render_app(&app, 40, 20);
+        assert!(
+            !text.is_empty(),
+            "narrow flow matrix render should produce output"
+        );
+
+        // Also at very narrow width
+        let text_tiny = render_app(&app, 20, 10);
+        assert!(
+            !text_tiny.is_empty(),
+            "very narrow flow matrix render should produce output"
+        );
+    }
+
+    #[test]
+    fn flow_matrix_detail_changes_on_cell_navigation() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char(']')));
+
+        let label_count = app.flow_matrix.as_ref().map_or(0, |f| f.labels.len());
+        if label_count >= 2 {
+            // Detail at (0,0) — diagonal, shows label self-info
+            let detail_diag = app.detail_panel_text();
+
+            // Move to (0,1) — off-diagonal, shows cross-label flow
+            app.update(key(KeyCode::Char('l')));
+            let detail_off = app.detail_panel_text();
+
+            assert_ne!(
+                detail_diag, detail_off,
+                "diagonal and off-diagonal cells should show different detail"
+            );
+
+            // Move row down to (1,1) — back on diagonal for different label
+            app.update(key(KeyCode::Char('j')));
+            let detail_diag_2 = app.detail_panel_text();
+
+            assert_ne!(
+                detail_diag, detail_diag_2,
+                "different diagonal cells should show different labels"
+            );
+        }
+    }
+
+    #[test]
+    fn flow_matrix_cursor_clamp_at_boundary() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char(']')));
+
+        let label_count = app.flow_matrix.as_ref().map_or(0, |f| f.labels.len());
+        if label_count > 0 {
+            // Navigate past row end — should clamp
+            for _ in 0..label_count + 5 {
+                app.update(key(KeyCode::Char('j')));
+            }
+            assert!(
+                app.flow_matrix_row_cursor < label_count,
+                "row cursor should clamp: {} < {}",
+                app.flow_matrix_row_cursor,
+                label_count
+            );
+
+            // Navigate past column end — should clamp
+            for _ in 0..label_count + 5 {
+                app.update(key(KeyCode::Char('l')));
+            }
+            assert!(
+                app.flow_matrix_col_cursor < label_count,
+                "col cursor should clamp: {} < {}",
+                app.flow_matrix_col_cursor,
+                label_count
+            );
+
+            // Navigate back past start — should clamp to 0
+            for _ in 0..label_count + 5 {
+                app.update(key(KeyCode::Char('k')));
+            }
+            assert_eq!(app.flow_matrix_row_cursor, 0);
+            for _ in 0..label_count + 5 {
+                app.update(key(KeyCode::Char('h')));
+            }
+            assert_eq!(app.flow_matrix_col_cursor, 0);
+        }
+    }
+
+    #[test]
+    fn snap_flow_matrix_list_overview() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.update(key(KeyCode::Char(']')));
+        // List focus, cursors at (0,0)
+        let text = render_app(&app, 100, 30);
+        insta::assert_snapshot!(text);
     }
 
     #[test]

@@ -475,7 +475,7 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_cache: bool,
 
-    /// Resolve database path (sets BEADS_DB env var from flag value).
+    /// Resolve database path (used as beads file override).
     #[arg(long)]
     pub db: Option<PathBuf>,
 

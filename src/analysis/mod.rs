@@ -177,14 +177,12 @@ impl Analyzer {
     ///
     /// Returns a receiver that will yield the slow-phase `GraphMetrics` when done.
     /// The caller should poll via `try_recv()` and call `apply_slow_metrics()`.
-    pub fn spawn_slow_computation(
-        &self,
-    ) -> std::sync::mpsc::Receiver<graph::GraphMetrics> {
+    pub fn spawn_slow_computation(&self) -> std::sync::mpsc::Receiver<graph::GraphMetrics> {
         let graph_clone = self.graph.clone();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let slow = graph_clone
-                .compute_metrics_with_config(&graph::AnalysisConfig::slow_phase());
+            let slow =
+                graph_clone.compute_metrics_with_config(&graph::AnalysisConfig::slow_phase());
             let _ = tx.send(slow);
         });
         rx
@@ -867,10 +865,22 @@ mod tests {
             eigenvector_max_nodes: 10_000,
         };
         let analyzer = Analyzer::new_with_config(sample_issues(), &config);
-        assert!(!analyzer.metrics.pagerank.is_empty(), "PageRank should be computed");
-        assert!(analyzer.metrics.betweenness.is_empty(), "betweenness should be skipped");
-        assert!(analyzer.metrics.eigenvector.is_empty(), "eigenvector should be skipped");
-        assert!(analyzer.metrics.k_core.is_empty(), "k_core should be skipped");
+        assert!(
+            !analyzer.metrics.pagerank.is_empty(),
+            "PageRank should be computed"
+        );
+        assert!(
+            analyzer.metrics.betweenness.is_empty(),
+            "betweenness should be skipped"
+        );
+        assert!(
+            analyzer.metrics.eigenvector.is_empty(),
+            "eigenvector should be skipped"
+        );
+        assert!(
+            analyzer.metrics.k_core.is_empty(),
+            "k_core should be skipped"
+        );
     }
 
     #[test]

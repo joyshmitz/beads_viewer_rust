@@ -1174,10 +1174,9 @@ mod tests {
         assert!(out.join("README.md").is_file());
         assert!(out.join("_headers").is_file());
 
-        let issues_json: Vec<serde_json::Value> = serde_json::from_str(
-            &fs::read_to_string(out.join("data/issues.json")).expect("read"),
-        )
-        .expect("parse");
+        let issues_json: Vec<serde_json::Value> =
+            serde_json::from_str(&fs::read_to_string(out.join("data/issues.json")).expect("read"))
+                .expect("parse");
         assert!(issues_json.is_empty());
     }
 
@@ -1221,10 +1220,9 @@ mod tests {
         )
         .expect("export");
 
-        let meta: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(out.join("data/meta.json")).expect("read"),
-        )
-        .expect("parse");
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
+                .expect("parse");
         assert_eq!(meta["title"], "Project Issues");
     }
 
@@ -1244,10 +1242,9 @@ mod tests {
         )
         .expect("export");
 
-        let meta: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(out.join("data/meta.json")).expect("read"),
-        )
-        .expect("parse");
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
+                .expect("parse");
         assert_eq!(meta["title"], "Project Issues");
     }
 
@@ -1267,10 +1264,9 @@ mod tests {
         )
         .expect("export");
 
-        let meta: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(out.join("data/meta.json")).expect("read"),
-        )
-        .expect("parse");
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
+                .expect("parse");
         assert_eq!(meta["title"], "Project Issues");
     }
 
@@ -1291,10 +1287,9 @@ mod tests {
         )
         .expect("export");
 
-        let meta: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(out.join("data/meta.json")).expect("read"),
-        )
-        .expect("parse");
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
+                .expect("parse");
         assert_eq!(meta["title"], title);
     }
 
@@ -1316,10 +1311,9 @@ mod tests {
         )
         .expect("export");
 
-        let meta: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(out.join("data/meta.json")).expect("read"),
-        )
-        .expect("parse");
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
+                .expect("parse");
 
         assert!(meta["title"].is_string());
         assert!(meta["generated_at"].is_string());
@@ -1349,10 +1343,9 @@ mod tests {
         )
         .expect("export");
 
-        let triage: serde_json::Value = serde_json::from_str(
-            &fs::read_to_string(out.join("data/triage.json")).expect("read"),
-        )
-        .expect("parse");
+        let triage: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/triage.json")).expect("read"))
+                .expect("parse");
 
         assert!(
             triage.get("quick_ref").is_some(),
@@ -1488,10 +1481,9 @@ mod tests {
 
         assert_eq!(summary.issue_count, 0);
 
-        let issues_json: Vec<serde_json::Value> = serde_json::from_str(
-            &fs::read_to_string(out.join("data/issues.json")).expect("read"),
-        )
-        .expect("parse");
+        let issues_json: Vec<serde_json::Value> =
+            serde_json::from_str(&fs::read_to_string(out.join("data/issues.json")).expect("read"))
+                .expect("parse");
         assert!(issues_json.is_empty());
     }
 
@@ -1557,10 +1549,7 @@ mod tests {
             mime_type_for_path(Path::new("data/meta.json")),
             "application/json; charset=utf-8"
         );
-        assert_eq!(
-            mime_type_for_path(Path::new("logo.svg")),
-            "image/svg+xml"
-        );
+        assert_eq!(mime_type_for_path(Path::new("logo.svg")), "image/svg+xml");
         assert_eq!(mime_type_for_path(Path::new("photo.png")), "image/png");
         assert_eq!(mime_type_for_path(Path::new("pic.jpg")), "image/jpeg");
         assert_eq!(mime_type_for_path(Path::new("pic.jpeg")), "image/jpeg");

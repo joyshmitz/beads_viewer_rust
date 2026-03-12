@@ -93,7 +93,10 @@ fn drift_with_saved_baseline_exits_zero() {
     let json: Value = serde_json::from_slice(&output).expect("valid JSON");
     assert!(json.get("generated_at").is_some(), "envelope present");
     // DriftResult is flattened, so has_drift/alerts are at top level
-    assert!(json.get("has_drift").is_some(), "drift has_drift field present");
+    assert!(
+        json.get("has_drift").is_some(),
+        "drift has_drift field present"
+    );
     assert!(json.get("alerts").is_some(), "drift alerts field present");
 }
 
@@ -124,7 +127,10 @@ fn related_min_relevance_flag_parses() {
 
     let json: Value = serde_json::from_slice(&output).expect("valid JSON");
     // RelatedWorkResult is flattened: source_bead and related are at top level
-    assert!(json.get("source_bead").is_some(), "source_bead field present");
+    assert!(
+        json.get("source_bead").is_some(),
+        "source_bead field present"
+    );
     assert!(json.get("related").is_some(), "related field present");
 }
 
@@ -152,7 +158,11 @@ fn related_max_results_limits_output() {
     // RelatedWorkResult is flattened: related is at top level
     if let Some(related) = json.get("related") {
         if let Some(arr) = related.as_array() {
-            assert!(arr.len() <= 1, "max-results=1 but got {} results", arr.len());
+            assert!(
+                arr.len() <= 1,
+                "max-results=1 but got {} results",
+                arr.len()
+            );
         }
     }
 }
@@ -252,13 +262,12 @@ fn empty_beads_file_exits_cleanly() {
     let beads_path = root.join("tests/testdata/empty.jsonl");
 
     // Should not panic, may succeed with empty results or exit gracefully
-    let result = std::process::Command::new(
-        std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr"),
-    )
-    .args(["--robot-triage", "--beads-file"])
-    .arg(&beads_path)
-    .output()
-    .expect("run bvr");
+    let result =
+        std::process::Command::new(std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr"))
+            .args(["--robot-triage", "--beads-file"])
+            .arg(&beads_path)
+            .output()
+            .expect("run bvr");
 
     // Either succeeds with empty triage or exits with informative error
     if result.status.success() {
@@ -267,7 +276,10 @@ fn empty_beads_file_exits_cleanly() {
         let recs = json["triage"]["recommendations"]
             .as_array()
             .expect("recommendations");
-        assert!(recs.is_empty(), "empty input should produce 0 recommendations");
+        assert!(
+            recs.is_empty(),
+            "empty input should produce 0 recommendations"
+        );
     }
     // Non-zero exit is acceptable for empty input, just shouldn't panic
 }
@@ -278,7 +290,11 @@ fn single_issue_triage_produces_one_recommendation() {
     let recs = output["triage"]["recommendations"]
         .as_array()
         .expect("recommendations");
-    assert_eq!(recs.len(), 1, "single open issue should yield 1 recommendation");
+    assert_eq!(
+        recs.len(),
+        1,
+        "single open issue should yield 1 recommendation"
+    );
 }
 
 // ============================================================================
@@ -322,19 +338,13 @@ fn robot_diff_without_diff_since_exits_with_error() {
 #[test]
 fn robot_forecast_requires_value() {
     // --robot-forecast with no value should fail
-    bvr()
-        .arg("--robot-forecast")
-        .assert()
-        .failure();
+    bvr().arg("--robot-forecast").assert().failure();
 }
 
 #[test]
 fn robot_burndown_requires_value() {
     // --robot-burndown with no value should fail
-    bvr()
-        .arg("--robot-burndown")
-        .assert()
-        .failure();
+    bvr().arg("--robot-burndown").assert().failure();
 }
 
 // ============================================================================
@@ -347,11 +357,7 @@ fn diff_self_produces_zero_changes() {
     let beads_path = root.join("tests/testdata/minimal.jsonl");
 
     let output = run_bvr_json(
-        &[
-            "--robot-diff",
-            "--diff-since",
-            beads_path.to_str().unwrap(),
-        ],
+        &["--robot-diff", "--diff-since", beads_path.to_str().unwrap()],
         "tests/testdata/minimal.jsonl",
     );
 
@@ -376,10 +382,7 @@ fn diff_self_produces_zero_changes() {
 
 #[test]
 fn forecast_all_produces_valid_output() {
-    let output = run_bvr_json(
-        &["--robot-forecast", "all"],
-        "tests/testdata/minimal.jsonl",
-    );
+    let output = run_bvr_json(&["--robot-forecast", "all"], "tests/testdata/minimal.jsonl");
     test_utils::assert_valid_version_envelope(&output);
     assert!(output.get("forecasts").is_some());
     assert!(output.get("forecast_count").is_some());
@@ -406,9 +409,15 @@ fn history_output_has_correct_structure() {
     test_utils::assert_valid_envelope(&output);
 
     // histories is a map (Object), not array
-    assert!(output["histories"].is_object(), "histories should be object");
+    assert!(
+        output["histories"].is_object(),
+        "histories should be object"
+    );
     assert!(output["stats"].is_object(), "stats should be object");
-    assert!(output["git_range"].is_string(), "git_range should be string");
+    assert!(
+        output["git_range"].is_string(),
+        "git_range should be string"
+    );
     assert!(
         output["commit_index"].is_object(),
         "commit_index should be object"
@@ -454,7 +463,10 @@ fn metrics_output_has_correct_structure() {
 #[test]
 fn triage_handles_unicode_titles() {
     // boundary_conditions.jsonl may have edge-case data
-    let output = run_bvr_json(&["--robot-triage"], "tests/testdata/boundary_conditions.jsonl");
+    let output = run_bvr_json(
+        &["--robot-triage"],
+        "tests/testdata/boundary_conditions.jsonl",
+    );
     test_utils::assert_valid_envelope(&output);
     // Should not panic or produce invalid JSON
     let json_str = serde_json::to_string(&output).unwrap();

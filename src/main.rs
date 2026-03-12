@@ -251,7 +251,10 @@ fn main() -> ExitCode {
             beads_path,
             saved_config,
             |config| {
-                let output = config.output_path.as_deref().unwrap_or(Path::new("./bv-pages"));
+                let output = config
+                    .output_path
+                    .as_deref()
+                    .unwrap_or(Path::new("./bv-pages"));
                 let issues = load_issues(&cli)?;
                 let options = bvr::export_pages::ExportPagesOptions {
                     title: config.title.clone(),
@@ -260,14 +263,16 @@ fn main() -> ExitCode {
                 };
                 let count = count_pages_export_issues(&issues, &options);
                 bvr::export_md::run_export_with_hooks(
-                    output, "html", count, no_hooks, repo_path.as_deref(),
+                    output,
+                    "html",
+                    count,
+                    no_hooks,
+                    repo_path.as_deref(),
                     || bvr::export_pages::export_pages_bundle(&issues, output, &options),
                 )?;
                 Ok(())
             },
-            |path| {
-                bvr::export_pages::run_preview_server(path, !no_live_reload)
-            },
+            |path| bvr::export_pages::run_preview_server(path, !no_live_reload),
         ) {
             Ok(Some(_config)) => return ExitCode::SUCCESS,
             Ok(None) => {
@@ -1733,10 +1738,7 @@ fn main() -> ExitCode {
                     let current_mtime = match file_mtime_epoch_millis(path) {
                         Ok(value) => value,
                         Err(error) => {
-                            eprintln!(
-                                "warning: cannot stat {}: {error}",
-                                path.display()
-                            );
+                            eprintln!("warning: cannot stat {}: {error}", path.display());
                             continue;
                         }
                     };
@@ -1835,9 +1837,7 @@ fn main() -> ExitCode {
                         issue_count = refreshed_issue_count;
                         eprintln!(
                             "watch: regenerated in {elapsed:.1?} (path: {}, issues: {}, history: {})",
-                            summary.export_path,
-                            summary.issue_count,
-                            summary.include_history,
+                            summary.export_path, summary.issue_count, summary.include_history,
                         );
                     }
                     Err(error) => {
@@ -1875,7 +1875,12 @@ fn main() -> ExitCode {
     }
 
     if let Some(ref view_name) = cli.debug_render {
-        match bvr::tui::render_debug_view(issues.to_vec(), view_name, cli.debug_width, cli.debug_height) {
+        match bvr::tui::render_debug_view(
+            issues.to_vec(),
+            view_name,
+            cli.debug_width,
+            cli.debug_height,
+        ) {
             Ok(output) => {
                 println!("{output}");
                 return ExitCode::SUCCESS;

@@ -300,7 +300,10 @@ fn workspace_discovery_excludes_node_modules() {
     let total = json["triage"]["quick_ref"]["total_open"]
         .as_u64()
         .unwrap_or(0);
-    assert_eq!(total, 1, "node_modules repo should be excluded, got {total}");
+    assert_eq!(
+        total, 1,
+        "node_modules repo should be excluded, got {total}"
+    );
 
     // Verify the excluded ID doesn't appear
     let empty_recs = vec![];
@@ -537,11 +540,7 @@ fn setup_git_repo_with_history(root: &Path) {
     );
     fs::write(root.join(".beads/beads.jsonl"), &update1).expect("write update1");
     fs::write(root.join("src/feature.rs"), "// H-1 implementation\n").expect("write code");
-    run_git(
-        root,
-        &["add", ".beads/beads.jsonl", "src/feature.rs"],
-        None,
-    );
+    run_git(root, &["add", ".beads/beads.jsonl", "src/feature.rs"], None);
     run_git(
         root,
         &["commit", "-m", "claim H-1"],
@@ -557,11 +556,7 @@ fn setup_git_repo_with_history(root: &Path) {
     );
     fs::write(root.join(".beads/beads.jsonl"), &update2).expect("write update2");
     fs::write(root.join("src/feature.rs"), "// H-1 complete\n").expect("write code update");
-    run_git(
-        root,
-        &["add", ".beads/beads.jsonl", "src/feature.rs"],
-        None,
-    );
+    run_git(root, &["add", ".beads/beads.jsonl", "src/feature.rs"], None);
     run_git(
         root,
         &["commit", "-m", "close H-1"],
@@ -617,7 +612,10 @@ fn history_contains_correlated_commits_for_referenced_bead() {
     );
 
     // Verify commit messages
-    let messages: Vec<&str> = commits.iter().filter_map(|c| c["message"].as_str()).collect();
+    let messages: Vec<&str> = commits
+        .iter()
+        .filter_map(|c| c["message"].as_str())
+        .collect();
     assert!(
         messages.iter().any(|m| m.contains("H-1")),
         "expected commit referencing H-1: {messages:?}"
@@ -650,9 +648,7 @@ fn history_since_filters_older_commits() {
         "since 2024-06-15T00:00:00Z, last 20 commits"
     );
 
-    let filtered_total = filtered["stats"]["total_commits"]
-        .as_u64()
-        .unwrap_or(0);
+    let filtered_total = filtered["stats"]["total_commits"].as_u64().unwrap_or(0);
     let all_total = all_stats["total_commits"].as_u64().unwrap_or(0);
     assert!(
         filtered_total < all_total,
@@ -679,9 +675,7 @@ fn history_min_confidence_removes_low_confidence_commits() {
 
     // With high confidence filter, should have fewer or equal commits
     let all_total = all["stats"]["total_commits"].as_u64().unwrap_or(0);
-    let filtered_total = filtered["stats"]["total_commits"]
-        .as_u64()
-        .unwrap_or(0);
+    let filtered_total = filtered["stats"]["total_commits"].as_u64().unwrap_or(0);
     assert!(
         filtered_total <= all_total,
         "high-confidence filter should not increase commit count"

@@ -219,8 +219,7 @@ fn robot_burndown_has_valid_envelope() {
         .expect("failed to run bvr");
     // If it succeeds (sprint found), validate the envelope
     if result.status.success() {
-        let output: Value =
-            serde_json::from_slice(&result.stdout).expect("valid JSON output");
+        let output: Value = serde_json::from_slice(&result.stdout).expect("valid JSON output");
         assert_valid_version_envelope(&output);
         assert!(validate_type_at(&output, "daily_points", JsonType::Array).is_empty());
     } else {
@@ -249,11 +248,7 @@ fn robot_diff_has_valid_envelope() {
     let beads_path = root.join("tests/testdata/minimal.jsonl");
     // --robot-diff requires --diff-since; use the same file to get an empty diff
     let output = run_bvr_json(
-        &[
-            "--robot-diff",
-            "--diff-since",
-            beads_path.to_str().unwrap(),
-        ],
+        &["--robot-diff", "--diff-since", beads_path.to_str().unwrap()],
         "tests/testdata/minimal.jsonl",
     );
     test_utils::assert_valid_envelope(&output);
@@ -359,7 +354,10 @@ fn robot_capacity_deterministic() {
 
 #[test]
 fn robot_triage_complex_has_recommendations() {
-    let output = run_bvr_json(&["--robot-triage"], "tests/testdata/synthetic_complex.jsonl");
+    let output = run_bvr_json(
+        &["--robot-triage"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
     test_utils::assert_valid_envelope(&output);
     let recs = output["triage"]["recommendations"]
         .as_array()
@@ -374,9 +372,7 @@ fn robot_triage_complex_has_recommendations() {
 fn robot_plan_complex_has_tracks() {
     let output = run_bvr_json(&["--robot-plan"], "tests/testdata/synthetic_complex.jsonl");
     test_utils::assert_valid_envelope(&output);
-    let tracks = output["plan"]["tracks"]
-        .as_array()
-        .expect("tracks array");
+    let tracks = output["plan"]["tracks"].as_array().expect("tracks array");
     assert!(
         !tracks.is_empty(),
         "complex fixture must produce execution tracks"

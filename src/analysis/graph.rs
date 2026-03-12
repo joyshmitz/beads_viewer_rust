@@ -459,9 +459,7 @@ impl IssueGraph {
 
         // Phase 4: Collect actionable issues (open, not blocked).
         let mut ids = self.issue_ids_sorted();
-        ids.retain(|id| {
-            self.issue(id).is_some_and(Issue::is_open_like) && !blocked.contains(id)
-        });
+        ids.retain(|id| self.issue(id).is_some_and(Issue::is_open_like) && !blocked.contains(id));
         ids
     }
 
@@ -2117,24 +2115,45 @@ mod tests {
     #[test]
     fn for_size_disables_expensive_above_threshold() {
         let small = AnalysisConfig::for_size(100);
-        assert!(small.enable_betweenness, "100-node graph should compute betweenness");
-        assert!(small.enable_eigenvector, "100-node graph should compute eigenvector");
+        assert!(
+            small.enable_betweenness,
+            "100-node graph should compute betweenness"
+        );
+        assert!(
+            small.enable_eigenvector,
+            "100-node graph should compute eigenvector"
+        );
         assert!(small.enable_hits, "100-node graph should compute HITS");
 
         let large = AnalysisConfig::for_size(50_001);
-        assert!(!large.enable_betweenness, "50k-node graph should skip betweenness");
-        assert!(!large.enable_eigenvector, "50k-node graph should skip eigenvector");
+        assert!(
+            !large.enable_betweenness,
+            "50k-node graph should skip betweenness"
+        );
+        assert!(
+            !large.enable_eigenvector,
+            "50k-node graph should skip eigenvector"
+        );
         assert!(!large.enable_hits, "50k-node graph should skip HITS");
     }
 
     #[test]
     fn for_size_boundary_at_10k() {
         let at_boundary = AnalysisConfig::for_size(10_000);
-        assert!(at_boundary.enable_betweenness, "10k should still compute betweenness");
+        assert!(
+            at_boundary.enable_betweenness,
+            "10k should still compute betweenness"
+        );
 
         let over_boundary = AnalysisConfig::for_size(10_001);
-        assert!(!over_boundary.enable_betweenness, "10k+1 should skip betweenness");
-        assert!(!over_boundary.enable_eigenvector, "10k+1 should skip eigenvector");
+        assert!(
+            !over_boundary.enable_betweenness,
+            "10k+1 should skip betweenness"
+        );
+        assert!(
+            !over_boundary.enable_eigenvector,
+            "10k+1 should skip eigenvector"
+        );
         // HITS threshold is 50k
         assert!(over_boundary.enable_hits, "10k+1 should still compute HITS");
     }
@@ -2181,8 +2200,10 @@ mod tests {
             "betweenness should be skipped for graph exceeding max_nodes"
         );
         assert!(
-            metrics.skipped_metrics.iter().any(|s| s.metric == "Betweenness"
-                && s.reason.contains("too large")),
+            metrics
+                .skipped_metrics
+                .iter()
+                .any(|s| s.metric == "Betweenness" && s.reason.contains("too large")),
             "should record 'too large' reason"
         );
     }

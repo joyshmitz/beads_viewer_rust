@@ -1137,7 +1137,10 @@ mod tests {
         i1.updated_at = Some(very_recent);
 
         let result = compute_freshness(&[&i1], now, DEFAULT_STALE_THRESHOLD_DAYS);
-        assert!(result.freshness_score >= 90, "very fresh issue should score high");
+        assert!(
+            result.freshness_score >= 90,
+            "very fresh issue should score high"
+        );
         assert_eq!(result.stale_count, 0);
     }
 

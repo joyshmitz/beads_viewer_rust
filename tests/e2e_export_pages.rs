@@ -128,8 +128,14 @@ fn e2e_export_default_produces_complete_bundle() {
     )
     .expect("parse meta");
     assert!(meta["title"].is_string(), "meta must have title");
-    assert!(meta["issue_count"].is_number(), "meta must have issue_count");
-    assert!(meta["generator"].as_str() == Some("bvr"), "generator must be bvr");
+    assert!(
+        meta["issue_count"].is_number(),
+        "meta must have issue_count"
+    );
+    assert!(
+        meta["generator"].as_str() == Some("bvr"),
+        "generator must be bvr"
+    );
     assert!(meta["version"].is_string(), "meta must have version");
 
     // Issues JSON is a non-empty array
@@ -332,10 +338,7 @@ fn e2e_export_sqlite_database_passes_integrity_check() {
         &fs::read_to_string(export_path.join("beads.sqlite3.config.json")).expect("read config"),
     )
     .expect("parse config");
-    assert!(
-        config["hash"].is_string(),
-        "config must have hash field"
-    );
+    assert!(config["hash"].is_string(), "config must have hash field");
     let hash = config["hash"].as_str().unwrap();
     assert_eq!(hash.len(), 64, "hash must be 64 hex characters (SHA-256)");
 

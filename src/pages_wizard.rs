@@ -231,9 +231,9 @@ impl WizardConfig {
     /// Validate the config for completeness before deployment.
     pub fn validate_for_deploy(&self) -> Result<()> {
         self.validate_for_export()?;
-        let target = self.deploy_target.ok_or_else(|| {
-            BvrError::InvalidArgument("deploy target is required".into())
-        })?;
+        let target = self
+            .deploy_target
+            .ok_or_else(|| BvrError::InvalidArgument("deploy target is required".into()))?;
         match target {
             DeployTarget::Github => {
                 if self.github_repo.as_ref().map_or(true, |r| r.is_empty()) {
@@ -279,9 +279,7 @@ fn config_dir() -> Option<PathBuf> {
 fn dirs_path() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
 }
 
 const WIZARD_CONFIG_FILENAME: &str = "pages-wizard.json";
@@ -300,12 +298,10 @@ pub fn load_wizard_config() -> Result<Option<WizardConfig>> {
     if !path.is_file() {
         return Ok(None);
     }
-    let contents = fs::read_to_string(&path).map_err(|e| {
-        BvrError::InvalidArgument(format!("failed to read wizard config: {e}"))
-    })?;
-    let config: WizardConfig = serde_json::from_str(&contents).map_err(|e| {
-        BvrError::InvalidArgument(format!("failed to parse wizard config: {e}"))
-    })?;
+    let contents = fs::read_to_string(&path)
+        .map_err(|e| BvrError::InvalidArgument(format!("failed to read wizard config: {e}")))?;
+    let config: WizardConfig = serde_json::from_str(&contents)
+        .map_err(|e| BvrError::InvalidArgument(format!("failed to parse wizard config: {e}")))?;
     Ok(Some(config))
 }
 
@@ -316,7 +312,7 @@ pub fn save_wizard_config(config: &WizardConfig) -> Result<()> {
         None => {
             return Err(BvrError::InvalidArgument(
                 "cannot determine config directory".into(),
-            ))
+            ));
         }
     };
     if let Some(parent) = path.parent() {
@@ -330,25 +326,21 @@ pub fn save_wizard_config(config: &WizardConfig) -> Result<()> {
     let json = serde_json::to_string_pretty(config).map_err(|e| {
         BvrError::InvalidArgument(format!("failed to serialize wizard config: {e}"))
     })?;
-    fs::write(&path, json).map_err(|e| {
-        BvrError::InvalidArgument(format!("failed to write wizard config: {e}"))
-    })?;
+    fs::write(&path, json)
+        .map_err(|e| BvrError::InvalidArgument(format!("failed to write wizard config: {e}")))?;
     Ok(())
 }
 
 /// Save wizard config to a specific path (for testing).
 pub fn save_wizard_config_to(config: &WizardConfig, path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            BvrError::InvalidArgument(format!("mkdir {}: {e}", parent.display()))
-        })?;
+        fs::create_dir_all(parent)
+            .map_err(|e| BvrError::InvalidArgument(format!("mkdir {}: {e}", parent.display())))?;
     }
-    let json = serde_json::to_string_pretty(config).map_err(|e| {
-        BvrError::InvalidArgument(format!("serialize: {e}"))
-    })?;
-    fs::write(path, json).map_err(|e| {
-        BvrError::InvalidArgument(format!("write {}: {e}", path.display()))
-    })?;
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| BvrError::InvalidArgument(format!("serialize: {e}")))?;
+    fs::write(path, json)
+        .map_err(|e| BvrError::InvalidArgument(format!("write {}: {e}", path.display())))?;
     Ok(())
 }
 
@@ -357,12 +349,10 @@ pub fn load_wizard_config_from(path: &Path) -> Result<Option<WizardConfig>> {
     if !path.is_file() {
         return Ok(None);
     }
-    let contents = fs::read_to_string(path).map_err(|e| {
-        BvrError::InvalidArgument(format!("read {}: {e}", path.display()))
-    })?;
-    let config: WizardConfig = serde_json::from_str(&contents).map_err(|e| {
-        BvrError::InvalidArgument(format!("parse {}: {e}", path.display()))
-    })?;
+    let contents = fs::read_to_string(path)
+        .map_err(|e| BvrError::InvalidArgument(format!("read {}: {e}", path.display())))?;
+    let config: WizardConfig = serde_json::from_str(&contents)
+        .map_err(|e| BvrError::InvalidArgument(format!("parse {}: {e}", path.display())))?;
     Ok(Some(config))
 }
 
@@ -601,11 +591,7 @@ fn write_config_preview<W: IoWrite>(writer: &mut W, config: &WizardConfig) {
     writeln!(
         writer,
         "  │ History:   {}",
-        if config.include_history {
-            "yes"
-        } else {
-            "no"
-        }
+        if config.include_history { "yes" } else { "no" }
     )
     .ok();
     if let Some(target) = config.deploy_target {
@@ -626,11 +612,7 @@ fn write_config_preview<W: IoWrite>(writer: &mut W, config: &WizardConfig) {
     }
     writeln!(writer, "  └──────────────────────────────────────────").ok();
     writeln!(writer).ok();
-    writeln!(
-        writer,
-        "  [auto]   Export generates the static HTML bundle"
-    )
-    .ok();
+    writeln!(writer, "  [auto]   Export generates the static HTML bundle").ok();
     writeln!(
         writer,
         "  [auto]   Preview starts a local server (if chosen)"
@@ -800,11 +782,8 @@ where
                             wizard.go_back();
                             continue;
                         }
-                        wizard.config.cloudflare_branch = prompt_optional(
-                            reader,
-                            writer,
-                            "Branch name (default: production)",
-                        );
+                        wizard.config.cloudflare_branch =
+                            prompt_optional(reader, writer, "Branch name (default: production)");
                     }
                     Some(DeployTarget::Local) | None => {
                         // Local needs output path
@@ -841,8 +820,12 @@ where
                     if result.passed {
                         writeln!(writer, "  ✓ All prerequisites met for {target}").ok();
                     } else {
-                        writeln!(writer, "  ✗ Missing tools: {}", result.missing_tools.join(", "))
-                            .ok();
+                        writeln!(
+                            writer,
+                            "  ✗ Missing tools: {}",
+                            result.missing_tools.join(", ")
+                        )
+                        .ok();
                         writeln!(writer, "  Install the missing tools and retry, or go back to choose a different target.").ok();
                         write!(writer, "  [r]etry / [b]ack / [c]ancel: ").ok();
                         writer.flush().ok();
@@ -965,12 +948,7 @@ where
 
                 match wizard.config.deploy_target {
                     Some(DeployTarget::Local) | None => {
-                        writeln!(
-                            writer,
-                            "  Your bundle is ready at: {}",
-                            output.display()
-                        )
-                        .ok();
+                        writeln!(writer, "  Your bundle is ready at: {}", output.display()).ok();
                         writeln!(
                             writer,
                             "  Deploy it to any static host (Netlify, Vercel, S3, etc.)"
@@ -988,11 +966,7 @@ where
                         .ok();
                     }
                     Some(DeployTarget::Cloudflare) => {
-                        let project = wizard
-                            .config
-                            .cloudflare_project
-                            .as_deref()
-                            .unwrap_or("?");
+                        let project = wizard.config.cloudflare_project.as_deref().unwrap_or("?");
                         writeln!(writer, "  Deploy to Cloudflare Pages: {project}").ok();
                         writeln!(
                             writer,
@@ -1060,7 +1034,11 @@ fn prompt_optional<R: BufRead, W: IoWrite>(
     write!(writer, "  {prompt}: ").ok();
     writer.flush().ok();
     let answer = read_line_trimmed(reader);
-    if answer.is_empty() { None } else { Some(answer) }
+    if answer.is_empty() {
+        None
+    } else {
+        Some(answer)
+    }
 }
 
 fn prompt_required<R: BufRead, W: IoWrite>(
@@ -1446,7 +1424,10 @@ mod tests {
     fn wizard_next_advances_to_next_step() {
         let mut w = Wizard::new(None);
         let transition = w.apply_result(StepResult::Next);
-        assert_eq!(transition, WizardTransition::GoTo(WizardStep::ExportOptions));
+        assert_eq!(
+            transition,
+            WizardTransition::GoTo(WizardStep::ExportOptions)
+        );
         assert_eq!(w.step, WizardStep::ExportOptions);
     }
 
@@ -1514,7 +1495,12 @@ mod tests {
     // ── Interactive wizard tests ───────────────────────────────────
 
     /// Helper to run wizard with canned input and capture output.
-    fn run_wizard_with_input(input: &str) -> (String, std::result::Result<Option<WizardConfig>, crate::BvrError>) {
+    fn run_wizard_with_input(
+        input: &str,
+    ) -> (
+        String,
+        std::result::Result<Option<WizardConfig>, crate::BvrError>,
+    ) {
         let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
         let mut output = Vec::new();
         let export_called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1580,17 +1566,17 @@ mod tests {
         assert!(result.is_ok(), "output: {output}");
         let config = result.unwrap().unwrap();
         assert_eq!(config.deploy_target, Some(DeployTarget::Cloudflare));
-        assert_eq!(
-            config.cloudflare_project.as_deref(),
-            Some("my-cf-project")
-        );
+        assert_eq!(config.cloudflare_project.as_deref(), Some("my-cf-project"));
     }
 
     #[test]
     fn wizard_interactive_shows_step_numbers() {
         let input = "y\ny\n\n\n3\n./out\ny\n";
         let (output, _) = run_wizard_with_input(input);
-        assert!(output.contains("Step 2/9"), "expected step numbering: {output}");
+        assert!(
+            output.contains("Step 2/9"),
+            "expected step numbering: {output}"
+        );
     }
 
     #[test]
@@ -1610,10 +1596,7 @@ mod tests {
         let input = "y\ny\n\n\n3\n\ny\n";
         let (_, result) = run_wizard_with_input(input);
         let config = result.unwrap().unwrap();
-        assert_eq!(
-            config.output_path,
-            Some(PathBuf::from("./bv-pages"))
-        );
+        assert_eq!(config.output_path, Some(PathBuf::from("./bv-pages")));
     }
 
     #[test]

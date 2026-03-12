@@ -681,9 +681,7 @@ mod tests {
     fn cycle_alert_severity_is_critical() {
         let graph = IssueGraph::build(&[]);
         let mut metrics = graph.compute_metrics();
-        metrics
-            .cycles
-            .push(vec!["A".to_string(), "B".to_string()]);
+        metrics.cycles.push(vec!["A".to_string(), "B".to_string()]);
 
         let now = chrono::Utc::now();
         let mut alerts = Vec::new();
@@ -894,7 +892,10 @@ mod tests {
             unblocks_count: None,
             downstream_priority_sum: None,
         };
-        assert!(super::matches_alert_filters(&alert, &AlertOptions::default()));
+        assert!(super::matches_alert_filters(
+            &alert,
+            &AlertOptions::default()
+        ));
     }
 
     #[test]

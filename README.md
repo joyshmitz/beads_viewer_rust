@@ -172,8 +172,8 @@ cargo test --test conformance stress_fixture_manifest_has_provenance_and_validat
 | Keyflow journeys | `cargo test --lib keyflow_` | 25 |
 | E2E TUI journeys | `cargo test --lib e2e_journey_` | 5 |
 | Conformance | `cargo test --test conformance` | 75 |
-| Schema validation | `cargo test --test schema_validation` | 36 |
-| E2E tests | `cargo test --test e2e_robot_matrix --test e2e_workspace_history --test e2e_export_pages` | 82 |
+| Schema validation | `cargo test --test schema_validation` | 50 |
+| E2E tests | `cargo test --test e2e_robot_matrix --test e2e_workspace_history --test e2e_export_pages` | 96 |
 | Stress fixtures | `cargo test --test stress_fixtures` | 49 |
 | Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode --test cli_model_validation` | 148 |
 

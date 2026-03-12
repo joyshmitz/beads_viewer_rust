@@ -172,18 +172,18 @@ Legend:
 ### How to Rerun the Proof Set
 
 ```bash
-# Full test suite (1,293 tests)
+# Full test suite (1,293 tests; 2 flaky e2e_watch may fail under load)
 cargo test --tests
 
 # Individual suites
 cargo test --lib                           # 917 unit tests
 cargo test --test conformance              # 75 conformance tests
-cargo test --test schema_validation        # 36 schema tests
-cargo test --test e2e_robot_matrix         # 35 e2e robot matrix
+cargo test --test schema_validation        # 50 schema tests
+cargo test --test e2e_robot_matrix         # 49 e2e robot matrix
 cargo test --test e2e_workspace_history    # 27 e2e workspace/history
 cargo test --test e2e_export_pages         # 20 e2e export/pages
 cargo test --test stress_fixtures          # 49 stress tests
-cargo test --test cli_model_validation     # 25 CLI model tests
+cargo test --test cli_model_validation     # 39 CLI model tests
 cargo test --test export_pages             # 15 integration export tests
 
 # Snapshot verification
@@ -514,7 +514,7 @@ Prerequisites: Wave 3 complete.
 | **Clippy warnings** | `cargo clippy --all-targets` (CI enforced) | PASS (0 warnings) |
 | **917 unit tests** | `cargo test --lib` | PASS |
 | **75 conformance tests** | `cargo test --test conformance` | PASS |
-| **36 schema validation** | `cargo test --test schema_validation` | PASS |
+| **50 schema validation** | `cargo test --test schema_validation` | PASS |
 | **82 e2e tests** | 3 e2e test files (robot_matrix, workspace_history, export_pages) | PASS |
 | **148 integration tests** | 11 integration test files (stress, cli_model, export, admin, etc.) | PASS |
 | **55 snapshot baselines** | `cargo test snap_` with insta | PASS |

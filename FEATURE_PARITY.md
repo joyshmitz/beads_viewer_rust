@@ -153,14 +153,14 @@ Legend:
 - ~~File tree panel and `o`/`y` hotkeys~~ — **Implemented** (j/k navigation, Enter toggle/filter, Tab focus cycling, o open-in-browser, y copy-to-clipboard).
 - ~~Legacy history-specific search modes~~ — **Implemented** (HistorySearchMode enum with all 5 modes: All/Commit/Sha/Bead/Author; Tab cycles modes in search input).
 - ~~No snapshot-based automated visual regression framework yet.~~ — **Implemented** (55 insta snapshots + 25 keyflow journeys + 5 e2e multi-mode journey tests with artifact capture).
-- Workspace auto-discovery defaults (Go-style default behavior without explicit `--workspace` flag) not yet implemented.
+- Workspace auto-discovery defaults (Go-style implicit `.bv/workspace.yaml` discovery from workspace root, nested subdirs, and `--repo-path`) are implemented and covered by resolver + e2e tests.
 
 ## Integrations
 | Capability | Status | Notes |
 |---|---|---|
 | FrankentUI runtime integration | complete | Active dependency and runtime app usage. |
 | Asupersync integration points | deferred | Optional Cargo dependency declared but unused in source. Background async (two-phase metric computation, file reload) uses `std::thread::spawn` + `mpsc::channel` directly. Asupersync orchestration is a post-parity enhancement, not a Go parity requirement (Go has no equivalent). |
-| Hooks/workspace/history parity | partial | Export hooks, explicit workspace loading/aggregation, repo filters, robot history, TUI history (all 5 search modes), and full pages export/preview/watch/wizard are implemented; remaining gap is workspace auto-discovery defaults (Go-style implicit workspace detection). |
+| Hooks/workspace/history parity | complete | Export hooks, explicit and implicit workspace loading/aggregation (including auto-discovered `.bv/workspace.yaml` from workspace root, nested subdirs, and `--repo-path`), repo filters, robot history, TUI history (all 5 search modes), and full pages export/preview/watch/wizard are implemented. |
 
 ## Verification
 | Capability | Status | Notes |
@@ -527,14 +527,13 @@ Prerequisites: Wave 3 complete.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | No `--cpu-profile` (pprof equivalent) | Low | `--profile-startup` covers startup timing; external tools (perf, samply) available for CPU profiling |
-| Workspace auto-discovery not yet ported | Low | Explicit `--workspace` flag works; Go-style implicit detection is a convenience, not a blocking parity gap |
 
 ### Go/No-Go Decision
 
-All core robot commands, export surfaces, TUI interactions, pages wizard, and quality gates are passing with 1,293 tests (917 lib + 376 integration/conformance/e2e). The project is ready for release as a functional replacement for the legacy Go `bv` binary for all automated (robot) and interactive (TUI) workflows.
+All core robot commands, export surfaces, TUI interactions, pages wizard, and quality gates are passing with 1,306 tests (930 lib + 376 integration/conformance/e2e). The project is ready for release as a functional replacement for the legacy Go `bv` binary for all automated (robot) and interactive (TUI) workflows.
 
 ## Open Gaps to 100%
 1. ~~Remaining TUI interaction parity (responsive history layout, file tree panel, `o`/`y` keys, search modes)~~ — **Done**.
 2. ~~54 missing CLI flags across correlation/impact, file analysis, label analytics, search, export, script, baseline, feedback, workflow, and metadata categories.~~ — **Done** (all surfaces implemented).
 3. ~~Interactive pages wizard, preview server, watch-export~~ — **Done** (9-step wizard with config persistence, preview with live reload, watch with debounce; 75 wizard + 20 e2e tests).
-4. Workspace auto-discovery defaults — remaining low-priority convenience gap.
+4. No outstanding workspace auto-discovery gap — implicit `.bv/workspace.yaml` discovery is implemented and covered by resolver + e2e tests.

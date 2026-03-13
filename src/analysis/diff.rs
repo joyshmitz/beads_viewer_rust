@@ -684,9 +684,15 @@ fn calculate_summary(inputs: SummaryInputs) -> DiffSummary {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeSet, HashMap};
+
     use crate::model::{Dependency, Issue};
 
-    use super::compare_snapshots;
+    use super::{
+        average_map_value, calculate_summary, compare_cycles, compare_snapshots, detect_changes,
+        format_string_set, into_option, non_empty, normalize_cycle, option_len, snapshot_counts,
+        SummaryInputs,
+    };
 
     #[test]
     fn detects_new_closed_reopened_and_modified() {
@@ -931,5 +937,679 @@ mod tests {
             diff.metric_deltas.open_issues, -1,
             "review status should be counted as open-like in deltas"
         );
+    }
+
+    // --- detect_changes tests ---
+
+    #[test]
+    fn detect_changes_no_changes_returns_empty() {
+        let issue = Issue {
+            id: "X".to_string(),
+            title: "Same".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 2,
+            assignee: "alice".to_string(),
+            ..Issue::default()
+        };
+        let changes = detect_changes(&issue, &issue);
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn detect_changes_title_change() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "Old title".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            title: "New title".to_string(),
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].field, "title");
+        assert_eq!(changes[0].old_value, "Old title");
+        assert_eq!(changes[0].new_value, "New title");
+    }
+
+    #[test]
+    fn detect_changes_status_change() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            status: "in_progress".to_string(),
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        assert!(changes.iter().any(|c| c.field == "status"));
+    }
+
+    #[test]
+    fn detect_changes_priority_formats_as_p_string() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        };
+        let to = Issue {
+            priority: 3,
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        let pchange = changes.iter().find(|c| c.field == "priority").unwrap();
+        assert_eq!(pchange.old_value, "P1");
+        assert_eq!(pchange.new_value, "P3");
+    }
+
+    #[test]
+    fn detect_changes_assignee_change() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            assignee: "alice".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            assignee: "bob".to_string(),
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        let achange = changes.iter().find(|c| c.field == "assignee").unwrap();
+        assert_eq!(achange.old_value, "alice");
+        assert_eq!(achange.new_value, "bob");
+    }
+
+    #[test]
+    fn detect_changes_type_change() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            issue_type: "bug".to_string(),
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        assert!(changes.iter().any(|c| c.field == "type"));
+    }
+
+    #[test]
+    fn detect_changes_description_shows_modified_not_content() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            description: "old desc".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            description: "new desc".to_string(),
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        let dchange = changes.iter().find(|c| c.field == "description").unwrap();
+        assert_eq!(dchange.old_value, "(modified)");
+        assert_eq!(dchange.new_value, "(modified)");
+    }
+
+    #[test]
+    fn detect_changes_labels_change() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            labels: vec!["api".to_string()],
+            ..Issue::default()
+        };
+        let to = Issue {
+            labels: vec!["api".to_string(), "backend".to_string()],
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        let lchange = changes.iter().find(|c| c.field == "labels").unwrap();
+        assert_eq!(lchange.old_value, "api");
+        assert_eq!(lchange.new_value, "api, backend");
+    }
+
+    #[test]
+    fn detect_changes_dependency_added() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            dependencies: vec![Dependency {
+                depends_on_id: "Y".to_string(),
+                dep_type: "blocks".to_string(),
+                ..Dependency::default()
+            }],
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        let dchange = changes.iter().find(|c| c.field == "dependencies").unwrap();
+        assert_eq!(dchange.old_value, "(none)");
+        assert!(dchange.new_value.contains("Y:blocks"));
+    }
+
+    #[test]
+    fn detect_changes_multiple_fields_at_once() {
+        let from = Issue {
+            id: "X".to_string(),
+            title: "Old".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            assignee: "alice".to_string(),
+            ..Issue::default()
+        };
+        let to = Issue {
+            title: "New".to_string(),
+            priority: 3,
+            assignee: "bob".to_string(),
+            ..from.clone()
+        };
+        let changes = detect_changes(&from, &to);
+        assert_eq!(changes.len(), 3);
+        let fields: Vec<&str> = changes.iter().map(|c| c.field.as_str()).collect();
+        assert!(fields.contains(&"title"));
+        assert!(fields.contains(&"priority"));
+        assert!(fields.contains(&"assignee"));
+    }
+
+    // --- normalize_cycle tests ---
+
+    #[test]
+    fn normalize_cycle_empty() {
+        assert_eq!(normalize_cycle(&[]), "");
+    }
+
+    #[test]
+    fn normalize_cycle_single_element() {
+        let cycle = vec!["A".to_string()];
+        assert_eq!(normalize_cycle(&cycle), "A");
+    }
+
+    #[test]
+    fn normalize_cycle_already_starts_at_min() {
+        let cycle = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        assert_eq!(normalize_cycle(&cycle), "A->B->C");
+    }
+
+    #[test]
+    fn normalize_cycle_rotates_to_min() {
+        let cycle = vec!["C".to_string(), "A".to_string(), "B".to_string()];
+        assert_eq!(normalize_cycle(&cycle), "A->B->C");
+    }
+
+    #[test]
+    fn normalize_cycle_different_rotations_same_result() {
+        let c1 = vec!["B".to_string(), "C".to_string(), "A".to_string()];
+        let c2 = vec!["C".to_string(), "A".to_string(), "B".to_string()];
+        let c3 = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        let norm = normalize_cycle(&c3);
+        assert_eq!(normalize_cycle(&c1), norm);
+        assert_eq!(normalize_cycle(&c2), norm);
+    }
+
+    // --- compare_cycles tests ---
+
+    #[test]
+    fn compare_cycles_no_change() {
+        let cycles = vec![vec!["A".to_string(), "B".to_string()]];
+        let (new, resolved) = compare_cycles(&cycles, &cycles);
+        assert!(new.is_none());
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn compare_cycles_new_cycle_introduced() {
+        let before: Vec<Vec<String>> = vec![];
+        let after = vec![vec!["A".to_string(), "B".to_string()]];
+        let (new, resolved) = compare_cycles(&before, &after);
+        assert_eq!(option_len(new.as_ref()), 1);
+        assert!(resolved.is_none());
+    }
+
+    #[test]
+    fn compare_cycles_cycle_resolved() {
+        let before = vec![vec!["A".to_string(), "B".to_string()]];
+        let after: Vec<Vec<String>> = vec![];
+        let (new, resolved) = compare_cycles(&before, &after);
+        assert!(new.is_none());
+        assert_eq!(option_len(resolved.as_ref()), 1);
+    }
+
+    #[test]
+    fn compare_cycles_rotated_cycle_matches() {
+        let before = vec![vec!["A".to_string(), "B".to_string(), "C".to_string()]];
+        let after = vec![vec!["B".to_string(), "C".to_string(), "A".to_string()]];
+        let (new, resolved) = compare_cycles(&before, &after);
+        assert!(new.is_none(), "rotated cycle should match");
+        assert!(resolved.is_none(), "rotated cycle should match");
+    }
+
+    #[test]
+    fn compare_cycles_mixed_new_and_resolved() {
+        let before = vec![vec!["A".to_string(), "B".to_string()]];
+        let after = vec![vec!["C".to_string(), "D".to_string()]];
+        let (new, resolved) = compare_cycles(&before, &after);
+        assert_eq!(option_len(new.as_ref()), 1);
+        assert_eq!(option_len(resolved.as_ref()), 1);
+    }
+
+    // --- calculate_summary tests ---
+
+    #[test]
+    fn calculate_summary_zero_inputs() {
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 0,
+            issues_closed: 0,
+            issues_removed: 0,
+            issues_reopened: 0,
+            issues_modified: 0,
+            cycles_introduced: 0,
+            cycles_resolved: 0,
+            blocked_issue_delta: 0,
+        });
+        assert_eq!(summary.total_changes, 0);
+        assert_eq!(summary.health_trend, "stable");
+        assert_eq!(summary.net_issue_change, 0);
+    }
+
+    #[test]
+    fn calculate_summary_improving_trend() {
+        // score: +2 (cycles resolved * 2) + 3 (issues closed) = 5 > 1 → improving
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 0,
+            issues_closed: 3,
+            issues_removed: 0,
+            issues_reopened: 0,
+            issues_modified: 0,
+            cycles_introduced: 0,
+            cycles_resolved: 1,
+            blocked_issue_delta: 0,
+        });
+        assert_eq!(summary.health_trend, "improving");
+    }
+
+    #[test]
+    fn calculate_summary_degrading_trend() {
+        // score: -3 (cycle introduced * 3) - 1 (reopened) = -4 < -1 → degrading
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 0,
+            issues_closed: 0,
+            issues_removed: 0,
+            issues_reopened: 1,
+            issues_modified: 0,
+            cycles_introduced: 1,
+            cycles_resolved: 0,
+            blocked_issue_delta: 0,
+        });
+        assert_eq!(summary.health_trend, "degrading");
+    }
+
+    #[test]
+    fn calculate_summary_stable_when_score_in_range() {
+        // score: +1 (closed) - 1 (reopened) = 0 → stable
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 0,
+            issues_closed: 1,
+            issues_removed: 0,
+            issues_reopened: 1,
+            issues_modified: 0,
+            cycles_introduced: 0,
+            cycles_resolved: 0,
+            blocked_issue_delta: 0,
+        });
+        assert_eq!(summary.health_trend, "stable");
+    }
+
+    #[test]
+    fn calculate_summary_blocked_delta_negative_boosts_score() {
+        // score: 0 + 2 (blocked decreased) = 2 > 1 → improving
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 0,
+            issues_closed: 0,
+            issues_removed: 0,
+            issues_reopened: 0,
+            issues_modified: 0,
+            cycles_introduced: 0,
+            cycles_resolved: 0,
+            blocked_issue_delta: -1,
+        });
+        assert_eq!(summary.health_trend, "improving");
+    }
+
+    #[test]
+    fn calculate_summary_blocked_delta_positive_hurts_score() {
+        // score: 0 - 1 (blocked increased) = -1, which is NOT < -1 → stable
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 0,
+            issues_closed: 0,
+            issues_removed: 0,
+            issues_reopened: 0,
+            issues_modified: 0,
+            cycles_introduced: 0,
+            cycles_resolved: 0,
+            blocked_issue_delta: 1,
+        });
+        assert_eq!(summary.health_trend, "stable");
+    }
+
+    #[test]
+    fn calculate_summary_total_changes_is_sum() {
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 2,
+            issues_closed: 3,
+            issues_removed: 1,
+            issues_reopened: 1,
+            issues_modified: 4,
+            cycles_introduced: 0,
+            cycles_resolved: 0,
+            blocked_issue_delta: 0,
+        });
+        assert_eq!(summary.total_changes, 2 + 3 + 1 + 1 + 4);
+    }
+
+    #[test]
+    fn calculate_summary_net_issue_change() {
+        let summary = calculate_summary(SummaryInputs {
+            issues_added: 5,
+            issues_closed: 0,
+            issues_removed: 2,
+            issues_reopened: 0,
+            issues_modified: 0,
+            cycles_introduced: 0,
+            cycles_resolved: 0,
+            blocked_issue_delta: 0,
+        });
+        assert_eq!(summary.net_issue_change, 3);
+    }
+
+    // --- snapshot_counts tests ---
+
+    #[test]
+    fn snapshot_counts_empty() {
+        let counts = snapshot_counts(&[]);
+        assert_eq!(counts.total, 0);
+        assert_eq!(counts.open, 0);
+        assert_eq!(counts.closed, 0);
+        assert_eq!(counts.blocked, 0);
+        assert_eq!(counts.terminal(), 0);
+    }
+
+    #[test]
+    fn snapshot_counts_mixed_statuses() {
+        let issues = vec![
+            Issue {
+                id: "1".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "2".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "3".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let counts = snapshot_counts(&issues);
+        assert_eq!(counts.total, 3);
+        assert_eq!(counts.open, 2); // open + blocked are both non-closed
+        assert_eq!(counts.closed, 1);
+        assert_eq!(counts.blocked, 1);
+    }
+
+    #[test]
+    fn snapshot_counts_terminal_includes_tombstones() {
+        let issues = vec![Issue {
+            id: "1".to_string(),
+            status: "tombstone".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let counts = snapshot_counts(&issues);
+        assert_eq!(counts.tombstone, 1);
+        assert_eq!(counts.terminal(), 1);
+    }
+
+    // --- average_map_value tests ---
+
+    #[test]
+    fn average_map_value_empty() {
+        let map = HashMap::new();
+        assert_eq!(average_map_value(&map), 0.0);
+    }
+
+    #[test]
+    fn average_map_value_single() {
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), 10.0);
+        assert!((average_map_value(&map) - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn average_map_value_multiple() {
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), 2.0);
+        map.insert("b".to_string(), 4.0);
+        map.insert("c".to_string(), 6.0);
+        assert!((average_map_value(&map) - 4.0).abs() < f64::EPSILON);
+    }
+
+    // --- format_string_set tests ---
+
+    #[test]
+    fn format_string_set_empty_returns_none_marker() {
+        let set = BTreeSet::new();
+        assert_eq!(format_string_set(&set), "(none)");
+    }
+
+    #[test]
+    fn format_string_set_single() {
+        let mut set = BTreeSet::new();
+        set.insert("api".to_string());
+        assert_eq!(format_string_set(&set), "api");
+    }
+
+    #[test]
+    fn format_string_set_multiple_sorted() {
+        let mut set = BTreeSet::new();
+        set.insert("beta".to_string());
+        set.insert("alpha".to_string());
+        set.insert("gamma".to_string());
+        assert_eq!(format_string_set(&set), "alpha, beta, gamma");
+    }
+
+    // --- non_empty tests ---
+
+    #[test]
+    fn non_empty_returns_none_for_empty_string() {
+        assert_eq!(non_empty(""), None);
+    }
+
+    #[test]
+    fn non_empty_returns_none_for_whitespace() {
+        assert_eq!(non_empty("   "), None);
+    }
+
+    #[test]
+    fn non_empty_returns_trimmed_value() {
+        assert_eq!(non_empty("  hello  "), Some("hello".to_string()));
+    }
+
+    // --- into_option tests ---
+
+    #[test]
+    fn into_option_empty_vec_is_none() {
+        let v: Vec<i32> = vec![];
+        assert!(into_option(v).is_none());
+    }
+
+    #[test]
+    fn into_option_non_empty_vec_is_some() {
+        let v = vec![1, 2, 3];
+        let opt = into_option(v);
+        assert!(opt.is_some());
+        assert_eq!(opt.unwrap().len(), 3);
+    }
+
+    // --- option_len tests ---
+
+    #[test]
+    fn option_len_none_is_zero() {
+        let v: Option<&Vec<i32>> = None;
+        assert_eq!(option_len(v), 0);
+    }
+
+    #[test]
+    fn option_len_some_empty_is_zero() {
+        let v: Vec<i32> = vec![];
+        assert_eq!(option_len(Some(&v)), 0);
+    }
+
+    #[test]
+    fn option_len_some_with_items() {
+        let v = vec![1, 2, 3];
+        assert_eq!(option_len(Some(&v)), 3);
+    }
+
+    // --- SnapshotDiff::is_empty / has_significant_changes tests ---
+
+    #[test]
+    fn snapshot_diff_is_empty_when_no_changes() {
+        let diff = compare_snapshots(&[], &[]);
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn snapshot_diff_is_not_empty_with_changes() {
+        let after = vec![Issue {
+            id: "A".to_string(),
+            title: "New".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let diff = compare_snapshots(&[], &after);
+        assert!(!diff.is_empty());
+    }
+
+    #[test]
+    fn snapshot_diff_has_significant_changes_with_new_issues() {
+        let after = vec![Issue {
+            id: "A".to_string(),
+            title: "New".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let diff = compare_snapshots(&[], &after);
+        assert!(diff.has_significant_changes());
+    }
+
+    #[test]
+    fn snapshot_diff_no_significant_changes_for_modification_only() {
+        let before = vec![Issue {
+            id: "A".to_string(),
+            title: "Old".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        }];
+        let after = vec![Issue {
+            id: "A".to_string(),
+            title: "New".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        }];
+        let diff = compare_snapshots(&before, &after);
+        // Only a title modification — no new/closed/reopened/cycles
+        assert!(!diff.has_significant_changes());
+    }
+
+    // --- status transition stripping test ---
+
+    #[test]
+    fn closed_transition_strips_status_from_modified_changes() {
+        let before = vec![Issue {
+            id: "A".to_string(),
+            title: "Old title".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        }];
+        let after = vec![Issue {
+            id: "A".to_string(),
+            title: "New title".to_string(),
+            status: "closed".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        }];
+        let diff = compare_snapshots(&before, &after);
+        assert_eq!(diff.closed_issues.as_ref().map_or(0, Vec::len), 1);
+        // modified_issues should have title change but NOT status change
+        let mods = diff.modified_issues.as_ref().unwrap();
+        assert_eq!(mods.len(), 1);
+        assert!(mods[0].changes.iter().any(|c| c.field == "title"));
+        assert!(!mods[0].changes.iter().any(|c| c.field == "status"));
+    }
+
+    #[test]
+    fn reopen_transition_strips_status_from_modified_changes() {
+        let before = vec![Issue {
+            id: "A".to_string(),
+            title: "Old".to_string(),
+            status: "closed".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        }];
+        let after = vec![Issue {
+            id: "A".to_string(),
+            title: "New".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            ..Issue::default()
+        }];
+        let diff = compare_snapshots(&before, &after);
+        assert_eq!(diff.reopened_issues.as_ref().map_or(0, Vec::len), 1);
+        let mods = diff.modified_issues.as_ref().unwrap();
+        assert!(!mods[0].changes.iter().any(|c| c.field == "status"));
     }
 }

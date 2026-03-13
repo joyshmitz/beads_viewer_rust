@@ -1069,6 +1069,164 @@ mod tests {
         assert!(result.k_paths.paths.len() <= 1);
     }
 
+    // -- bfs_downstream ---
+
+    #[test]
+    fn bfs_downstream_no_dependents() {
+        let issues = vec![make_issue("A", &[])];
+        let graph = IssueGraph::build(&issues);
+        let downstream = bfs_downstream(&graph, "A");
+        assert!(downstream.is_empty());
+    }
+
+    #[test]
+    fn bfs_downstream_transitive() {
+        let issues = vec![
+            make_issue("A", &[]),
+            make_issue("B", &["A"]),
+            make_issue("C", &["B"]),
+        ];
+        let graph = IssueGraph::build(&issues);
+        let downstream = bfs_downstream(&graph, "A");
+        assert!(downstream.contains("B"));
+        assert!(downstream.contains("C"));
+    }
+
+    // -- TopKSet edge cases --
+
+    #[test]
+    fn top_k_set_all_closed_returns_empty() {
+        let issues = vec![make_closed_issue("A"), make_closed_issue("B")];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_top_k_set(&graph, &metrics, 5);
+        assert!(result.items.is_empty());
+        assert_eq!(result.total_unlocked, 0);
+    }
+
+    #[test]
+    fn top_k_set_independent_issues_stops_after_first() {
+        // Issues with no deps and no dependents: marginal=0 after first pick
+        let issues = vec![
+            make_issue("A", &[]),
+            make_issue("B", &[]),
+            make_issue("C", &[]),
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_top_k_set(&graph, &metrics, 10);
+        // First pick has marginal=0 but is selected; second marginal=0 should stop
+        assert_eq!(result.items.len(), 1);
+    }
+
+    // -- CoverageSet edge cases --
+
+    #[test]
+    fn coverage_set_no_critical_paths() {
+        let issues = vec![make_issue("A", &[]), make_issue("B", &[])];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_coverage_set(&graph, &metrics);
+        // Independent nodes have critical_depth 0, so no critical edges
+        assert!(result.items.is_empty());
+        assert_eq!(result.total_paths, 0);
+    }
+
+    // -- KPaths edge cases --
+
+    #[test]
+    fn k_paths_all_closed_returns_empty() {
+        let issues = vec![make_closed_issue("A"), make_closed_issue("B")];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_k_paths(&graph, &metrics, 5);
+        assert!(result.paths.is_empty());
+    }
+
+    #[test]
+    fn k_paths_single_edge_returns_path_of_length_2() {
+        let issues = vec![make_issue("A", &[]), make_issue("B", &["A"])];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_k_paths(&graph, &metrics, 5);
+        assert!(!result.paths.is_empty());
+        assert_eq!(result.paths[0].length, 2);
+    }
+
+    // -- ParallelCut edge cases --
+
+    #[test]
+    fn parallel_cut_no_deps_returns_empty_cuts() {
+        let issues = vec![make_issue("A", &[]), make_issue("B", &[])];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_parallel_cut(&graph, &metrics, 5);
+        // No dependency edges means no critical-path edges to cut
+        assert!(result.cuts.is_empty());
+    }
+
+    // -- ParallelGain edge cases --
+
+    #[test]
+    fn parallel_gain_no_open_returns_empty() {
+        let issues = vec![make_closed_issue("A"), make_closed_issue("B")];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_parallel_gain(&graph, &metrics, 5);
+        assert!(result.gains.is_empty());
+    }
+
+    #[test]
+    fn parallel_gain_two_independent_chains() {
+        let issues = vec![
+            make_issue("A", &[]),
+            make_issue("B", &["A"]),
+            make_issue("C", &[]),
+            make_issue("D", &["C"]),
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_parallel_gain(&graph, &metrics, 5);
+        assert!(result.current_components >= 2);
+    }
+
+    // -- Config default values --
+
+    #[test]
+    fn default_config_values() {
+        let config = AdvancedInsightsConfig::default();
+        assert_eq!(config.top_k, 10);
+        assert_eq!(config.k_paths_k, 5);
+        assert_eq!(config.max_cycle_break, 10);
+        assert_eq!(config.max_parallel_cut, 10);
+    }
+
+    // -- Usage hints --
+
+    #[test]
+    fn usage_hints_populated() {
+        let graph = IssueGraph::build(&[]);
+        let metrics = graph.compute_metrics();
+        let result = compute_advanced_insights(&graph, &metrics);
+        assert!(!result.usage_hints.is_empty());
+        assert!(result.usage_hints.iter().any(|h| h.contains("jq")));
+    }
+
+    // -- simulate_edge_removal --
+
+    #[test]
+    fn simulate_edge_removal_splits_components() {
+        // A -> B: removing this edge should split into 2 components
+        let issues = vec![make_issue("A", &[]), make_issue("B", &["A"])];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let open_ids: HashSet<String> = issues.iter().map(|i| i.id.clone()).collect();
+
+        let (components, max_chain) = simulate_edge_removal(&graph, &open_ids, &metrics, "A", "B");
+        assert_eq!(components, 2);
+        assert_eq!(max_chain, 0); // No edges remain, so max chain is 0
+    }
+
     // -- Large acyclic graph: parallel_cut and parallel_gain require DAG --
 
     #[test]

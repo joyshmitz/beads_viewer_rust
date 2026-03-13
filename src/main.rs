@@ -51,6 +51,13 @@ fn actionable_ids_for_recipe_filters(analyzer: &Analyzer) -> Vec<String> {
     analyzer.graph.actionable_ids()
 }
 
+fn feedback_project_dir(cli: &Cli) -> PathBuf {
+    cli.repo_path
+        .clone()
+        .or_else(|| cli.workspace.clone())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
 fn main() -> ExitCode {
     if let Err(error) = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -180,10 +187,7 @@ fn main() -> ExitCode {
 
     // --feedback-show and --feedback-reset don't need issues loaded
     if cli.feedback_show || cli.feedback_reset {
-        let work_dir = cli
-            .workspace
-            .clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let work_dir = feedback_project_dir(&cli);
 
         if cli.feedback_reset {
             let mut feedback = bvr::analysis::recipe::FeedbackData::load(&work_dir);
@@ -386,10 +390,7 @@ fn main() -> ExitCode {
 
     // Load feedback adjustments for triage scoring (persisted from --feedback-accept/ignore).
     let feedback_data = {
-        let work_dir = cli
-            .workspace
-            .clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let work_dir = feedback_project_dir(&cli);
         bvr::analysis::recipe::FeedbackData::load(&work_dir)
     };
     let feedback_weight_adjustments = feedback_data.weight_adjustment_map();
@@ -1604,10 +1605,7 @@ fn main() -> ExitCode {
 
     // --feedback-accept / --feedback-ignore: record feedback on a recommendation
     if cli.feedback_accept.is_some() || cli.feedback_ignore.is_some() {
-        let work_dir = cli
-            .workspace
-            .clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let work_dir = feedback_project_dir(&cli);
 
         let (issue_id, action) = if let Some(ref id) = cli.feedback_accept {
             (id.as_str(), "accept")

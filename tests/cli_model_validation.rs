@@ -149,6 +149,53 @@ fn baseline_info_reads_saved_baseline_without_issue_data() {
         .stdout(predicates::str::contains("Nodes: 3"));
 }
 
+#[test]
+fn feedback_show_reads_saved_feedback_from_repo_path_when_invoked_elsewhere() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let repo_dir = tmp.path().join("repo");
+    let caller_dir = tmp.path().join("caller");
+    fs::create_dir_all(repo_dir.join(".bv")).expect("create repo .bv");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    fs::write(
+        repo_dir.join(".bv/feedback.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": "1.0",
+            "events": [
+                {
+                    "issue_id": "BD-1",
+                    "action": "accept",
+                    "score": 0.9,
+                    "timestamp": "2026-03-12T00:00:00Z",
+                    "by": "cli",
+                    "reason": ""
+                }
+            ],
+            "adjustments": []
+        }))
+        .expect("serialize feedback"),
+    )
+    .expect("write feedback");
+
+    let output = bvr()
+        .current_dir(&caller_dir)
+        .args([
+            "--feedback-show",
+            "--format",
+            "json",
+            "--repo-path",
+            repo_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON");
+    assert_eq!(json["stats"]["total_accepted"], 1);
+    assert_eq!(json["stats"]["total_ignored"], 0);
+}
+
 // ============================================================================
 // Related work flags (--related-min-relevance, --related-max-results)
 // ============================================================================

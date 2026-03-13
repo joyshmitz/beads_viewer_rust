@@ -1194,6 +1194,393 @@ mod tests {
         assert_eq!(issues[0].id, "api-AUTH-1");
     }
 
+    // --- qualify_id tests ---
+
+    #[test]
+    fn qualify_id_adds_prefix_when_missing() {
+        assert_eq!(qualify_id("AUTH-1", "api-"), "api-AUTH-1");
+    }
+
+    #[test]
+    fn qualify_id_skips_prefix_when_already_present() {
+        assert_eq!(qualify_id("api-AUTH-1", "api-"), "api-AUTH-1");
+    }
+
+    #[test]
+    fn qualify_id_case_insensitive_prefix_check() {
+        assert_eq!(qualify_id("API-AUTH-1", "api-"), "API-AUTH-1");
+    }
+
+    // --- has_known_prefix tests ---
+
+    #[test]
+    fn has_known_prefix_matches() {
+        let prefixes = vec!["api-".to_string(), "web-".to_string()];
+        assert!(has_known_prefix("api-AUTH-1", &prefixes));
+        assert!(has_known_prefix("web-UI-1", &prefixes));
+    }
+
+    #[test]
+    fn has_known_prefix_no_match() {
+        let prefixes = vec!["api-".to_string()];
+        assert!(!has_known_prefix("AUTH-1", &prefixes));
+    }
+
+    #[test]
+    fn has_known_prefix_case_insensitive() {
+        let prefixes = vec!["API-".to_string()];
+        assert!(has_known_prefix("api-AUTH-1", &prefixes));
+    }
+
+    // --- WorkspaceRepoConfig methods ---
+
+    #[test]
+    fn repo_config_is_enabled_default_true() {
+        let repo = WorkspaceRepoConfig::default();
+        assert!(repo.is_enabled());
+    }
+
+    #[test]
+    fn repo_config_is_enabled_explicit_false() {
+        let repo = WorkspaceRepoConfig {
+            enabled: Some(false),
+            ..Default::default()
+        };
+        assert!(!repo.is_enabled());
+    }
+
+    #[test]
+    fn repo_config_effective_name_from_name_field() {
+        let repo = WorkspaceRepoConfig {
+            name: "  my-repo  ".to_string(),
+            path: "/some/path/other".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(repo.effective_name(), "my-repo");
+    }
+
+    #[test]
+    fn repo_config_effective_name_from_path_when_name_empty() {
+        let repo = WorkspaceRepoConfig {
+            path: "/projects/my-app".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(repo.effective_name(), "my-app");
+    }
+
+    #[test]
+    fn repo_config_effective_prefix_from_prefix_field() {
+        let repo = WorkspaceRepoConfig {
+            prefix: "  custom-  ".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(repo.effective_prefix(), "custom-");
+    }
+
+    #[test]
+    fn repo_config_effective_prefix_generated_from_name() {
+        let repo = WorkspaceRepoConfig {
+            name: "MyApp".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(repo.effective_prefix(), "myapp-");
+    }
+
+    #[test]
+    fn repo_config_effective_beads_path_explicit() {
+        let repo = WorkspaceRepoConfig {
+            beads_path: "  custom/path  ".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(repo.effective_beads_path(None), "custom/path");
+    }
+
+    #[test]
+    fn repo_config_effective_beads_path_from_defaults() {
+        let repo = WorkspaceRepoConfig::default();
+        let defaults = WorkspaceDefaultsConfig {
+            beads_path: "trackers".to_string(),
+        };
+        assert_eq!(repo.effective_beads_path(Some(&defaults)), "trackers");
+    }
+
+    #[test]
+    fn repo_config_effective_beads_path_fallback() {
+        let repo = WorkspaceRepoConfig::default();
+        assert_eq!(repo.effective_beads_path(None), ".beads");
+    }
+
+    // --- normalize_path_for_display ---
+
+    #[test]
+    fn normalize_path_replaces_backslashes() {
+        let path = Path::new("foo\\bar\\baz");
+        assert_eq!(normalize_path_for_display(path), "foo/bar/baz");
+    }
+
+    // --- relative_path_matches_pattern ---
+
+    #[test]
+    fn relative_path_matches_wildcard() {
+        assert!(relative_path_matches_pattern(Path::new("apps"), "*"));
+    }
+
+    #[test]
+    fn relative_path_matches_nested_wildcard() {
+        assert!(relative_path_matches_pattern(
+            Path::new("packages/auth"),
+            "packages/*"
+        ));
+    }
+
+    #[test]
+    fn relative_path_no_match_wrong_depth() {
+        assert!(!relative_path_matches_pattern(
+            Path::new("packages/auth/src"),
+            "packages/*"
+        ));
+    }
+
+    #[test]
+    fn relative_path_matches_exact() {
+        assert!(relative_path_matches_pattern(
+            Path::new("services/api"),
+            "services/api"
+        ));
+    }
+
+    #[test]
+    fn relative_path_no_match_different_segment() {
+        assert!(!relative_path_matches_pattern(
+            Path::new("services/web"),
+            "services/api"
+        ));
+    }
+
+    // --- is_excluded_workspace_path ---
+
+    #[test]
+    fn excluded_by_component_name() {
+        let excludes = vec!["node_modules".to_string()];
+        assert!(is_excluded_workspace_path(
+            Path::new("node_modules"),
+            &excludes
+        ));
+    }
+
+    #[test]
+    fn excluded_by_nested_component() {
+        let excludes = vec![".git".to_string()];
+        assert!(is_excluded_workspace_path(
+            Path::new("project/.git"),
+            &excludes
+        ));
+    }
+
+    #[test]
+    fn not_excluded_when_no_match() {
+        let excludes = vec!["node_modules".to_string()];
+        assert!(!is_excluded_workspace_path(
+            Path::new("packages/auth"),
+            &excludes
+        ));
+    }
+
+    // --- resolve_workspace_root ---
+
+    #[test]
+    fn resolve_workspace_root_goes_up_two_levels() {
+        let path = Path::new("/project/.bv/workspace.yaml");
+        assert_eq!(resolve_workspace_root(path), PathBuf::from("/project"));
+    }
+
+    // --- parse_issues_from_text ---
+
+    #[test]
+    fn parse_issues_from_text_valid() {
+        let text = "{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n{\"id\":\"B\",\"title\":\"B\",\"status\":\"closed\",\"priority\":2,\"issue_type\":\"bug\"}\n";
+        let issues = parse_issues_from_text(text).unwrap();
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].id, "A");
+        assert_eq!(issues[1].id, "B");
+    }
+
+    #[test]
+    fn parse_issues_from_text_skips_empty_lines() {
+        let text = "\n{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n\n";
+        let issues = parse_issues_from_text(text).unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn parse_issues_from_text_strips_bom() {
+        let text = "\u{feff}{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n";
+        let issues = parse_issues_from_text(text).unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn parse_issues_from_text_skips_malformed() {
+        let text = "not json\n{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n";
+        let issues = parse_issues_from_text(text).unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    // --- load_issues_from_file edge cases ---
+
+    #[test]
+    fn load_issues_skips_empty_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("issues.jsonl");
+        std::fs::write(
+            &path,
+            "\n{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n\n",
+        )
+        .unwrap();
+        let issues = load_issues_from_file(&path).unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn load_issues_strips_bom_on_first_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("issues.jsonl");
+        std::fs::write(
+            &path,
+            "\u{feff}{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .unwrap();
+        let issues = load_issues_from_file(&path).unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn load_issues_skips_malformed_json_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("issues.jsonl");
+        std::fs::write(
+            &path,
+            "not json\n{\"id\":\"A\",\"title\":\"A\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .unwrap();
+        let issues = load_issues_from_file(&path).unwrap();
+        assert_eq!(issues.len(), 1);
+    }
+
+    // --- find_jsonl_path edge cases ---
+
+    #[test]
+    fn find_jsonl_skips_backup_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let beads_dir = dir.path();
+        std::fs::write(beads_dir.join("issues.backup.jsonl"), "{}\n").unwrap();
+        std::fs::write(beads_dir.join("issues.orig.jsonl"), "{}\n").unwrap();
+        std::fs::write(beads_dir.join("beads.left.jsonl"), "{}\n").unwrap();
+        std::fs::write(beads_dir.join("deletions.jsonl"), "{}\n").unwrap();
+        std::fs::write(beads_dir.join("valid.jsonl"), "{}\n").unwrap();
+
+        let path = find_jsonl_path(beads_dir).unwrap();
+        assert!(path.ends_with("valid.jsonl"));
+    }
+
+    #[test]
+    fn find_jsonl_error_when_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = find_jsonl_path(dir.path());
+        assert!(result.is_err());
+    }
+
+    // --- load_sprints edge cases ---
+
+    #[test]
+    fn load_sprints_from_nonexistent_returns_empty() {
+        let path = Path::new("/nonexistent/sprints.jsonl");
+        let sprints = load_sprints_from_file(path).unwrap();
+        assert!(sprints.is_empty());
+    }
+
+    #[test]
+    fn load_sprints_skips_sprint_without_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sprints.jsonl");
+        std::fs::write(
+            &path,
+            "{\"id\":\"\",\"name\":\"Bad Sprint\",\"bead_ids\":[]}\n{\"id\":\"s1\",\"name\":\"Good\",\"bead_ids\":[]}\n",
+        )
+        .unwrap();
+        let sprints = load_sprints_from_file(&path).unwrap();
+        assert_eq!(sprints.len(), 1);
+        assert_eq!(sprints[0].id, "s1");
+    }
+
+    // --- WorkspaceConfig::validate ---
+
+    #[test]
+    fn workspace_validate_rejects_empty_repos() {
+        let config = WorkspaceConfig::default();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn workspace_validate_rejects_all_disabled() {
+        let config = WorkspaceConfig {
+            repos: vec![WorkspaceRepoConfig {
+                path: "api".to_string(),
+                enabled: Some(false),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn workspace_validate_rejects_empty_path() {
+        let config = WorkspaceConfig {
+            repos: vec![WorkspaceRepoConfig {
+                path: "  ".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+    }
+
+    // --- namespace_workspace_issues ---
+
+    #[test]
+    fn namespace_issues_qualifies_comment_issue_ids() {
+        let mut issues = vec![Issue {
+            id: "A".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            comments: vec![crate::model::Comment {
+                id: 1,
+                issue_id: "A".to_string(),
+                author: "dev".to_string(),
+                text: "hello".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        namespace_workspace_issues(&mut issues, "api-", "api", &[]);
+        assert_eq!(issues[0].comments[0].issue_id, "api-A");
+    }
+
+    #[test]
+    fn namespace_issues_sets_source_repo() {
+        let mut issues = vec![Issue {
+            id: "A".to_string(),
+            title: "T".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Default::default()
+        }];
+        namespace_workspace_issues(&mut issues, "api-", "my-api", &[]);
+        assert_eq!(issues[0].source_repo, "my-api");
+    }
+
     #[test]
     fn load_workspace_config_rejects_duplicate_prefixes() {
         let dir = tempfile::tempdir().expect("tempdir");

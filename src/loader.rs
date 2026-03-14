@@ -481,9 +481,15 @@ fn find_worktree_main_repo_beads_dir_from(start: &Path) -> Option<PathBuf> {
             continue;
         }
 
-        let gitdir = resolve_gitdir_pointer(&git_file)?;
-        let common_dir = resolve_worktree_common_dir(&gitdir)?;
-        let repo_root = common_dir.parent()?;
+        let Some(gitdir) = resolve_gitdir_pointer(&git_file) else {
+            continue;
+        };
+        let Some(common_dir) = resolve_worktree_common_dir(&gitdir) else {
+            continue;
+        };
+        let Some(repo_root) = common_dir.parent() else {
+            continue;
+        };
         let beads_dir = repo_root.join(".beads");
         if beads_dir.is_dir() {
             return Some(beads_dir);
@@ -971,6 +977,32 @@ mod tests {
 
         let beads_dir =
             get_beads_dir(Some(&worktree.join("nested/path"))).expect("find main repo .beads");
+        assert_eq!(beads_dir, main_repo.join(".beads"));
+    }
+
+    #[test]
+    fn get_beads_dir_ignores_malformed_intermediate_git_file_during_worktree_fallback() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        let main_repo = root.join("main-repo");
+        let worktree = root.join("worktree");
+        let gitdir = main_repo.join(".git/worktrees/feature");
+        let nested = worktree.join("nested/path");
+
+        std::fs::create_dir_all(main_repo.join(".beads")).expect("create main .beads");
+        std::fs::create_dir_all(&gitdir).expect("create worktree gitdir");
+        std::fs::create_dir_all(&nested).expect("create nested worktree");
+        std::fs::write(
+            worktree.join(".git"),
+            format!("gitdir: {}\n", gitdir.display()),
+        )
+        .expect("write worktree .git file");
+        std::fs::write(gitdir.join("commondir"), "../../\n").expect("write commondir");
+        std::fs::write(worktree.join("nested/.git"), "not a gitdir pointer\n")
+            .expect("write malformed nested .git file");
+
+        let beads_dir = get_beads_dir(Some(&nested))
+            .expect("skip malformed nested .git and find main repo .beads");
         assert_eq!(beads_dir, main_repo.join(".beads"));
     }
 

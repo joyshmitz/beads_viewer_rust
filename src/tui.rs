@@ -4560,7 +4560,7 @@ impl BvrApp {
             return Vec::new();
         }
 
-        self.visible_issue_indices()
+        self.board_visible_issue_indices_in_display_order()
             .into_iter()
             .filter(|index| {
                 self.analyzer.issues.get(*index).is_some_and(|issue| {
@@ -4635,7 +4635,7 @@ impl BvrApp {
         if query.is_empty() {
             return Vec::new();
         }
-        self.visible_issue_indices()
+        self.graph_visible_issue_indices()
             .into_iter()
             .filter(|&index| {
                 let issue = &self.analyzer.issues[index];
@@ -4841,6 +4841,13 @@ impl BvrApp {
         if let Some(index) = candidate {
             self.set_selected_index(index);
         }
+    }
+
+    fn board_visible_issue_indices_in_display_order(&self) -> Vec<usize> {
+        self.board_lane_indices()
+            .into_iter()
+            .flat_map(|(_, indices)| indices)
+            .collect()
     }
 
     fn selected_issue(&self) -> Option<&Issue> {
@@ -11324,6 +11331,50 @@ mod tests {
     }
 
     #[test]
+    fn graph_mode_search_prefers_rendered_order_over_storage_order() {
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "Alpha dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Alpha root".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Graph, 0, issues);
+
+        let rendered_ids = app
+            .graph_visible_issue_indices()
+            .into_iter()
+            .map(|index| app.analyzer.issues[index].id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(rendered_ids, vec!["A", "B"]);
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('a')));
+
+        assert_eq!(selected_issue_id(&app), "A");
+        assert!(
+            app.list_panel_text()
+                .lines()
+                .any(|line| line.starts_with('>') && line.contains(" A"))
+        );
+    }
+
+    #[test]
     fn insights_mode_search_query_and_match_cycling_work() {
         let mut app = new_app(ViewMode::Main, 0);
         app.update(key(KeyCode::Char('i')));
@@ -12517,6 +12568,44 @@ mod tests {
         app.update(key(KeyCode::Escape));
         assert!(!app.board_search_active);
         assert!(app.board_search_query.is_empty());
+    }
+
+    #[test]
+    fn board_mode_search_prefers_rendered_lane_order_over_storage_order() {
+        let issues = vec![
+            Issue {
+                id: "BLK-1".to_string(),
+                title: "Alpha blocked".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "OPEN-1".to_string(),
+                title: "Alpha open".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Board, 0, issues);
+
+        let rendered_ids = app
+            .board_visible_issue_indices_in_display_order()
+            .into_iter()
+            .map(|index| app.analyzer.issues[index].id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(rendered_ids, vec!["OPEN-1", "BLK-1"]);
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('a')));
+
+        assert_eq!(selected_issue_id(&app), "OPEN-1");
+        assert!(
+            app.list_panel_text()
+                .lines()
+                .any(|line| line.contains('▶') && line.contains("OPEN-1"))
+        );
     }
 
     #[test]

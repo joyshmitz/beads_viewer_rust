@@ -199,6 +199,15 @@ impl Issue {
             )));
         }
 
+        if let (Some(created_at), Some(updated_at)) = (self.created_at, self.updated_at)
+            && updated_at < created_at
+        {
+            return Err(BvrError::InvalidIssue(format!(
+                "issue {} updated_at cannot be earlier than created_at",
+                self.id
+            )));
+        }
+
         Ok(())
     }
 }
@@ -524,6 +533,40 @@ mod tests {
             };
             assert!(issue.validate().is_ok(), "status {status} should be valid");
         }
+    }
+
+    #[test]
+    fn validate_rejects_updated_at_before_created_at() {
+        let issue = Issue {
+            id: "X-1".to_string(),
+            title: "Test".to_string(),
+            issue_type: "task".to_string(),
+            status: "open".to_string(),
+            created_at: ts("2025-01-02T00:00:00Z"),
+            updated_at: ts("2025-01-01T00:00:00Z"),
+            ..Default::default()
+        };
+
+        let err = issue.validate().unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("updated_at cannot be earlier than created_at")
+        );
+    }
+
+    #[test]
+    fn validate_accepts_equal_created_and_updated_timestamps() {
+        let issue = Issue {
+            id: "X-1".to_string(),
+            title: "Test".to_string(),
+            issue_type: "task".to_string(),
+            status: "open".to_string(),
+            created_at: ts("2025-01-01T00:00:00Z"),
+            updated_at: ts("2025-01-01T00:00:00Z"),
+            ..Default::default()
+        };
+
+        assert!(issue.validate().is_ok());
     }
 
     // -- Sprint tests --

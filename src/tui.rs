@@ -7704,6 +7704,10 @@ impl BvrApp {
             self.modal_label_filter = Some(label.to_string());
             self.status_msg = format!("Filtering by label: {label}");
         }
+        self.list_scroll_offset.set(0);
+        self.ensure_selected_visible();
+        self.sync_insights_heatmap_selection();
+        self.focus = FocusPane::List;
     }
 
     fn set_repo_filter(&mut self, repo: &str) {
@@ -7718,6 +7722,10 @@ impl BvrApp {
             self.modal_repo_filter = Some(repo.to_string());
             self.status_msg = format!("Filtering by repo: {repo}");
         }
+        self.list_scroll_offset.set(0);
+        self.ensure_selected_visible();
+        self.sync_insights_heatmap_selection();
+        self.focus = FocusPane::List;
     }
 
     // -- end Modal pickers ---------------------------------------------------
@@ -15984,6 +15992,28 @@ mod tests {
     }
 
     #[test]
+    fn label_picker_filter_updates_selection_before_next_key() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.selected = 1;
+
+        app.update(key(KeyCode::Char('L')));
+        app.update(key(KeyCode::Char('j')));
+        app.update(key(KeyCode::Enter));
+
+        assert_eq!(app.modal_label_filter.as_deref(), Some("frontend"));
+        assert_eq!(selected_issue_id(&app), "C");
+        assert_eq!(
+            app.selected_issue().map(|issue| issue.id.as_str()),
+            Some("C")
+        );
+        assert!(
+            app.list_panel_text()
+                .lines()
+                .any(|line| line.starts_with("> C"))
+        );
+    }
+
+    #[test]
     fn label_filter_clears_on_all() {
         let mut app = new_app(ViewMode::Main, 0);
         app.modal_label_filter = Some("core".to_string());
@@ -16014,6 +16044,26 @@ mod tests {
                 app.status_msg
             );
         }
+    }
+
+    #[test]
+    fn repo_picker_filter_updates_selection_before_next_key() {
+        let mut app = new_app(ViewMode::Main, 2);
+
+        app.update(key(KeyCode::Char('w')));
+        app.update(key(KeyCode::Enter));
+
+        assert_eq!(app.modal_repo_filter.as_deref(), Some("viewer"));
+        assert_eq!(selected_issue_id(&app), "A");
+        assert_eq!(
+            app.selected_issue().map(|issue| issue.id.as_str()),
+            Some("A")
+        );
+        assert!(
+            app.list_panel_text()
+                .lines()
+                .any(|line| line.starts_with("> A"))
+        );
     }
 
     #[test]

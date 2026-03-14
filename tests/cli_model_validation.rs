@@ -250,6 +250,68 @@ fn feedback_show_reads_saved_feedback_from_beads_file_project_when_invoked_elsew
     assert_eq!(json["stats"]["total_ignored"], 1);
 }
 
+#[test]
+fn feedback_show_reads_saved_feedback_from_workspace_root_when_repo_path_discovers_workspace() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let workspace_root = tmp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let nested_dir = repo_dir.join("src");
+    let caller_dir = tmp.path().join("caller");
+
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::create_dir_all(repo_dir.join(".beads")).expect("create repo .beads");
+    fs::create_dir_all(&nested_dir).expect("create nested repo dir");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        repo_dir.join(".beads/beads.jsonl"),
+        "{\"id\":\"BD-1\",\"title\":\"Ship export\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write beads file");
+    fs::write(
+        workspace_root.join(".bv/feedback.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": "1.0",
+            "events": [
+                {
+                    "issue_id": "BD-1",
+                    "action": "accept",
+                    "score": 0.9,
+                    "timestamp": "2026-03-12T00:00:00Z",
+                    "by": "cli",
+                    "reason": ""
+                }
+            ],
+            "adjustments": []
+        }))
+        .expect("serialize feedback"),
+    )
+    .expect("write feedback");
+
+    let output = bvr()
+        .current_dir(&caller_dir)
+        .args([
+            "--feedback-show",
+            "--format",
+            "json",
+            "--repo-path",
+            nested_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON");
+    assert_eq!(json["stats"]["total_accepted"], 1);
+    assert_eq!(json["stats"]["total_ignored"], 0);
+}
+
 // ============================================================================
 // Related work flags (--related-min-relevance, --related-max-results)
 // ============================================================================

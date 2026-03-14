@@ -52,22 +52,63 @@ fn actionable_ids_for_recipe_filters(analyzer: &Analyzer) -> Vec<String> {
 }
 
 fn feedback_project_dir(cli: &Cli) -> PathBuf {
-    cli.repo_path
-        .clone()
-        .or_else(|| cli.workspace.clone())
-        .or_else(|| {
-            cli.beads_file.as_ref().map(|path| {
-                let parent = path.parent().unwrap_or(path);
-                if parent.file_name().is_some_and(|name| name == ".beads") {
-                    parent
-                        .parent()
-                        .map_or_else(|| parent.to_path_buf(), Path::to_path_buf)
-                } else {
-                    parent.to_path_buf()
-                }
+    project_dir_for_load_target(cli).unwrap_or_else(|_| {
+        cli.repo_path
+            .clone()
+            .or_else(|| cli.workspace.clone())
+            .or_else(|| {
+                cli.beads_file.as_ref().map(|path| {
+                    let parent = path.parent().unwrap_or(path);
+                    if parent.file_name().is_some_and(|name| name == ".beads") {
+                        parent
+                            .parent()
+                            .map_or_else(|| parent.to_path_buf(), Path::to_path_buf)
+                    } else {
+                        parent.to_path_buf()
+                    }
+                })
             })
-        })
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    })
+}
+
+fn absolute_from_current_dir(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    }
+}
+
+fn project_dir_for_load_target(cli: &Cli) -> bvr::Result<PathBuf> {
+    match resolve_issue_load_target(cli)? {
+        IssueLoadTarget::BeadsFile(path) => {
+            let parent = path.parent().unwrap_or(path.as_path());
+            let project_dir = if parent.file_name().is_some_and(|name| name == ".beads") {
+                parent
+                    .parent()
+                    .map_or_else(|| parent.to_path_buf(), Path::to_path_buf)
+            } else {
+                parent.to_path_buf()
+            };
+            Ok(absolute_from_current_dir(&project_dir))
+        }
+        IssueLoadTarget::WorkspaceConfig(path) => {
+            let project_dir = path.parent().and_then(Path::parent).map_or_else(
+                || path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf(),
+                Path::to_path_buf,
+            );
+            Ok(absolute_from_current_dir(&project_dir))
+        }
+        IssueLoadTarget::RepoPath(Some(path)) => Ok(absolute_from_current_dir(&path)),
+        IssueLoadTarget::RepoPath(None) => Ok(std::env::current_dir()?),
+    }
+}
+
+fn project_dir_for_export_hooks(cli: &Cli) -> bvr::Result<PathBuf> {
+    project_dir_for_load_target(cli)
 }
 
 fn main() -> ExitCode {
@@ -275,7 +316,6 @@ fn main() -> ExitCode {
         }
         let beads_path = cli.beads_file.clone();
         let no_hooks = cli.no_hooks;
-        let repo_path = cli.repo_path.clone();
         let no_live_reload = cli.no_live_reload;
         let stdin = std::io::stdin();
         let mut reader = std::io::BufReader::new(stdin.lock());
@@ -298,12 +338,13 @@ fn main() -> ExitCode {
                     include_history: config.include_history,
                 };
                 let count = count_pages_export_issues(&issues, &options);
+                let hook_project_dir = project_dir_for_export_hooks(&cli)?;
                 bvr::export_md::run_export_with_hooks(
                     output,
                     "html",
                     count,
                     no_hooks,
-                    repo_path.as_deref(),
+                    Some(hook_project_dir.as_path()),
                     || bvr::export_pages::export_pages_bundle(&issues, output, &options),
                 )?;
                 Ok(())
@@ -1737,13 +1778,20 @@ fn main() -> ExitCode {
             include_history: cli.pages_include_history,
         };
         let mut issue_count = count_pages_export_issues(&issues, &options);
+        let hook_project_dir = match project_dir_for_export_hooks(&cli) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+        };
 
         match bvr::export_md::run_export_with_hooks(
             export_path,
             "html",
             issue_count,
             cli.no_hooks,
-            cli.repo_path.as_deref(),
+            Some(hook_project_dir.as_path()),
             || bvr::export_pages::export_pages_bundle(&issues, export_path, &options),
         ) {
             Ok(summary) => {
@@ -1908,7 +1956,7 @@ fn main() -> ExitCode {
                     "html",
                     refreshed_issue_count,
                     cli.no_hooks,
-                    cli.repo_path.as_deref(),
+                    Some(hook_project_dir.as_path()),
                     || {
                         bvr::export_pages::export_pages_bundle(
                             &refreshed_issues,
@@ -1948,11 +1996,18 @@ fn main() -> ExitCode {
     }
 
     if let Some(export_path) = cli.export_md.as_deref() {
+        let hook_project_dir = match project_dir_for_export_hooks(&cli) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+        };
         if let Err(error) = bvr::export_md::export_markdown_with_hooks(
             &issues,
             export_path,
             cli.no_hooks,
-            cli.repo_path.as_deref(),
+            Some(hook_project_dir.as_path()),
         ) {
             eprintln!("error: {error}");
             return ExitCode::from(1);
@@ -4789,6 +4844,8 @@ fn print_robot_help() {
     println!("Commands:");
     println!("  --robot-triage            Unified triage payload");
     println!("  --robot-next              Single top recommendation");
+    println!("  --robot-triage-by-track   Triage grouped by parallel execution track");
+    println!("  --robot-triage-by-label   Triage grouped by label/domain");
     println!("  --robot-plan              Dependency-aware execution tracks");
     println!("  --robot-insights          Graph-centric insight payload");
     println!("  --robot-priority          Priority recommendation payload");
@@ -4822,6 +4879,25 @@ fn print_robot_help() {
     println!("  --robot-sprint-list       List all sprints as JSON");
     println!("  --robot-sprint-show <id>  Show specific sprint details");
     println!("  --robot-metrics           Performance metrics (timing, cache, memory)");
+    println!("  --robot-label-health      Per-label health, velocity, and staleness");
+    println!("  --robot-label-flow        Cross-label dependency flow matrix");
+    println!("  --robot-label-attention   Attention-ranked labels");
+    println!("  --robot-explain-correlation <sha:bead> Explain a history correlation");
+    println!("  --robot-confirm-correlation <sha:bead> Confirm a history correlation");
+    println!("  --robot-reject-correlation <sha:bead> Reject a history correlation");
+    println!("  --robot-correlation-stats Show stored correlation feedback stats");
+    println!("  --robot-orphans           Detect repo files not covered by bead history");
+    println!("  --robot-file-beads <path> Find beads related to a file");
+    println!("  --robot-file-hotspots     Rank hotspot files from history evidence");
+    println!("  --robot-impact <paths>    Analyze issue impact of changed files");
+    println!("  --robot-file-relations <path> Find related files by history overlap");
+    println!("  --robot-related <bead>    Find related work for a bead");
+    println!("  --robot-blocker-chain <bead> Show upstream blocker chain");
+    println!("  --robot-impact-network <bead> Build causal impact network");
+    println!("  --robot-causality <bead>  Build causality chain for a bead");
+    println!("  --robot-drift             Compare current state to saved baseline");
+    println!("  --robot-search            Search beads (--search <query>)");
+    println!("  --robot-recipes           List available recipe filters");
     println!("  --profile-startup         Output detailed startup timing profile");
     println!(
         "  --profile-json            Output profile in JSON format (use with --profile-startup)"
@@ -4869,13 +4945,21 @@ struct RobotNextOutput {
     as_of: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     as_of_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     score: Option<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     reasons: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     unblocks: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     claim_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     show_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -5059,7 +5143,9 @@ struct GraphAdjacencyEdge {
 struct PriorityFilterOutput {
     min_confidence: f64,
     max_results: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
     by_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     by_assignee: Option<String>,
 }
 
@@ -5112,6 +5198,7 @@ struct RobotHistoryOutput {
     #[serde(skip_serializing_if = "Option::is_none", rename = "histories_timeline")]
     histories_timeline: Option<Vec<bvr::analysis::history::IssueHistory>>,
     git_range: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     latest_commit_sha: Option<String>,
     stats: HistoryStatsCompat,
     #[serde(rename = "histories")]
@@ -5125,7 +5212,9 @@ struct RobotBurndownOutput {
     envelope: bvr::robot::RobotEnvelope,
     sprint_id: String,
     sprint_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     start_date: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     end_date: Option<DateTime<Utc>>,
     total_days: usize,
     elapsed_days: usize,
@@ -5430,9 +5519,10 @@ mod tests {
         BackgroundModeSource, Cli, IssueLoadTarget, actionable_ids_for_recipe_filters,
         build_background_mode_config, compute_related_work_result,
         discover_workspace_config_from_starts, filter_by_repo, generate_daily_burndown_points,
-        handle_operational_commands, parse_background_mode_bool, parse_scope_git_header_line,
-        resolve_background_mode, resolve_git_toplevel, resolve_issue_load_target,
-        resolve_reference_file_path, resolve_workspace_config_path,
+        feedback_project_dir, handle_operational_commands, parse_background_mode_bool,
+        parse_scope_git_header_line, project_dir_for_export_hooks, resolve_background_mode,
+        resolve_git_toplevel, resolve_issue_load_target, resolve_reference_file_path,
+        resolve_workspace_config_path,
     };
 
     fn make_history(bead_id: &str, status: &str, files: &[&str]) -> HistoryBeadCompat {
@@ -5578,6 +5668,48 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let resolved = resolve_workspace_config_path(dir.path());
         assert!(resolved.ends_with(".bv/workspace.yaml"));
+    }
+
+    #[test]
+    fn project_dir_for_export_hooks_uses_workspace_root_when_repo_path_discovers_workspace() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let nested = root.join("services/api/src");
+        fs::create_dir_all(&workspace_dir).expect("create .bv");
+        fs::create_dir_all(&nested).expect("create nested");
+        fs::write(
+            workspace_dir.join("workspace.yaml"),
+            "repos:\n  - path: services/api\n",
+        )
+        .expect("write workspace");
+
+        let nested_arg = nested.to_string_lossy().to_string();
+        let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg, "--export-pages", "out"]);
+
+        let project_dir = project_dir_for_export_hooks(&cli).expect("project dir");
+        assert_eq!(project_dir, root);
+    }
+
+    #[test]
+    fn feedback_project_dir_uses_workspace_root_when_repo_path_discovers_workspace() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let nested = root.join("services/api/src");
+        fs::create_dir_all(&workspace_dir).expect("create .bv");
+        fs::create_dir_all(&nested).expect("create nested");
+        fs::write(
+            workspace_dir.join("workspace.yaml"),
+            "repos:\n  - path: services/api\n",
+        )
+        .expect("write workspace");
+
+        let nested_arg = nested.to_string_lossy().to_string();
+        let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg, "--feedback-show"]);
+
+        let project_dir = feedback_project_dir(&cli);
+        assert_eq!(project_dir, root);
     }
 
     #[test]
@@ -6254,5 +6386,107 @@ mod tests {
         assert_eq!(health.issue_count, 0);
         assert_eq!(health.health, 0);
         assert_eq!(health.health_level, "critical");
+    }
+
+    #[test]
+    fn robot_next_omits_absent_fields_when_no_actionable_item_exists() {
+        let output = super::RobotNextOutput {
+            envelope: bvr::robot::envelope(&[]),
+            as_of: None,
+            as_of_commit: None,
+            id: None,
+            title: None,
+            score: None,
+            reasons: Vec::new(),
+            unblocks: None,
+            claim_command: None,
+            show_command: None,
+            message: Some("No actionable items available".to_string()),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json.get("id").is_none());
+        assert!(json.get("title").is_none());
+        assert!(json.get("score").is_none());
+        assert!(json.get("reasons").is_none());
+        assert!(json.get("unblocks").is_none());
+        assert!(json.get("claim_command").is_none());
+        assert!(json.get("show_command").is_none());
+        assert_eq!(json["message"], "No actionable items available");
+    }
+
+    #[test]
+    fn priority_filters_omit_unset_optional_fields() {
+        let filters = super::PriorityFilterOutput {
+            min_confidence: 0.5,
+            max_results: 10,
+            by_label: None,
+            by_assignee: None,
+        };
+
+        let json = serde_json::to_value(&filters).unwrap();
+        assert_eq!(json["min_confidence"], 0.5);
+        assert_eq!(json["max_results"], 10);
+        assert!(json.get("by_label").is_none());
+        assert!(json.get("by_assignee").is_none());
+    }
+
+    #[test]
+    fn robot_history_omits_absent_optional_fields() {
+        let output = super::RobotHistoryOutput {
+            envelope: bvr::robot::envelope(&[]),
+            bead_history: None,
+            history_count: None,
+            histories_timeline: None,
+            git_range: "HEAD".to_string(),
+            latest_commit_sha: None,
+            stats: super::HistoryStatsCompat {
+                total_beads: 0,
+                beads_with_commits: 0,
+                total_commits: 0,
+                unique_authors: 0,
+                avg_commits_per_bead: 0.0,
+                avg_cycle_time_days: None,
+                method_distribution: BTreeMap::new(),
+            },
+            histories_map: BTreeMap::new(),
+            commit_index: BTreeMap::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json.get("bead_history").is_none());
+        assert!(json.get("history_count").is_none());
+        assert!(json.get("histories_timeline").is_none());
+        assert!(json.get("latest_commit_sha").is_none());
+        assert_eq!(json["git_range"], "HEAD");
+    }
+
+    #[test]
+    fn robot_burndown_omits_absent_dates() {
+        let output = super::RobotBurndownOutput {
+            envelope: bvr::robot::envelope(&[]),
+            sprint_id: "sprint-1".to_string(),
+            sprint_name: "Sprint 1".to_string(),
+            start_date: None,
+            end_date: None,
+            total_days: 14,
+            elapsed_days: 3,
+            remaining_days: 11,
+            total_issues: 10,
+            completed_issues: 2,
+            remaining_issues: 8,
+            ideal_burn_rate: 0.5,
+            actual_burn_rate: 0.67,
+            projected_complete: None,
+            on_track: true,
+            daily_points: Vec::new(),
+            ideal_line: Vec::new(),
+            scope_changes: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json.get("start_date").is_none());
+        assert!(json.get("end_date").is_none());
+        assert!(json.get("projected_complete").is_none());
     }
 }

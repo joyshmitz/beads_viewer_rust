@@ -50,7 +50,9 @@ pub struct HistoryBeadCompat {
     pub status: String,
     pub events: Vec<HistoryEventCompat>,
     pub milestones: HistoryMilestonesCompat,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub commits: Option<Vec<HistoryCommitCompat>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cycle_time: Option<HistoryCycleCompat>,
     pub last_author: String,
 }
@@ -94,6 +96,7 @@ pub struct HistoryStatsCompat {
     pub total_commits: usize,
     pub unique_authors: usize,
     pub avg_commits_per_bead: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub avg_cycle_time_days: Option<f64>,
     pub method_distribution: BTreeMap<String, usize>,
 }
@@ -697,7 +700,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_commits_serialize_as_null() {
+    fn empty_commits_are_omitted() {
         let history = HistoryBeadCompat {
             bead_id: "bd-test".to_string(),
             title: "Test".to_string(),
@@ -710,8 +713,12 @@ mod tests {
         };
         let json = serde_json::to_value(&history).unwrap();
         assert!(
-            json["commits"].is_null(),
-            "None commits should serialize as null"
+            json.get("commits").is_none(),
+            "None commits should be omitted"
+        );
+        assert!(
+            json.get("cycle_time").is_none(),
+            "None cycle_time should be omitted"
         );
     }
 
@@ -793,6 +800,26 @@ mod tests {
         assert!(
             !obj.contains_key("create_to_claim"),
             "None should be omitted"
+        );
+    }
+
+    #[test]
+    fn history_stats_omit_absent_avg_cycle_time_days() {
+        let stats = HistoryStatsCompat {
+            total_beads: 2,
+            beads_with_commits: 0,
+            total_commits: 0,
+            unique_authors: 0,
+            avg_commits_per_bead: 0.0,
+            avg_cycle_time_days: None,
+            method_distribution: BTreeMap::new(),
+        };
+
+        let json = serde_json::to_value(&stats).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(
+            !obj.contains_key("avg_cycle_time_days"),
+            "None avg_cycle_time_days should be omitted"
         );
     }
 }

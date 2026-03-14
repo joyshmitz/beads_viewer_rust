@@ -262,6 +262,7 @@ struct CmdDoc {
     needs_issues: bool,
 }
 
+#[cfg(test)]
 fn implemented_robot_command_names() -> &'static [&'static str] {
     &[
         "robot-triage",
@@ -775,7 +776,7 @@ pub fn generate_robot_docs(topic: &str) -> Value {
             "bvr --robot-triage-by-track       # Parallel work streams for multi-agent coordination",
             "bvr --robot-schema                # JSON Schema definitions for all commands",
         ],
-        "data_source": ".beads/issues.jsonl and git history (correlations)",
+        "data_source": ".beads/beads.jsonl by default (compat: issues.jsonl, beads.base.jsonl) plus git history correlations",
         "output_modes": {
             "json": "Default structured output",
             "toon": "Token-optimized notation (saves ~30-50% tokens)",

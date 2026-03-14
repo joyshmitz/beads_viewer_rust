@@ -786,6 +786,51 @@ fn export_pages_pre_hook_failure_blocks_export() {
 }
 
 #[test]
+fn export_pages_uses_workspace_root_hooks_when_repo_path_discovers_workspace() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let nested_dir = repo_dir.join("src");
+    let caller_dir = temp.path().join("caller");
+    let export_path = repo_dir.join("pages-out");
+
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::create_dir_all(&nested_dir).expect("create nested repo dir");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n",
+    )
+    .expect("write workspace config");
+    write_test_beads(&repo_dir);
+    write_hooks(
+        &workspace_root,
+        "hooks:\n  pre-export:\n    - name: workspace-root\n      command: 'printf workspace > hook-ran.txt'\n",
+    );
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let mut command = Command::new(bvr_bin);
+    command
+        .current_dir(&caller_dir)
+        .arg("--repo-path")
+        .arg(&nested_dir)
+        .arg("--export-pages")
+        .arg(&export_path);
+
+    command.assert().success();
+
+    assert!(export_path.join("index.html").exists());
+    assert!(
+        workspace_root.join("hook-ran.txt").exists(),
+        "workspace root hook should run when --repo-path discovers a workspace"
+    );
+    assert!(
+        !repo_dir.join("hook-ran.txt").exists(),
+        "nested repo should not become the hook working directory"
+    );
+}
+
+#[test]
 fn watch_export_requires_export_pages() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();

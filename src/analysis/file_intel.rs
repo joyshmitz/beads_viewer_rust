@@ -332,7 +332,7 @@ fn build_file_bead_map(
 }
 
 fn normalize_path(path: &str) -> String {
-    let normalized = path.replace('\\', "/");
+    let normalized = path.trim().replace('\\', "/");
     let normalized = normalized.strip_prefix("./").unwrap_or(&normalized);
     normalized.trim_end_matches('/').to_string()
 }
@@ -580,7 +580,15 @@ pub fn analyze_impact(
     file_paths: &[String],
     histories: &BTreeMap<String, HistoryBeadCompat>,
 ) -> ImpactResult {
-    let targets: BTreeSet<String> = file_paths.iter().map(|p| normalize_path(p)).collect();
+    let mut targets = BTreeSet::<String>::new();
+    let mut normalized_targets = Vec::<String>::new();
+    for path in file_paths {
+        let normalized = normalize_path(path);
+        if normalized.is_empty() || !targets.insert(normalized.clone()) {
+            continue;
+        }
+        normalized_targets.push(normalized);
+    }
 
     // Find all beads that touched any of the target files
     let mut bead_overlaps = BTreeMap::<String, BTreeSet<String>>::new();
@@ -633,7 +641,7 @@ pub fn analyze_impact(
     }
 
     // Multiple file modification boosts risk
-    if file_paths.len() > 1 {
+    if targets.len() > 1 {
         risk_score += 0.1;
     }
 
@@ -657,13 +665,13 @@ pub fn analyze_impact(
 
     let summary = format!(
         "{} file(s) affect {} bead(s), risk: {}",
-        file_paths.len(),
+        targets.len(),
         affected_beads.len(),
         risk_level
     );
 
     ImpactResult {
-        files: file_paths.to_vec(),
+        files: normalized_targets,
         affected_beads,
         risk_level: risk_level.to_string(),
         risk_score,
@@ -888,7 +896,7 @@ pub fn find_related_work_with_options(
     });
 
     if min_relevance > 0 {
-        let threshold = f64::from(min_relevance);
+        let threshold = f64::from(min_relevance.min(100)) / 100.0;
         related.retain(|r| r.relevance >= threshold);
     }
 
@@ -1176,6 +1184,7 @@ mod tests {
         assert_eq!(normalize_path("./src/main.rs"), "src/main.rs");
         assert_eq!(normalize_path("src/dir/"), "src/dir");
         assert_eq!(normalize_path("src/main.rs"), "src/main.rs");
+        assert_eq!(normalize_path("  ./src/main.rs  "), "src/main.rs");
     }
 
     #[test]
@@ -1224,6 +1233,48 @@ mod tests {
 
         assert!(result.affected_beads.is_empty());
         assert_eq!(result.risk_level, "low");
+    }
+
+    #[test]
+    fn impact_analysis_ignores_empty_file_entries() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "bd-1".to_string(),
+            make_history("bd-1", "open", &["src/main.rs"]),
+        );
+
+        let result = analyze_impact(
+            &["src/main.rs".to_string(), " ".to_string(), "".to_string()],
+            &histories,
+        );
+
+        assert_eq!(result.files, vec!["src/main.rs".to_string()]);
+        assert!(result.summary.starts_with("1 file(s) affect"));
+        assert!(
+            result.risk_score < 0.3,
+            "empty entries should not trigger multi-file risk inflation"
+        );
+    }
+
+    #[test]
+    fn impact_analysis_dedupes_repeated_normalized_paths() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "bd-1".to_string(),
+            make_history("bd-1", "open", &["src/main.rs"]),
+        );
+
+        let result = analyze_impact(
+            &[
+                "src/main.rs".to_string(),
+                "./src/main.rs".to_string(),
+                " src\\main.rs ".to_string(),
+            ],
+            &histories,
+        );
+
+        assert_eq!(result.files, vec!["src/main.rs".to_string()]);
+        assert!(result.summary.starts_with("1 file(s) affect"));
     }
 
     fn make_history_multi_file(
@@ -1359,5 +1410,46 @@ mod tests {
         // include_closed=true should include bd-2
         let result = find_related_work_with_options("bd-1", &histories, 0, 10, true);
         assert_eq!(result.related.len(), 2);
+    }
+
+    #[test]
+    fn related_work_treats_min_relevance_as_percent_threshold() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "bd-1".to_string(),
+            make_history("bd-1", "open", &["a.rs", "b.rs", "c.rs", "d.rs"]),
+        );
+        histories.insert(
+            "bd-2".to_string(),
+            make_history("bd-2", "open", &["a.rs"]),
+        );
+        histories.insert(
+            "bd-3".to_string(),
+            make_history("bd-3", "open", &["a.rs", "b.rs"]),
+        );
+
+        let result = find_related_work_with_options("bd-1", &histories, 20, 10, true);
+        assert_eq!(result.related.len(), 2, "20% should keep both overlaps");
+
+        let result = find_related_work_with_options("bd-1", &histories, 30, 10, true);
+        assert_eq!(result.related.len(), 1, "30% should keep only the 50% overlap");
+        assert_eq!(result.related[0].bead_id, "bd-3");
+    }
+
+    #[test]
+    fn related_work_caps_min_relevance_above_one_hundred_percent() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "bd-1".to_string(),
+            make_history("bd-1", "open", &["shared.rs"]),
+        );
+        histories.insert(
+            "bd-2".to_string(),
+            make_history("bd-2", "open", &["shared.rs"]),
+        );
+
+        let result = find_related_work_with_options("bd-1", &histories, 150, 10, true);
+        assert_eq!(result.related.len(), 1);
+        assert_eq!(result.related[0].bead_id, "bd-2");
     }
 }

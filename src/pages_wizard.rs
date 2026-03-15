@@ -633,6 +633,15 @@ fn write_config_preview<W: IoWrite>(writer: &mut W, config: &WizardConfig) {
     .ok();
 }
 
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+
+    let escaped = value.replace('\'', "'\"'\"'");
+    format!("'{escaped}'")
+}
+
 // ── Interactive wizard runner ───────────────────────────────────────
 
 /// Run the interactive pages wizard with the given I/O streams.
@@ -966,23 +975,48 @@ where
                     }
                     Some(DeployTarget::Github) => {
                         let repo = wizard.config.github_repo.as_deref().unwrap_or("?");
+                        let visibility_flag = if wizard.config.github_private {
+                            "--private"
+                        } else {
+                            "--public"
+                        };
                         writeln!(writer, "  Deploy to GitHub Pages: {repo}").ok();
-                        writeln!(
-                            writer,
-                            "  Run: gh repo create {repo} --public --source={}",
-                            output.display()
-                        )
-                        .ok();
+                        let mut command = format!(
+                            "gh repo create {} {visibility_flag} --source={}",
+                            shell_quote(repo),
+                            shell_quote(&output.display().to_string())
+                        );
+                        if let Some(description) = wizard
+                            .config
+                            .github_description
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            command.push_str(" --description ");
+                            command.push_str(&shell_quote(description));
+                        }
+                        writeln!(writer, "  Run: {command}").ok();
                     }
                     Some(DeployTarget::Cloudflare) => {
                         let project = wizard.config.cloudflare_project.as_deref().unwrap_or("?");
                         writeln!(writer, "  Deploy to Cloudflare Pages: {project}").ok();
-                        writeln!(
-                            writer,
-                            "  Run: wrangler pages deploy {} --project-name={project}",
-                            output.display()
-                        )
-                        .ok();
+                        let mut command = format!(
+                            "wrangler pages deploy {} --project-name={}",
+                            shell_quote(&output.display().to_string()),
+                            shell_quote(project)
+                        );
+                        if let Some(branch) = wizard
+                            .config
+                            .cloudflare_branch
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            command.push_str(" --branch=");
+                            command.push_str(&shell_quote(branch));
+                        }
+                        writeln!(writer, "  Run: {command}").ok();
                     }
                 }
                 wizard.transcript.record(wizard.step, "instructions shown");
@@ -1976,12 +2010,48 @@ mod tests {
     #[test]
     fn wizard_interactive_github_private_repo_and_description() {
         let input = "y\ny\n\n\n1\norg/private-pages\ny\nMy project dashboard\n./gh-out\ny\n";
-        let (_, result) = run_wizard_with_input(input);
+        let (output, result) = run_wizard_with_input(input);
         let config = result.unwrap().unwrap();
         assert!(config.github_private);
         assert_eq!(
             config.github_description.as_deref(),
             Some("My project dashboard")
+        );
+        assert!(
+            output.contains("--private"),
+            "expected private flag in deploy instructions: {output}"
+        );
+        assert!(
+            output.contains("--description 'My project dashboard'"),
+            "expected description in deploy instructions: {output}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_quotes_github_deploy_command_arguments() {
+        let input = "y\ny\n\n\n1\norg/pages repo\nn\nProject dashboard's home\n./out dir\ny\n";
+        let (output, result) = run_wizard_with_input(input);
+        assert!(result.is_ok(), "output: {output}");
+        assert!(
+            output.contains("gh repo create 'org/pages repo' --public --source='./out dir'"),
+            "expected quoted repo/path in deploy instructions: {output}"
+        );
+        assert!(
+            output.contains("--description 'Project dashboard'\"'\"'s home'"),
+            "expected quoted description in deploy instructions: {output}"
+        );
+    }
+
+    #[test]
+    fn wizard_interactive_quotes_cloudflare_deploy_command_arguments() {
+        let input = "y\ny\n\n\n2\nteam dashboard\nrelease branch\n./cf out\ny\n";
+        let (output, result) = run_wizard_with_input(input);
+        assert!(result.is_ok(), "output: {output}");
+        assert!(
+            output.contains(
+                "wrangler pages deploy './cf out' --project-name='team dashboard' --branch='release branch'"
+            ),
+            "expected quoted cloudflare command args: {output}"
         );
     }
 

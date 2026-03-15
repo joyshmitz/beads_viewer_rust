@@ -127,7 +127,6 @@ fn main() -> ExitCode {
     }
 
     let mut cli = Cli::parse();
-    bvr::loader::set_robot_warning_suppression(cli.is_robot_command());
 
     cli.format = match cli.resolve_output_format() {
         Ok(format) => format,
@@ -146,6 +145,8 @@ fn main() -> ExitCode {
     {
         cli.robot_diff = true;
     }
+
+    bvr::loader::set_robot_warning_suppression(cli.is_robot_command());
 
     // --no-cache: silently accepted for Go CLI compatibility (Rust port has no disk cache layer).
 

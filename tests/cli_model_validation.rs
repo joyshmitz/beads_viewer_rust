@@ -736,6 +736,41 @@ fn robot_triage_suppresses_loader_warnings_without_bv_robot_env() {
     );
 }
 
+#[test]
+fn diff_since_auto_robot_diff_suppresses_loader_warnings() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let beads_path = tmp.path().join("malformed.jsonl");
+    fs::write(
+        &beads_path,
+        "not json\n{\"id\":\"A\",\"title\":\"Valid\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write malformed fixture");
+
+    let output = bvr()
+        .args([
+            "--diff-since",
+            beads_path.to_str().unwrap(),
+            "--beads-file",
+            beads_path.to_str().unwrap(),
+        ])
+        .output()
+        .expect("run bvr");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "auto robot diff should succeed on mixed malformed input\nstdout: {stdout}\nstderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Warning:"),
+        "auto-enabled diff mode should suppress loader warnings\nstderr: {stderr}"
+    );
+
+    let json: Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
+    assert!(json.get("diff").is_some(), "diff payload should be present");
+}
+
 // ============================================================================
 // Large fixture stress
 // ============================================================================

@@ -474,10 +474,7 @@ pub fn compute_triage(
 
     let scoring = &options.scoring;
 
-    for issue in issues
-        .iter()
-        .filter(|issue| actionable.contains(&issue.id) && !issue.is_in_progress())
-    {
+    for issue in issues.iter().filter(|issue| actionable.contains(&issue.id)) {
         let impact =
             compute_impact_score(issue, metrics, &ctx, &lookups, &scoring.weight_adjustments);
         let base_score = impact.score;
@@ -859,6 +856,50 @@ mod tests {
         );
         assert_eq!(triage.result.quick_ref.total_open, 0);
         assert!(triage.result.recommendations.is_empty());
+    }
+
+    #[test]
+    fn triage_includes_actionable_in_progress_items() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "Already claimed blocker".to_string(),
+                status: "in_progress".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Blocked by A".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                dependencies: vec![crate::model::Dependency {
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..crate::model::Dependency::default()
+                }],
+                ..Issue::default()
+            },
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let triage = compute_triage(
+            &issues,
+            &graph,
+            &metrics,
+            &TriageOptions {
+                max_recommendations: 10,
+                ..TriageOptions::default()
+            },
+        );
+
+        assert_eq!(triage.result.recommendations.len(), 1);
+        assert_eq!(triage.result.recommendations[0].id, "A");
+        assert_eq!(triage.result.recommendations[0].status, "in_progress");
+        assert_eq!(triage.result.quick_ref.top_picks.len(), 1);
+        assert_eq!(triage.result.quick_ref.top_picks[0].id, "A");
     }
 
     #[test]

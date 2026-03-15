@@ -997,6 +997,60 @@ fn watch_export_regenerates_after_workspace_change() {
 }
 
 #[test]
+fn watch_export_regenerates_after_delete_and_recreate() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    write_test_beads(repo_dir);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args(["--export-pages", "pages-out", "--watch-export"])
+        .env("BVR_WATCH_MAX_LOOPS", "12")
+        .env("BVR_WATCH_INTERVAL_MS", "100")
+        .env("BVR_WATCH_DEBOUNCE_MS", "40")
+        .stderr(Stdio::piped())
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("spawn watch export");
+
+    thread::sleep(Duration::from_millis(250));
+    let beads_path = repo_dir.join(".beads/beads.jsonl");
+    fs::remove_file(&beads_path).expect("remove beads file");
+    thread::sleep(Duration::from_millis(250));
+    fs::write(
+        &beads_path,
+        concat!(
+            "{\"id\":\"BD-1\",\"title\":\"Recreated One\",\"status\":\"open\",\"priority\":1,",
+            "\"issue_type\":\"task\",\"source_repo\":\".\"}\n",
+            "{\"id\":\"BD-2\",\"title\":\"Recreated Two\",\"status\":\"open\",\"priority\":2,",
+            "\"issue_type\":\"task\",\"source_repo\":\".\"}\n",
+        ),
+    )
+    .expect("rewrite beads file");
+
+    let output = child.wait_with_output().expect("wait for watch process");
+    assert!(
+        output.status.success(),
+        "watch export failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("watch: change #"),
+        "expected change detection after delete+recreate: {stderr}"
+    );
+    assert!(
+        stderr.contains("watch: regenerated"),
+        "expected regeneration after recreate: {stderr}"
+    );
+
+    let issues = fs::read_to_string(repo_dir.join("pages-out/data/issues.json")).expect("issues");
+    assert!(issues.contains("BD-2"), "expected recreated data in export");
+}
+
+#[test]
 fn preview_pages_reports_session_diagnostics() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();

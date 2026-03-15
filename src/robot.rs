@@ -878,6 +878,19 @@ fn simple_command_schema(title: &str, description: &str, properties: Value) -> V
     })
 }
 
+fn versioned_properties(mut properties: Value) -> Value {
+    let Value::Object(ref mut map) = properties else {
+        return properties;
+    };
+    map.insert("output_format".to_string(), schema_prop("string"));
+    map.insert("version".to_string(), schema_prop("string"));
+    properties
+}
+
+fn versioned_simple_command_schema(title: &str, description: &str, properties: Value) -> Value {
+    simple_command_schema(title, description, versioned_properties(properties))
+}
+
 #[must_use]
 pub fn generate_robot_schemas() -> RobotSchemas {
     let now = Utc::now().to_rfc3339();
@@ -1147,6 +1160,8 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             "properties": {
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
+                "output_format": schema_prop("string"),
+                "version": schema_prop("string"),
                 "sprint_id": schema_prop("string"),
                 "burndown": {"type": "array"},
                 "scope_changes": {"type": "array"},
@@ -1165,6 +1180,8 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             "properties": {
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
+                "output_format": schema_prop("string"),
+                "version": schema_prop("string"),
                 "forecasts": {"type": "array"},
                 "methodology": {"type": "object"},
             },
@@ -1197,6 +1214,8 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             "properties": {
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
+                "output_format": schema_prop("string"),
+                "version": schema_prop("string"),
                 "capacity": {"type": "object"},
                 "projections": {"type": "array"},
             },
@@ -1268,7 +1287,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-sprint-list".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Sprint List Output",
             "List of available sprints",
             serde_json::json!({
@@ -1281,7 +1300,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-sprint-show".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Sprint Show Output",
             "Single sprint detail payload",
             serde_json::json!({
@@ -1293,7 +1312,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-metrics".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Metrics Output",
             "Timing, cache, and memory telemetry",
             serde_json::json!({
@@ -1307,7 +1326,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-label-health".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Label Health Output",
             "Per-label health summary",
             serde_json::json!({
@@ -1319,7 +1338,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-label-flow".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Label Flow Output",
             "Cross-label flow summary",
             serde_json::json!({
@@ -1331,7 +1350,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-label-attention".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Label Attention Output",
             "Attention-ranked labels",
             serde_json::json!({
@@ -1386,7 +1405,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-correlation-stats".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Correlation Stats Output",
             "Stored correlation feedback statistics",
             serde_json::json!({
@@ -1398,7 +1417,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-orphans".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Orphans Output",
             "Repository orphan-file report",
             serde_json::json!({
@@ -1410,7 +1429,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-file-beads".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot File Beads Output",
             "Beads related to a file path",
             serde_json::json!({
@@ -1422,7 +1441,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-file-hotspots".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot File Hotspots Output",
             "Hotspot ranking derived from file history",
             serde_json::json!({
@@ -1435,7 +1454,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-impact".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Impact Output",
             "Impact analysis for one or more file paths",
             serde_json::json!({
@@ -1447,7 +1466,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-file-relations".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot File Relations Output",
             "Related files derived from bead/file co-occurrence",
             serde_json::json!({
@@ -1459,7 +1478,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-related".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Related Output",
             "Related work recommendations for a bead",
             serde_json::json!({
@@ -1471,7 +1490,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-blocker-chain".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Blocker Chain Output",
             "Upstream blocker chain for a bead",
             serde_json::json!({
@@ -1483,7 +1502,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-impact-network".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Impact Network Output",
             "Impact network around a bead",
             serde_json::json!({
@@ -1495,7 +1514,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-causality".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Causality Output",
             "Causality chain around a bead",
             serde_json::json!({
@@ -1507,7 +1526,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-drift".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Drift Output",
             "Structured baseline drift result",
             serde_json::json!({
@@ -1519,7 +1538,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-search".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Search Output",
             "Search results over beads",
             serde_json::json!({
@@ -1536,7 +1555,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
     commands.insert(
         "robot-recipes".to_string(),
-        simple_command_schema(
+        versioned_simple_command_schema(
             "Robot Recipes Output",
             "Available named triage recipes",
             serde_json::json!({

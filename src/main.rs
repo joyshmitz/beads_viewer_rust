@@ -115,6 +115,11 @@ fn project_dir_for_export_hooks(cli: &Cli) -> bvr::Result<PathBuf> {
     project_dir_for_load_target(cli)
 }
 
+fn load_sprints_for_cli(cli: &Cli) -> bvr::Result<Vec<bvr::model::Sprint>> {
+    let project_dir = project_dir_for_load_target(cli)?;
+    loader::load_sprints(Some(&project_dir))
+}
+
 fn main() -> ExitCode {
     if let Err(error) = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -958,7 +963,7 @@ fn main() -> ExitCode {
     }
 
     if cli.robot_sprint_list || cli.robot_sprint_show.is_some() {
-        let sprints = match bvr::loader::load_sprints(cli.repo_path.as_deref()) {
+        let sprints = match load_sprints_for_cli(&cli) {
             Ok(sprints) => sprints,
             Err(bvr::BvrError::MissingBeadsDir(_)) if cli.robot_sprint_list => Vec::new(),
             Err(error) => {
@@ -1124,7 +1129,7 @@ fn main() -> ExitCode {
         || cli.robot_reject_correlation.is_some()
         || cli.robot_correlation_stats
     {
-        let repo_root = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+        let repo_root = feedback_project_dir(&cli);
         let feedback_path = bvr::analysis::correlation::default_feedback_path(&repo_root);
 
         if cli.robot_correlation_stats {
@@ -2532,7 +2537,7 @@ fn parse_suggest_type(raw: Option<&str>) -> bvr::Result<Option<SuggestionType>> 
 }
 
 fn resolve_forecast_sprint_beads(cli: &Cli, sprint_id: &str) -> bvr::Result<BTreeSet<String>> {
-    let Ok(sprints) = loader::load_sprints(cli.repo_path.as_deref()) else {
+    let Ok(sprints) = load_sprints_for_cli(cli) else {
         return Err(bvr::BvrError::InvalidArgument(format!(
             "sprint not found: {sprint_id}"
         )));
@@ -2937,7 +2942,7 @@ fn build_robot_burndown_output(
     sprint_id_or_current: &str,
 ) -> bvr::Result<RobotBurndownOutput> {
     let now = Utc::now();
-    let sprints = loader::load_sprints(cli.repo_path.as_deref())?;
+    let sprints = load_sprints_for_cli(cli)?;
 
     let target = if sprint_id_or_current.eq_ignore_ascii_case("current") {
         sprints.iter().find(|sprint| sprint.is_active_at(now))

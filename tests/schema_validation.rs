@@ -279,6 +279,78 @@ fn robot_metrics_has_valid_envelope() {
     assert!(validate_type_at(&output, "memory", JsonType::Object).is_empty());
 }
 
+#[test]
+fn robot_search_schema_includes_versioned_envelope_fields() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-search"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(
+        validate_type_at(&output, "schema.properties.output_format", JsonType::Object).is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_label_health_schema_includes_versioned_envelope_fields() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-label-health"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(
+        validate_type_at(&output, "schema.properties.output_format", JsonType::Object).is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_recipes_schema_includes_versioned_envelope_fields() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-recipes"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(
+        validate_type_at(&output, "schema.properties.output_format", JsonType::Object).is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_capacity_schema_includes_versioned_envelope_fields() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-capacity"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(
+        validate_type_at(&output, "schema.properties.output_format", JsonType::Object).is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_forecast_schema_includes_versioned_envelope_fields() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-forecast"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(
+        validate_type_at(&output, "schema.properties.output_format", JsonType::Object).is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
+}
+
+#[test]
+fn robot_burndown_schema_includes_versioned_envelope_fields() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-burndown"],
+        "tests/testdata/sprints_synthetic.jsonl",
+    );
+    assert!(
+        validate_type_at(&output, "schema.properties.output_format", JsonType::Object).is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
+}
+
 // ============================================================================
 // Determinism tests for additional robot modes
 // ============================================================================

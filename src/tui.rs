@@ -27,6 +27,10 @@ use ftui::render::frame::Frame;
 #[cfg(not(test))]
 use ftui::runtime::TaskSpec;
 use ftui::runtime::{App, Cmd, Model, ScreenMode};
+use ftui::text::{
+    Line as RichLine, Span as RichSpan, Text as RichText, display_width, truncate_to_width,
+    truncate_with_ellipsis,
+};
 use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
 use ftui::widgets::paragraph::Paragraph;
@@ -1368,7 +1372,7 @@ impl Model for BvrApp {
                 .render(body, frame);
         } else if history_multi_pane {
             let render_history_panel =
-                |frame: &mut Frame, area: Rect, title: String, focused: bool, text: String| {
+                |frame: &mut Frame, area: Rect, title: String, focused: bool, text: RichText| {
                     let border = if focused {
                         tokens::panel_border_focused()
                     } else {
@@ -1410,14 +1414,14 @@ impl Model for BvrApp {
                         self.history_list_panel_title().to_string()
                     },
                     matches!(self.focus, FocusPane::List),
-                    self.history_list_text(),
+                    RichText::raw(self.history_list_text()),
                 );
                 render_history_panel(
                     frame,
                     panes[1],
                     self.history_timeline_panel_title(),
                     false,
-                    self.history_timeline_text(panes[1].width, panes[1].height),
+                    RichText::raw(self.history_timeline_text(panes[1].width, panes[1].height)),
                 );
                 render_history_panel(
                     frame,
@@ -1428,7 +1432,7 @@ impl Model for BvrApp {
                         self.history_middle_panel_title().to_string()
                     },
                     matches!(self.focus, FocusPane::Middle),
-                    self.history_middle_text(panes[2].width, panes[2].height),
+                    RichText::raw(self.history_middle_text(panes[2].width, panes[2].height)),
                 );
                 detail_viewport_height = panes[3].height.saturating_sub(2) as usize;
                 render_history_panel(
@@ -1436,7 +1440,7 @@ impl Model for BvrApp {
                     panes[3],
                     detail_title.clone(),
                     detail_focused,
-                    self.detail_panel_text(),
+                    self.detail_panel_render_text(),
                 );
             } else {
                 let pane_widths = if matches!(history_layout, HistoryLayout::Wide)
@@ -1463,7 +1467,7 @@ impl Model for BvrApp {
                         self.history_list_panel_title().to_string()
                     },
                     matches!(self.focus, FocusPane::List),
-                    self.history_list_text(),
+                    RichText::raw(self.history_list_text()),
                 );
                 render_history_panel(
                     frame,
@@ -1474,7 +1478,7 @@ impl Model for BvrApp {
                         self.history_middle_panel_title().to_string()
                     },
                     matches!(self.focus, FocusPane::Middle),
-                    self.history_middle_text(panes[1].width, panes[1].height),
+                    RichText::raw(self.history_middle_text(panes[1].width, panes[1].height)),
                 );
                 detail_viewport_height = panes[2].height.saturating_sub(2) as usize;
                 render_history_panel(
@@ -1482,7 +1486,7 @@ impl Model for BvrApp {
                     panes[2],
                     detail_title.clone(),
                     detail_focused,
-                    self.detail_panel_text(),
+                    self.detail_panel_render_text(),
                 );
             }
         } else {
@@ -1562,11 +1566,11 @@ impl Model for BvrApp {
                 let (text, offset, total_lines) =
                     self.board_detail_render_state(detail_viewport_height);
                 board_detail_line = Some((offset, total_lines));
-                text
+                RichText::raw(text)
             } else if matches!(self.mode, ViewMode::Graph) {
-                self.graph_detail_text()
+                RichText::raw(self.graph_detail_text())
             } else {
-                self.detail_panel_text()
+                self.detail_panel_render_text()
             };
             Paragraph::new(detail_text)
                 .block(
@@ -3537,16 +3541,11 @@ impl BvrApp {
         Some(commit.sha.clone())
     }
 
-    /// Open selected commit in browser via git remote URL.
-    fn history_open_in_browser(&mut self) {
-        let sha = if matches!(self.history_view_mode, HistoryViewMode::Git) {
+    fn history_selected_commit_sha(&self) -> Option<String> {
+        if matches!(self.history_view_mode, HistoryViewMode::Git) {
             self.selected_history_git_commit_sha()
         } else {
-            // In bead mode, try to get commit SHA from bead's history
-            let Some(issue) = self.selected_issue() else {
-                self.history_status_msg = "No item selected".into();
-                return;
-            };
+            let issue = self.selected_issue()?;
             self.history_git_cache.as_ref().and_then(|cache| {
                 cache
                     .commit_bead_confidence
@@ -3554,45 +3553,45 @@ impl BvrApp {
                     .find(|(_, pairs)| pairs.iter().any(|(id, _)| id == &issue.id))
                     .map(|(sha, _)| sha.clone())
             })
-        };
+        }
+    }
+
+    fn history_selected_commit_url(&self) -> Option<String> {
+        self.history_selected_commit_sha()
+            .and_then(|sha| self.history_commit_url_for_sha(&sha))
+    }
+
+    fn history_commit_url_for_sha(&self, sha: &str) -> Option<String> {
+        let repo_root = self
+            .repo_root
+            .clone()
+            .or_else(|| std::env::current_dir().ok())?;
+        let remote_url = std::process::Command::new("git")
+            .args(["config", "--get", "remote.origin.url"])
+            .current_dir(&repo_root)
+            .output()
+            .ok()
+            .and_then(|output| {
+                output
+                    .status
+                    .success()
+                    .then(|| String::from_utf8(output.stdout).ok())
+                    .flatten()
+            })
+            .map(|s| s.trim().to_string())?;
+        remote_to_commit_url(&remote_url, sha)
+    }
+
+    /// Open selected commit in browser via git remote URL.
+    fn history_open_in_browser(&mut self) {
+        let sha = self.history_selected_commit_sha();
 
         let Some(sha) = sha else {
             self.history_status_msg = "No commit selected".into();
             return;
         };
 
-        // Try to get remote URL from repo root
-        let repo_root = self
-            .repo_root
-            .clone()
-            .or_else(|| std::env::current_dir().ok());
-        let Some(repo_root) = repo_root else {
-            self.history_status_msg = "No repository root found".into();
-            return;
-        };
-
-        let remote_url = std::process::Command::new("git")
-            .args(["config", "--get", "remote.origin.url"])
-            .current_dir(&repo_root)
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    String::from_utf8(o.stdout).ok()
-                } else {
-                    None
-                }
-            })
-            .map(|s| s.trim().to_string());
-
-        let Some(remote_url) = remote_url else {
-            self.history_status_msg = "No git remote configured".into();
-            return;
-        };
-
-        // Convert remote URL to web commit URL
-        let web_url = remote_to_commit_url(&remote_url, &sha);
-        let Some(url) = web_url else {
+        let Some(url) = self.history_commit_url_for_sha(&sha) else {
             self.history_status_msg = "Cannot build commit URL from remote".into();
             return;
         };
@@ -5188,15 +5187,11 @@ impl BvrApp {
                 if ci > 0 {
                     line.push_str(" | ");
                 }
-                let cell_trunc = if cell.len() > actual_col_width {
-                    &cell[..actual_col_width]
-                } else {
-                    cell
-                };
+                let cell_trunc = truncate_display(cell, actual_col_width);
                 line.push_str(cell_trunc);
                 // Pad to column width for alignment (except last column).
                 if ci + 1 < columns.len() {
-                    let padding = actual_col_width.saturating_sub(cell_trunc.len());
+                    let padding = actual_col_width.saturating_sub(display_width(&cell_trunc));
                     for _ in 0..padding {
                         line.push(' ');
                     }
@@ -7789,6 +7784,13 @@ impl BvrApp {
         }
     }
 
+    fn detail_panel_render_text(&self) -> RichText {
+        match self.mode {
+            ViewMode::History => self.history_detail_render_text(),
+            _ => RichText::raw(self.detail_panel_text()),
+        }
+    }
+
     fn board_detail_render_state(&self, visible_height: usize) -> (String, usize, usize) {
         let full_text = self.board_detail_text();
         let total_lines = full_text.lines().count();
@@ -9205,6 +9207,18 @@ impl BvrApp {
         lines.join("\n")
     }
 
+    fn history_detail_render_text(&self) -> RichText {
+        let mut text = RichText::raw(self.history_detail_text());
+        if let Some(url) = self.history_selected_commit_url() {
+            text.push_line(RichLine::raw(""));
+            text.push_line(RichLine::from_spans([
+                RichSpan::raw("Browser Link: "),
+                RichSpan::styled("open selected commit", tokens::panel_title_focused()).link(url),
+            ]));
+        }
+        text
+    }
+
     /// Render the file tree panel text (when visible).
     fn file_tree_panel_text(&self) -> String {
         let flat = self.history_flat_file_list();
@@ -9239,13 +9253,7 @@ impl BvrApp {
 
 #[must_use]
 fn truncate_str(value: &str, max_len: usize) -> String {
-    if value.len() <= max_len {
-        value.to_string()
-    } else if max_len >= 3 {
-        format!("{}...", &value[..max_len - 3])
-    } else {
-        value[..max_len].to_string()
-    }
+    truncate_display(value, max_len)
 }
 
 fn metric_rank(metrics: &std::collections::HashMap<String, f64>, target_id: &str) -> usize {
@@ -9845,22 +9853,19 @@ fn truncate_display(value: &str, max_len: usize) -> String {
         return String::new();
     }
 
-    let chars = value.chars().collect::<Vec<_>>();
-    if chars.len() <= max_len {
+    if display_width(value) <= max_len {
         return value.to_string();
     }
     if max_len == 1 {
-        return chars[..1].iter().collect();
+        return truncate_to_width(value, max_len);
     }
 
-    let mut out = chars[..max_len - 1].iter().collect::<String>();
-    out.push('…');
-    out
+    truncate_with_ellipsis(value, max_len, "…")
 }
 
 fn fit_display(value: &str, width: usize) -> String {
     let mut out = truncate_display(value, width);
-    let visible = out.chars().count();
+    let visible = display_width(&out);
     if visible < width {
         out.push_str(&" ".repeat(width - visible));
     }
@@ -9869,7 +9874,7 @@ fn fit_display(value: &str, width: usize) -> String {
 
 fn center_display(value: &str, width: usize) -> String {
     let text = truncate_display(value, width);
-    let visible = text.chars().count();
+    let visible = display_width(&text);
     if visible >= width {
         return text;
     }
@@ -9894,7 +9899,7 @@ fn center_box_rows(boxes: &[Vec<String>], width: usize) -> Vec<String> {
                         line.clone()
                     } else {
                         let fallback_width =
-                            box_lines.first().map_or(0, |line| line.chars().count());
+                            box_lines.first().map_or(0, |line| display_width(line));
                         " ".repeat(fallback_width)
                     }
                 })
@@ -10164,9 +10169,10 @@ mod tests {
         GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
         ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
-        buffer_to_text, compact_history_duration_label, decide_background_tick,
-        history_legacy_lifecycle_lines, legacy_history_author_initials, record_view_size,
-        render_debug_view, should_apply_background_reload, sprint_reference_now,
+        buffer_to_text, compact_history_duration_label, decide_background_tick, display_width,
+        fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
+        record_view_size, render_debug_view, should_apply_background_reload, sprint_reference_now,
+        truncate_display,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -14357,6 +14363,39 @@ mod tests {
     }
 
     #[test]
+    fn truncate_display_preserves_grapheme_clusters_and_cell_width() {
+        let text = "Ame\u{301}lie 👩‍💻";
+        let truncated = truncate_display(text, 6);
+        assert_eq!(display_width(&truncated), 6);
+        assert!(truncated.ends_with('…'));
+        assert!(
+            truncated.contains("e\u{301}"),
+            "combining grapheme should stay intact"
+        );
+    }
+
+    #[test]
+    fn fit_display_pads_to_visual_width_for_wide_graphemes() {
+        let fitted = fit_display("界", 4);
+        assert_eq!(display_width(&fitted), 4);
+        assert_eq!(fitted, "界  ");
+    }
+
+    #[test]
+    fn history_detail_renders_hyperlink_for_selected_commit() {
+        let repo = init_temp_repo_with_remote("git@github.com:owner/repo.git");
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.repo_root = Some(repo.path().to_path_buf());
+
+        let urls = rendered_link_urls(&app, 120, 40);
+        assert!(
+            urls.iter()
+                .any(|url| url == "https://github.com/owner/repo/commit/aaaa1111"),
+            "expected commit hyperlink to be rendered, got {urls:?}"
+        );
+    }
+
+    #[test]
     fn history_legacy_lifecycle_lines_match_go_shape() {
         let now = Utc::now();
         let history = HistoryBeadCompat {
@@ -14982,6 +15021,48 @@ mod tests {
         let mut frame = ftui::render::frame::Frame::new(width, height, &mut pool);
         app.view(&mut frame);
         super::buffer_to_text(&frame.buffer, &pool)
+    }
+
+    fn rendered_link_urls(app: &BvrApp, width: u16, height: u16) -> Vec<String> {
+        let mut pool = ftui::GraphemePool::default();
+        let mut links = ftui::LinkRegistry::new();
+        let mut frame =
+            ftui::render::frame::Frame::with_links(width, height, &mut pool, &mut links);
+        app.view(&mut frame);
+        let mut link_ids = Vec::new();
+        for y in 0..height {
+            for x in 0..width {
+                if let Some(cell) = frame.buffer.get(x, y) {
+                    let link_id = cell.attrs.link_id();
+                    if link_id != 0 && !link_ids.contains(&link_id) {
+                        link_ids.push(link_id);
+                    }
+                }
+            }
+        }
+        drop(frame);
+        link_ids
+            .into_iter()
+            .filter_map(|link_id| links.get(link_id).map(ToString::to_string))
+            .collect()
+    }
+
+    fn init_temp_repo_with_remote(remote: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(dir.path())
+            .status()
+            .expect("git init");
+        assert!(status.success(), "git init should succeed");
+
+        let status = std::process::Command::new("git")
+            .args(["remote", "add", "origin", remote])
+            .current_dir(dir.path())
+            .status()
+            .expect("git remote add origin");
+        assert!(status.success(), "git remote add origin should succeed");
+        dir
     }
 
     macro_rules! snapshot_test {

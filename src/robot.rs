@@ -1411,7 +1411,13 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "stats": {"type": "object"},
+                "total_feedback": schema_prop("integer"),
+                "confirmed": schema_prop("integer"),
+                "rejected": schema_prop("integer"),
+                "ignored": schema_prop("integer"),
+                "accuracy_rate": schema_prop("number"),
+                "avg_confirm_conf": schema_prop("number"),
+                "avg_reject_conf": schema_prop("number"),
             }),
         ),
     );
@@ -1423,7 +1429,8 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "report": {"type": "object"},
+                "stats": {"type": "object"},
+                "candidates": {"type": "array"},
             }),
         ),
     );
@@ -1435,7 +1442,10 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "file_path": schema_prop("string"),
+                "open_beads": {"type": "array"},
+                "closed_beads": {"type": "array"},
+                "total_beads": schema_prop("integer"),
             }),
         ),
     );
@@ -1460,7 +1470,11 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "files": {"type": "array"},
+                "affected_beads": {"type": "array"},
+                "risk_level": schema_prop("string"),
+                "risk_score": schema_prop("number"),
+                "summary": schema_prop("string"),
             }),
         ),
     );
@@ -1472,7 +1486,9 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "source_file": schema_prop("string"),
+                "related_files": {"type": "array"},
+                "total_commits_for_source": schema_prop("integer"),
             }),
         ),
     );
@@ -1484,7 +1500,8 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "source_bead": schema_prop("string"),
+                "related": {"type": "array"},
             }),
         ),
     );
@@ -1496,7 +1513,14 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "target_id": schema_prop("string"),
+                "target_title": schema_prop("string"),
+                "is_blocked": schema_prop("boolean"),
+                "chain_length": schema_prop("integer"),
+                "root_blockers": {"type": "array"},
+                "chain": {"type": "array"},
+                "has_cycle": schema_prop("boolean"),
+                "cycle_ids": {"type": "array"},
             }),
         ),
     );
@@ -1508,7 +1532,10 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "bead_id": schema_prop("string"),
+                "depth": schema_prop("integer"),
+                "network": {"type": "object"},
+                "top_connected": {"type": "array"},
             }),
         ),
     );
@@ -1520,7 +1547,8 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "chain": {"type": "object"},
+                "insights": {"type": "object"},
             }),
         ),
     );
@@ -1532,7 +1560,11 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "has_drift": schema_prop("boolean"),
+                "exit_code": schema_prop("integer"),
+                "summary": {"type": "object"},
+                "alerts": {"type": "array"},
+                "baseline": {"type": "object"},
             }),
         ),
     );

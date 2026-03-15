@@ -76,3 +76,32 @@ fn conflicting_agents_actions_are_rejected() {
         "only one of --agents-check/--agents-add/--agents-update/--agents-remove may be used",
     ));
 }
+
+#[test]
+fn agents_force_uses_workspace_root_discovered_from_repo_path() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp.path().join("workspace");
+    let nested_repo = workspace_root.join("services/api");
+    std::fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace dir");
+    std::fs::create_dir_all(&nested_repo).expect("create nested repo");
+    std::fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n    prefix: api-\n",
+    )
+    .expect("write workspace config");
+    std::fs::write(
+        workspace_root.join("AGENTS.md"),
+        "<!-- bv-agent-instructions-v1 -->\n\n<!-- end-bv-agent-instructions -->\n",
+    )
+    .expect("write agents file");
+
+    let mut cmd = bvr_command();
+    cmd.current_dir(&nested_repo)
+        .args(["--agents-force", "--repo-path", nested_repo.to_str().unwrap()]);
+
+    cmd.assert().success().stdout(
+        predicate::str::contains("Found AGENTS.md")
+            .and(predicate::str::contains(workspace_root.join("AGENTS.md").to_string_lossy()))
+            .and(predicate::str::contains("up to date")),
+    );
+}

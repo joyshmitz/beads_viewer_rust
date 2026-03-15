@@ -351,6 +351,72 @@ fn robot_burndown_schema_includes_versioned_envelope_fields() {
     assert!(validate_type_at(&output, "schema.properties.version", JsonType::Object).is_empty());
 }
 
+#[test]
+fn robot_correlation_stats_schema_matches_flattened_output_shape() {
+    let output = run_bvr_json(
+        &[
+            "--robot-schema",
+            "--schema-command",
+            "robot-correlation-stats",
+        ],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(
+        validate_type_at(
+            &output,
+            "schema.properties.total_feedback",
+            JsonType::Object
+        )
+        .is_empty()
+    );
+    assert!(validate_type_at(&output, "schema.properties.confirmed", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.rejected", JsonType::Object).is_empty());
+    assert!(
+        validate_type_at(&output, "schema.properties.accuracy_rate", JsonType::Object).is_empty()
+    );
+    assert!(output["schema"]["properties"].get("stats").is_none());
+}
+
+#[test]
+fn robot_orphans_schema_matches_flattened_output_shape() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-orphans"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(validate_type_at(&output, "schema.properties.stats", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.candidates", JsonType::Object).is_empty());
+    assert!(output["schema"]["properties"].get("report").is_none());
+}
+
+#[test]
+fn robot_impact_network_schema_matches_flattened_output_shape() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-impact-network"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(validate_type_at(&output, "schema.properties.bead_id", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.depth", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.network", JsonType::Object).is_empty());
+    assert!(
+        validate_type_at(&output, "schema.properties.top_connected", JsonType::Object).is_empty()
+    );
+    assert!(output["schema"]["properties"].get("result").is_none());
+}
+
+#[test]
+fn robot_drift_schema_matches_flattened_output_shape() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "robot-drift"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert!(validate_type_at(&output, "schema.properties.has_drift", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.exit_code", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.summary", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.alerts", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "schema.properties.baseline", JsonType::Object).is_empty());
+    assert!(output["schema"]["properties"].get("result").is_none());
+}
+
 // ============================================================================
 // Determinism tests for additional robot modes
 // ============================================================================

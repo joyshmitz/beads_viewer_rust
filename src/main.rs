@@ -290,10 +290,8 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
 
-        let work_dir = cli
-            .workspace
-            .clone()
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let work_dir = project_dir_for_load_target(&cli)
+            .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
         let result = if cli.agents_add {
             bvr::agents::agents_add(&work_dir, cli.agents_dry_run)

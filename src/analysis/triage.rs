@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use chrono::Utc;
+use chrono::{Datelike, Duration, Utc, Weekday};
 use serde::Serialize;
 
 use crate::analysis::graph::{GraphMetrics, IssueGraph};
@@ -379,7 +379,54 @@ pub struct RecommendationsByLabel {
 pub struct QuickRef {
     pub total_open: usize,
     pub total_actionable: usize,
+    pub open_count: usize,
+    pub actionable_count: usize,
+    pub blocked_count: usize,
+    pub in_progress_count: usize,
     pub top_picks: Vec<QuickPick>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectHealthCounts {
+    pub total: usize,
+    pub open: usize,
+    pub closed: usize,
+    pub actionable: usize,
+    pub blocked: usize,
+    pub by_status: BTreeMap<String, usize>,
+    pub by_priority: BTreeMap<i32, usize>,
+    pub by_type: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectHealthGraph {
+    pub node_count: usize,
+    pub edge_count: usize,
+    pub density: f64,
+    pub has_cycles: bool,
+    pub cycle_count: usize,
+    pub phase2_ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WeeklyClosureCount {
+    pub week_start: chrono::DateTime<Utc>,
+    pub closed: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectHealthVelocity {
+    pub closed_last_7_days: usize,
+    pub closed_last_30_days: usize,
+    pub avg_days_to_close: f64,
+    pub weekly: Vec<WeeklyClosureCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectHealth {
+    pub counts: ProjectHealthCounts,
+    pub graph: ProjectHealthGraph,
+    pub velocity: ProjectHealthVelocity,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -390,6 +437,7 @@ pub struct TriageResult {
     pub blockers_to_clear: Vec<BlockerToClear>,
     pub recommendations_by_track: Vec<RecommendationsByTrack>,
     pub recommendations_by_label: Vec<RecommendationsByLabel>,
+    pub project_health: ProjectHealth,
 }
 
 /// Configurable scoring weights and thresholds for triage (matches Go's TriageScoringOptions).
@@ -601,10 +649,20 @@ pub fn compute_triage(
         Vec::new()
     };
 
+    let blocked_count = total_open.saturating_sub(actionable.len());
+    let in_progress_count = issues
+        .iter()
+        .filter(|issue| issue.is_open_like() && issue.normalized_status() == "in_progress")
+        .count();
+
     let result = TriageResult {
         quick_ref: QuickRef {
             total_open,
             total_actionable: actionable.len(),
+            open_count: total_open,
+            actionable_count: actionable.len(),
+            blocked_count,
+            in_progress_count,
             top_picks,
         },
         recommendations,
@@ -612,12 +670,148 @@ pub fn compute_triage(
         blockers_to_clear,
         recommendations_by_track,
         recommendations_by_label,
+        project_health: compute_project_health(issues, graph, metrics, total_open, actionable.len()),
     };
 
     TriageComputation {
         result,
         score_by_id,
     }
+}
+
+fn compute_project_health(
+    issues: &[Issue],
+    graph: &IssueGraph,
+    metrics: &GraphMetrics,
+    total_open: usize,
+    actionable_count: usize,
+) -> ProjectHealth {
+    let mut by_status = BTreeMap::<String, usize>::new();
+    let mut by_priority = BTreeMap::<i32, usize>::new();
+    let mut by_type = BTreeMap::<String, usize>::new();
+    let mut closed_count = 0usize;
+    let mut in_progress_count = 0usize;
+    let mut closed_last_7_days = 0usize;
+    let mut closed_last_30_days = 0usize;
+    let mut total_close_days = 0.0_f64;
+    let mut close_samples = 0usize;
+    let now = Utc::now();
+    let week_starts = recent_week_starts(now, 8);
+    let mut weekly = week_starts
+        .iter()
+        .copied()
+        .map(|week_start| WeeklyClosureCount {
+            week_start,
+            closed: 0,
+        })
+        .collect::<Vec<_>>();
+
+    for issue in issues {
+        *by_status.entry(issue.normalized_status()).or_default() += 1;
+        *by_priority.entry(issue.priority).or_default() += 1;
+        *by_type.entry(issue.issue_type.clone()).or_default() += 1;
+
+        if issue.is_open_like() && issue.normalized_status() == "in_progress" {
+            in_progress_count = in_progress_count.saturating_add(1);
+        }
+
+        if !issue.is_closed_like() {
+            continue;
+        }
+
+        closed_count = closed_count.saturating_add(1);
+
+        let Some(closed_at) = issue.closed_at.or(issue.updated_at) else {
+            continue;
+        };
+
+        if closed_at >= now - Duration::days(7) {
+            closed_last_7_days = closed_last_7_days.saturating_add(1);
+        }
+        if closed_at >= now - Duration::days(30) {
+            closed_last_30_days = closed_last_30_days.saturating_add(1);
+        }
+        if let Some(created_at) = issue.created_at {
+            total_close_days += (closed_at - created_at).num_hours() as f64 / 24.0;
+            close_samples = close_samples.saturating_add(1);
+        }
+
+        for bucket in &mut weekly {
+            let week_end = bucket.week_start + Duration::days(7);
+            if closed_at >= bucket.week_start && closed_at < week_end {
+                bucket.closed = bucket.closed.saturating_add(1);
+                break;
+            }
+        }
+    }
+
+    let blocked_count = total_open.saturating_sub(actionable_count);
+    let node_count = graph.node_count();
+    let edge_count = graph.edge_count();
+    let density = if node_count <= 1 {
+        0.0
+    } else {
+        edge_count as f64 / (node_count * (node_count - 1)) as f64
+    };
+
+    ProjectHealth {
+        counts: ProjectHealthCounts {
+            total: issues.len(),
+            open: total_open,
+            closed: closed_count,
+            actionable: actionable_count,
+            blocked: blocked_count,
+            by_status,
+            by_priority,
+            by_type,
+        },
+        graph: ProjectHealthGraph {
+            node_count,
+            edge_count,
+            density,
+            has_cycles: !metrics.cycles.is_empty(),
+            cycle_count: metrics.cycles.len(),
+            phase2_ready: triage_phase2_ready(metrics),
+        },
+        velocity: ProjectHealthVelocity {
+            closed_last_7_days,
+            closed_last_30_days,
+            avg_days_to_close: if close_samples == 0 {
+                0.0
+            } else {
+                total_close_days / close_samples as f64
+            },
+            weekly,
+        },
+    }
+}
+
+fn triage_phase2_ready(metrics: &GraphMetrics) -> bool {
+    !metrics
+        .skipped_metrics
+        .iter()
+        .any(|metric| metric.metric == "Betweenness")
+}
+
+fn recent_week_starts(now: chrono::DateTime<Utc>, count: usize) -> Vec<chrono::DateTime<Utc>> {
+    let weekday_offset = match now.weekday() {
+        Weekday::Mon => 0,
+        Weekday::Tue => 1,
+        Weekday::Wed => 2,
+        Weekday::Thu => 3,
+        Weekday::Fri => 4,
+        Weekday::Sat => 5,
+        Weekday::Sun => 6,
+    };
+    let start_of_week = now.date_naive().and_hms_opt(0, 0, 0).unwrap_or_default()
+        - Duration::days(i64::from(weekday_offset));
+
+    (0..count)
+        .map(|index| chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+            start_of_week - Duration::days((index * 7) as i64),
+            Utc,
+        ))
+        .collect()
 }
 
 fn compute_blockers_to_clear(
@@ -797,8 +991,18 @@ mod tests {
 
         assert_eq!(triage.result.quick_ref.total_open, 2);
         assert_eq!(triage.result.quick_ref.total_actionable, 1);
+        assert_eq!(triage.result.quick_ref.open_count, 2);
+        assert_eq!(triage.result.quick_ref.actionable_count, 1);
+        assert_eq!(triage.result.quick_ref.blocked_count, 1);
+        assert_eq!(triage.result.quick_ref.in_progress_count, 0);
         assert_eq!(triage.result.recommendations.len(), 1);
         assert_eq!(triage.result.recommendations[0].id, "A");
+        assert_eq!(triage.result.project_health.counts.total, 2);
+        assert_eq!(triage.result.project_health.counts.open, 2);
+        assert_eq!(triage.result.project_health.counts.blocked, 1);
+        assert_eq!(triage.result.project_health.graph.node_count, 2);
+        assert_eq!(triage.result.project_health.graph.edge_count, 1);
+        assert!(triage.result.project_health.graph.phase2_ready);
     }
 
     #[test]
@@ -819,8 +1023,14 @@ mod tests {
         );
         assert_eq!(triage.result.quick_ref.total_open, 0);
         assert_eq!(triage.result.quick_ref.total_actionable, 0);
+        assert_eq!(triage.result.quick_ref.open_count, 0);
+        assert_eq!(triage.result.quick_ref.actionable_count, 0);
+        assert_eq!(triage.result.quick_ref.blocked_count, 0);
+        assert_eq!(triage.result.quick_ref.in_progress_count, 0);
         assert!(triage.result.recommendations.is_empty());
         assert!(triage.result.blockers_to_clear.is_empty());
+        assert_eq!(triage.result.project_health.counts.total, 0);
+        assert_eq!(triage.result.project_health.velocity.weekly.len(), 8);
     }
 
     #[test]
@@ -855,6 +1065,7 @@ mod tests {
             },
         );
         assert_eq!(triage.result.quick_ref.total_open, 0);
+        assert_eq!(triage.result.quick_ref.open_count, 0);
         assert!(triage.result.recommendations.is_empty());
     }
 

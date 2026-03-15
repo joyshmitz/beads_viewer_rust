@@ -223,13 +223,20 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::triage::{BlockerToClear, QuickPick, QuickRef, Recommendation};
+    use crate::analysis::triage::{
+        BlockerToClear, ProjectHealth, ProjectHealthCounts, ProjectHealthGraph,
+        ProjectHealthVelocity, QuickPick, QuickRef, Recommendation, WeeklyClosureCount,
+    };
 
     fn make_triage_result() -> TriageResult {
         TriageResult {
             quick_ref: QuickRef {
                 total_open: 5,
                 total_actionable: 3,
+                open_count: 5,
+                actionable_count: 3,
+                blocked_count: 2,
+                in_progress_count: 1,
                 top_picks: vec![QuickPick {
                     id: "A-1".to_string(),
                     title: "Fix auth".to_string(),
@@ -264,6 +271,35 @@ mod tests {
             }],
             recommendations_by_track: Vec::new(),
             recommendations_by_label: Vec::new(),
+            project_health: ProjectHealth {
+                counts: ProjectHealthCounts {
+                    total: 5,
+                    open: 5,
+                    closed: 0,
+                    actionable: 3,
+                    blocked: 2,
+                    by_status: std::collections::BTreeMap::new(),
+                    by_priority: std::collections::BTreeMap::new(),
+                    by_type: std::collections::BTreeMap::new(),
+                },
+                graph: ProjectHealthGraph {
+                    node_count: 5,
+                    edge_count: 2,
+                    density: 0.1,
+                    has_cycles: false,
+                    cycle_count: 0,
+                    phase2_ready: true,
+                },
+                velocity: ProjectHealthVelocity {
+                    closed_last_7_days: 0,
+                    closed_last_30_days: 0,
+                    avg_days_to_close: 0.0,
+                    weekly: vec![WeeklyClosureCount {
+                        week_start: chrono::Utc::now(),
+                        closed: 0,
+                    }],
+                },
+            },
         }
     }
 

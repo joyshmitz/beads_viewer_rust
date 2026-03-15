@@ -19,6 +19,7 @@ use serde_json::Value;
 // the Rust contract going forward.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LegacyExportParityClass {
     MustHaveParityNow,
     ExplicitlyDeferredParity,
@@ -334,9 +335,9 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "triage-project-health",
-        class: LegacyExportParityClass::ExplicitlyDeferredParity,
-        description: "Full parity still requires triage.json to carry project_health summary data.",
-        rationale: "Legacy static pages expose graph and velocity health directly from the exported triage payload.",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle must carry project_health summary data inside data/triage.json.",
+        rationale: "The shipped viewer runtime already renders graph and velocity health directly from the exported triage payload.",
         provenance: &[
             "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_pages_test.go::TestExportPages_TriageJSON",
             "legacy_beads_viewer_code/beads_viewer/pkg/export/viewer_assets/index.html::project_health dashboard widgets",
@@ -345,9 +346,9 @@ static LEGACY_EXPORT_CONTRACT: &[LegacyExportContractItem] = &[
     },
     LegacyExportContractItem {
         id: "quick-ref-count-fields",
-        class: LegacyExportParityClass::ExplicitlyDeferredParity,
-        description: "Full parity still requires legacy quick_ref count fields such as open_count, actionable_count, blocked_count, and in_progress_count.",
-        rationale: "Legacy incremental tests and dashboards consume richer summary counters than the current reduced Rust quick_ref payload exports.",
+        class: LegacyExportParityClass::MustHaveParityNow,
+        description: "The export bundle must include legacy quick_ref count fields such as open_count, actionable_count, blocked_count, and in_progress_count.",
+        rationale: "Legacy incremental tests and the current static dashboard both consume richer quick_ref counters than the reduced Rust payload previously exported.",
         provenance: &[
             "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_incremental_test.go::TestExportIncremental_CloseIssues",
             "legacy_beads_viewer_code/beads_viewer/tests/e2e/export_incremental_test.go::TestExportIncremental_CloseBlockingIssue",
@@ -604,7 +605,6 @@ fn legacy_export_contract_inventory_is_unique_and_provenanced() {
     let mut ids = BTreeSet::new();
     let mut must_have = 0usize;
     let mut deferred = 0usize;
-    let mut non_goal = 0usize;
 
     for item in LEGACY_EXPORT_CONTRACT {
         assert!(
@@ -640,7 +640,7 @@ fn legacy_export_contract_inventory_is_unique_and_provenanced() {
         match item.class {
             LegacyExportParityClass::MustHaveParityNow => must_have += 1,
             LegacyExportParityClass::ExplicitlyDeferredParity => deferred += 1,
-            LegacyExportParityClass::NonGoalForRustParity => non_goal += 1,
+            LegacyExportParityClass::NonGoalForRustParity => {}
         }
     }
 

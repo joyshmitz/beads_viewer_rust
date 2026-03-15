@@ -34,6 +34,14 @@ fn run_bvr_json(flags: &[&str], beads_file: &str) -> Value {
     serde_json::from_slice(&output).expect("valid JSON output")
 }
 
+fn run_bvr_json_with_path(flags: &[&str], beads_path: &std::path::Path) -> Value {
+    let mut cmd = bvr();
+    cmd.args(flags);
+    cmd.arg("--beads-file").arg(beads_path);
+    let output = cmd.assert().success().get_output().stdout.clone();
+    serde_json::from_slice(&output).expect("valid JSON output")
+}
+
 // ============================================================================
 // Drift exit codes (--robot-drift)
 // ============================================================================
@@ -433,6 +441,30 @@ fn triage_includes_open_statuses() {
     assert!(
         !recs.is_empty(),
         "triage should recommend open issues from minimal fixture"
+    );
+}
+
+#[test]
+fn robot_next_returns_in_progress_actionable_issue_when_it_is_top_pick() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let beads_path = temp.path().join("in_progress_actionable.jsonl");
+    fs::write(
+        &beads_path,
+        concat!(
+            "{\"id\":\"A\",\"title\":\"Claimed blocker\",\"status\":\"in_progress\",\"priority\":1,\"issue_type\":\"task\"}\n",
+            "{\"id\":\"B\",\"title\":\"Blocked leaf\",\"status\":\"blocked\",\"priority\":2,\"issue_type\":\"task\",",
+            "\"dependencies\":[{\"depends_on_id\":\"A\",\"type\":\"blocks\"}]}\n",
+        ),
+    )
+    .expect("write fixture");
+
+    let output = run_bvr_json_with_path(&["--robot-next"], &beads_path);
+    assert_eq!(output["id"], "A");
+    assert_eq!(output["title"], "Claimed blocker");
+    assert_eq!(output["claim_command"], "br update A --status=in_progress");
+    assert!(
+        output.get("message").is_none_or(serde_json::Value::is_null),
+        "robot-next should not fall back to the no-actionable message: {output}"
     );
 }
 

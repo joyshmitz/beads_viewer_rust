@@ -981,11 +981,8 @@ where
                             "--public"
                         };
                         writeln!(writer, "  Deploy to GitHub Pages: {repo}").ok();
-                        let mut command = format!(
-                            "gh repo create {} {visibility_flag} --source={}",
-                            shell_quote(repo),
-                            shell_quote(&output.display().to_string())
-                        );
+                        let mut command =
+                            format!("gh repo create {} {visibility_flag}", shell_quote(repo));
                         if let Some(description) = wizard
                             .config
                             .github_description
@@ -997,6 +994,12 @@ where
                             command.push_str(&shell_quote(description));
                         }
                         writeln!(writer, "  Run: {command}").ok();
+                        writeln!(
+                            writer,
+                            "  Then publish {} to your gh-pages branch with your preferred git workflow.",
+                            shell_quote(&output.display().to_string())
+                        )
+                        .ok();
                     }
                     Some(DeployTarget::Cloudflare) => {
                         let project = wizard.config.cloudflare_project.as_deref().unwrap_or("?");
@@ -2025,6 +2028,10 @@ mod tests {
             output.contains("--description 'My project dashboard'"),
             "expected description in deploy instructions: {output}"
         );
+        assert!(
+            output.contains("gh-pages branch"),
+            "expected bundle publish guidance: {output}"
+        );
     }
 
     #[test]
@@ -2033,12 +2040,16 @@ mod tests {
         let (output, result) = run_wizard_with_input(input);
         assert!(result.is_ok(), "output: {output}");
         assert!(
-            output.contains("gh repo create 'org/pages repo' --public --source='./out dir'"),
-            "expected quoted repo/path in deploy instructions: {output}"
+            output.contains("gh repo create 'org/pages repo' --public"),
+            "expected quoted repo in deploy instructions: {output}"
         );
         assert!(
             output.contains("--description 'Project dashboard'\"'\"'s home'"),
             "expected quoted description in deploy instructions: {output}"
+        );
+        assert!(
+            output.contains("Then publish './out dir' to your gh-pages branch"),
+            "expected quoted bundle path in publish guidance: {output}"
         );
     }
 

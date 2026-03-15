@@ -1823,8 +1823,8 @@ fn main() -> ExitCode {
             let watched_mtimes = watched_paths
                 .iter()
                 .map(|path| {
-                    file_mtime_epoch_millis(path)
-                        .map(|mtime| (path.clone(), mtime))
+                    file_watch_token(path)
+                        .map(|token| (path.clone(), token))
                         .map_err(|error| {
                             bvr::BvrError::InvalidArgument(format!(
                                 "failed to read watch source {}: {error}",
@@ -1874,8 +1874,8 @@ fn main() -> ExitCode {
                 std::thread::sleep(std::time::Duration::from_millis(watch_interval_ms));
 
                 let mut changed_files: Vec<String> = Vec::new();
-                for (path, last_mtime) in &mut watched_mtimes {
-                    let current_mtime = match file_mtime_epoch_millis(path) {
+                for (path, last_token) in &mut watched_mtimes {
+                    let current_token = match file_watch_token(path) {
                         Ok(value) => value,
                         Err(error) => {
                             eprintln!("warning: cannot stat {}: {error}", path.display());
@@ -1883,8 +1883,8 @@ fn main() -> ExitCode {
                         }
                     };
 
-                    if current_mtime > *last_mtime {
-                        *last_mtime = current_mtime;
+                    if current_token != *last_token {
+                        *last_token = current_token;
                         changed_files.push(path.display().to_string());
                     }
                 }
@@ -1911,10 +1911,10 @@ fn main() -> ExitCode {
                 }
                 // Wait the debounce period, then re-scan to capture any trailing writes.
                 std::thread::sleep(std::time::Duration::from_millis(debounce_ms));
-                for (path, last_mtime) in &mut watched_mtimes {
-                    if let Ok(current_mtime) = file_mtime_epoch_millis(path) {
-                        if current_mtime > *last_mtime {
-                            *last_mtime = current_mtime;
+                for (path, last_token) in &mut watched_mtimes {
+                    if let Ok(current_token) = file_watch_token(path) {
+                        if current_token != *last_token {
+                            *last_token = current_token;
                             let display = path.display().to_string();
                             if !changed_files.contains(&display) {
                                 changed_files.push(display);
@@ -2403,9 +2403,19 @@ fn resolve_watch_export_paths(cli: &Cli) -> bvr::Result<Vec<PathBuf>> {
     }
 }
 
-fn file_mtime_epoch_millis(path: &Path) -> bvr::Result<u64> {
-    let metadata = fs::metadata(path)?;
-    let modified = metadata
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileWatchToken {
+    modified_millis: u64,
+    len_bytes: u64,
+}
+
+fn file_watch_token(path: &Path) -> bvr::Result<Option<FileWatchToken>> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(bvr::BvrError::Io(error)),
+    };
+    let modified_millis = metadata
         .modified()
         .ok()
         .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
@@ -2413,7 +2423,10 @@ fn file_mtime_epoch_millis(path: &Path) -> bvr::Result<u64> {
             let millis = duration.as_millis().min(u128::from(u64::MAX));
             u64::try_from(millis).unwrap_or(u64::MAX)
         });
-    Ok(modified)
+    Ok(Some(FileWatchToken {
+        modified_millis,
+        len_bytes: metadata.len(),
+    }))
 }
 
 fn load_issues_at_revision(cli: &Cli, revision: &str) -> bvr::Result<Vec<bvr::model::Issue>> {

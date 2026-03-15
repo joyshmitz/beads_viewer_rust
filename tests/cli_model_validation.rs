@@ -14,6 +14,7 @@ use bvr::analysis::drift::{Baseline, BaselineGraphStats, BaselineTopMetrics};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -22,6 +23,24 @@ fn repo_root() -> PathBuf {
 fn bvr() -> Command {
     let bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
     Command::new(bin)
+}
+
+fn run_git(dir: &std::path::Path, args: &[&str]) {
+    let output = ProcessCommand::new("git")
+        .current_dir(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .expect("run git");
+    assert!(
+        output.status.success(),
+        "git {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn run_bvr_json(flags: &[&str], beads_file: &str) -> Value {
@@ -958,6 +977,69 @@ fn diff_since_auto_robot_diff_suppresses_loader_warnings() {
 
     let json: Value = serde_json::from_slice(&output.stdout).expect("valid JSON");
     assert!(json.get("diff").is_some(), "diff payload should be present");
+}
+
+#[test]
+fn robot_diff_git_ref_uses_workspace_history_when_repo_path_discovers_workspace() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let workspace_root = tmp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let web_dir = workspace_root.join("apps/web");
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::create_dir_all(repo_dir.join(".beads")).expect("create repo .beads");
+    fs::create_dir_all(web_dir.join(".beads")).expect("create web .beads");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n    prefix: api-\n  - path: apps/web\n    prefix: web-\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        repo_dir.join(".beads/beads.jsonl"),
+        "{\"id\":\"AUTH-1\",\"title\":\"API issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write api beads");
+    fs::write(
+        web_dir.join(".beads/beads.jsonl"),
+        "{\"id\":\"WEB-1\",\"title\":\"Web issue one\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write web beads");
+
+    run_git(&workspace_root, &["init"]);
+    run_git(&workspace_root, &["add", "."]);
+    run_git(&workspace_root, &["commit", "-m", "initial workspace snapshot"]);
+
+    fs::write(
+        web_dir.join(".beads/beads.jsonl"),
+        concat!(
+            "{\"id\":\"WEB-1\",\"title\":\"Web issue one\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+            "{\"id\":\"WEB-2\",\"title\":\"Web issue two\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n"
+        ),
+    )
+    .expect("update web beads");
+    run_git(&workspace_root, &["add", "."]);
+    run_git(&workspace_root, &["commit", "-m", "add second web issue"]);
+
+    let output = bvr()
+        .args([
+            "--robot-diff",
+            "--diff-since",
+            "HEAD~1",
+            "--repo-path",
+            repo_dir.to_str().unwrap(),
+        ])
+        .current_dir(&workspace_root)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON");
+    let added = json["diff"]["new_issues"]
+        .as_array()
+        .expect("new_issues array");
+    assert_eq!(added.len(), 1, "workspace diff should only add the new web issue");
+    assert_eq!(added[0]["title"], "Web issue two");
 }
 
 // ============================================================================

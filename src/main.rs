@@ -2468,50 +2468,126 @@ fn file_watch_token(path: &Path) -> bvr::Result<Option<FileWatchToken>> {
     }))
 }
 
-fn load_issues_at_revision(cli: &Cli, revision: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
-    let repo_root = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+fn load_issues_from_git_relative_path(
+    repo_root: &Path,
+    relative_path: &Path,
+    revision: &str,
+) -> bvr::Result<Vec<bvr::model::Issue>> {
+    let git_ref = format!("{revision}:{}", relative_path.to_string_lossy());
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .arg("show")
+        .arg(&git_ref)
+        .output()?;
 
-    // Try common beads file paths at the given revision
-    let candidates = [".beads/issues.jsonl", ".beads/beads.jsonl"];
+    if !output.status.success() {
+        return Err(bvr::BvrError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "could not load {} at revision {revision}",
+                relative_path.display()
+            ),
+        )));
+    }
 
-    for path in &candidates {
-        let git_ref = format!("{revision}:{path}");
-        let output = Command::new("git")
-            .args(["show", &git_ref])
-            .current_dir(&repo_root)
-            .output();
+    parse_issues_from_jsonl_text(&String::from_utf8_lossy(&output.stdout))
+}
 
-        match output {
-            Ok(out) if out.status.success() => {
-                let content = String::from_utf8_lossy(&out.stdout);
-                let mut issues = Vec::new();
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    match serde_json::from_str::<bvr::model::Issue>(trimmed) {
-                        Ok(issue) => issues.push(issue),
-                        Err(error) => {
-                            tracing::warn!("skipping malformed issue line at {revision}: {error}");
-                        }
-                    }
-                }
-                eprintln!(
-                    "Loaded {} issues from {} (as-of: {revision})",
-                    issues.len(),
-                    path
+fn load_issues_from_history_file_path(
+    path: &Path,
+    revision: &str,
+) -> bvr::Result<Vec<bvr::model::Issue>> {
+    let absolute_path = absolute_from_current_dir(path);
+    let repo_root = resolve_git_toplevel(absolute_path.parent().unwrap_or_else(|| Path::new(".")))
+        .ok_or_else(|| {
+            bvr::BvrError::InvalidArgument(format!(
+                "could not determine repository root for historical issues path {}",
+                absolute_path.display()
+            ))
+        })?;
+    let relative_path = absolute_path.strip_prefix(&repo_root).map_err(|_| {
+        bvr::BvrError::InvalidArgument(format!(
+            "historical issues path {} is outside repository root {}",
+            absolute_path.display(),
+            repo_root.display()
+        ))
+    })?;
+
+    load_issues_from_git_relative_path(&repo_root, relative_path, revision)
+}
+
+fn load_workspace_issues_at_revision(
+    config_path: &Path,
+    revision: &str,
+) -> bvr::Result<Vec<bvr::model::Issue>> {
+    let config = loader::load_workspace_config(config_path)?;
+    let workspace_root = loader::resolve_workspace_root(config_path);
+    let enabled_repos = config
+        .repos
+        .iter()
+        .filter(|repo| repo.enabled.unwrap_or(true))
+        .cloned()
+        .collect::<Vec<_>>();
+    let known_prefixes = enabled_repos
+        .iter()
+        .map(bvr::loader::WorkspaceRepoConfig::effective_prefix)
+        .collect::<Vec<_>>();
+
+    let mut all_issues = Vec::new();
+    let mut failed_repos = Vec::new();
+
+    for repo in enabled_repos {
+        let repo_name = repo.effective_name();
+        let prefix = repo.effective_prefix();
+        let repo_path = if Path::new(repo.path.trim()).is_absolute() {
+            PathBuf::from(repo.path.trim())
+        } else {
+            workspace_root.join(repo.path.trim())
+        };
+        let beads_dir = repo_path.join(repo.effective_beads_path(Some(&config.defaults)));
+
+        let repo_issues = (|| -> bvr::Result<Vec<bvr::model::Issue>> {
+            let jsonl_path = loader::find_jsonl_path(&beads_dir)?;
+            let mut issues = load_issues_from_history_file_path(&jsonl_path, revision)?;
+            loader::namespace_workspace_issues(
+                &mut issues,
+                &prefix,
+                &repo_name,
+                &known_prefixes,
+            );
+            Ok(issues)
+        })();
+
+        match repo_issues {
+            Ok(mut issues) => all_issues.append(&mut issues),
+            Err(error) => {
+                tracing::warn!(
+                    "workspace repo '{}' failed to load at {}: {}",
+                    repo_name,
+                    revision,
+                    error
                 );
-                return Ok(issues);
+                failed_repos.push(repo_name);
             }
-            _ => {}
         }
     }
 
-    Err(bvr::BvrError::Io(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("Could not load issues at revision: {revision}"),
-    )))
+    if all_issues.is_empty() && !failed_repos.is_empty() {
+        return Err(bvr::BvrError::InvalidArgument(format!(
+            "workspace historical load failed for all repositories at {revision}: {}",
+            failed_repos.join(", ")
+        )));
+    }
+
+    Ok(all_issues)
+}
+
+fn load_issues_at_revision(cli: &Cli, revision: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
+    let issues = load_historical_issues_for_load_target(cli, revision)?;
+
+    eprintln!("Loaded {} issues (as-of: {revision})", issues.len());
+    Ok(issues)
 }
 
 fn parse_suggest_type(raw: Option<&str>) -> bvr::Result<Option<SuggestionType>> {
@@ -2553,61 +2629,44 @@ fn resolve_forecast_sprint_beads(cli: &Cli, sprint_id: &str) -> bvr::Result<BTre
 }
 
 fn load_issues_for_diff(cli: &Cli, diff_since: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
-    if let Some(path) = resolve_reference_file_path(diff_since, cli.repo_path.as_deref()) {
+    if let Some(path) = resolve_cli_reference_file_path(diff_since, cli) {
         return loader::load_issues_from_file(&path);
     }
 
     load_issues_from_git_ref(cli, diff_since)
 }
 
-fn load_issues_from_git_ref(cli: &Cli, reference: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
-    let Some(repo_root) = resolve_repo_root(cli) else {
-        return Err(bvr::BvrError::InvalidArgument(
-            "could not determine repository root".to_string(),
-        ));
-    };
-
-    let beads_dir = loader::get_beads_dir(cli.repo_path.as_deref())?;
-    let beads_path = loader::find_jsonl_path(&beads_dir)?;
-
-    let relative = beads_path.strip_prefix(&repo_root).ok().map_or_else(
-        || ".beads/beads.jsonl".to_string(),
-        |path| path.to_string_lossy().replace('\\', "/"),
-    );
-
-    let candidates = [relative, ".beads/beads.jsonl".to_string()];
-
-    for candidate in candidates {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(&repo_root)
-            .arg("show")
-            .arg(format!("{reference}:{candidate}"))
-            .output()?;
-
-        if !output.status.success() {
-            continue;
+fn load_historical_issues_for_load_target(
+    cli: &Cli,
+    reference: &str,
+) -> bvr::Result<Vec<bvr::model::Issue>> {
+    match resolve_issue_load_target(cli)? {
+        IssueLoadTarget::BeadsFile(path) => load_issues_from_history_file_path(&path, reference),
+        IssueLoadTarget::WorkspaceConfig(path) => load_workspace_issues_at_revision(&path, reference),
+        IssueLoadTarget::RepoPath(repo_path) => {
+            let beads_dir = loader::get_beads_dir(repo_path.as_deref())
+                .map_err(|error| with_workspace_discovery_guidance(cli, error))?;
+            let beads_path = loader::find_jsonl_path(&beads_dir)
+                .map_err(|error| with_workspace_discovery_guidance(cli, error))?;
+            load_issues_from_history_file_path(&beads_path, reference)
         }
-
-        let text = String::from_utf8_lossy(&output.stdout);
-        return parse_issues_from_jsonl_text(&text);
     }
+}
 
-    Err(bvr::BvrError::InvalidArgument(format!(
-        "could not resolve --diff-since={reference} to a historical beads JSONL snapshot"
-    )))
+fn load_issues_from_git_ref(cli: &Cli, reference: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
+    load_historical_issues_for_load_target(cli, reference).map_err(|_| {
+        bvr::BvrError::InvalidArgument(format!(
+            "could not resolve --diff-since={reference} to a historical beads JSONL snapshot"
+        ))
+    })
 }
 
 fn resolve_diff_revision(cli: &Cli, reference: &str) -> String {
-    if let Some(path) = resolve_reference_file_path(reference, cli.repo_path.as_deref()) {
+    if let Some(path) = resolve_cli_reference_file_path(reference, cli) {
         return path.to_string_lossy().to_string();
     }
 
-    let repo_root = if let Some(path) = &cli.repo_path {
-        path.clone()
-    } else if let Ok(path) = std::env::current_dir() {
-        path
-    } else {
+    let Some(repo_root) = resolve_repo_root(cli) else {
         return reference.to_string();
     };
 
@@ -2650,13 +2709,7 @@ fn resolve_as_of(cli: &Cli) -> (Option<String>, Option<String>) {
 }
 
 fn latest_commit_sha(cli: &Cli) -> Option<String> {
-    let repo_root = if let Some(path) = &cli.repo_path {
-        path.clone()
-    } else if let Ok(path) = std::env::current_dir() {
-        path
-    } else {
-        return None;
-    };
+    let repo_root = resolve_repo_root(cli)?;
 
     let output = Command::new("git")
         .arg("-C")
@@ -2837,11 +2890,9 @@ fn compute_related_work_result(
 }
 
 fn resolve_repo_root(cli: &Cli) -> Option<PathBuf> {
-    let base = if let Some(path) = &cli.repo_path {
-        path.clone()
-    } else {
-        std::env::current_dir().ok()?
-    };
+    let base = project_dir_for_load_target(cli)
+        .ok()
+        .or_else(|| std::env::current_dir().ok())?;
 
     resolve_git_toplevel(&base).or(Some(base))
 }
@@ -2877,6 +2928,24 @@ fn resolve_reference_file_path(reference: &str, repo_path: Option<&Path>) -> Opt
         let rooted = root.join(reference);
         if rooted.is_file() {
             return Some(rooted);
+        }
+    }
+
+    None
+}
+
+fn resolve_cli_reference_file_path(reference: &str, cli: &Cli) -> Option<PathBuf> {
+    let project_dir = project_dir_for_load_target(cli).ok();
+    if let Some(path) = resolve_reference_file_path(reference, project_dir.as_deref()) {
+        return Some(path);
+    }
+
+    if let Some(repo_path) = cli.repo_path.as_deref() {
+        let absolute_repo_path = absolute_from_current_dir(repo_path);
+        if project_dir.as_ref() != Some(&absolute_repo_path) {
+            if let Some(path) = resolve_reference_file_path(reference, Some(&absolute_repo_path)) {
+                return Some(path);
+            }
         }
     }
 
@@ -5565,7 +5634,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::process::ExitCode;
+    use std::process::{Command, ExitCode};
 
     use bvr::analysis::git_history::{
         HistoryBeadCompat, HistoryCommitCompat, HistoryEventCompat, HistoryFileChangeCompat,
@@ -5578,10 +5647,10 @@ mod tests {
         BackgroundModeSource, Cli, IssueLoadTarget, actionable_ids_for_recipe_filters,
         build_background_mode_config, compute_related_work_result,
         discover_workspace_config_from_starts, feedback_project_dir, filter_by_repo,
-        generate_daily_burndown_points, handle_operational_commands, parse_background_mode_bool,
-        parse_scope_git_header_line, project_dir_for_export_hooks, resolve_background_mode,
-        resolve_git_toplevel, resolve_issue_load_target, resolve_reference_file_path,
-        resolve_workspace_config_path,
+        generate_daily_burndown_points, handle_operational_commands, load_issues,
+        parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
+        resolve_background_mode, resolve_git_toplevel, resolve_issue_load_target,
+        resolve_cli_reference_file_path, resolve_reference_file_path, resolve_workspace_config_path,
     };
 
     struct CurrentDirGuard(PathBuf);
@@ -5598,6 +5667,24 @@ mod tests {
         fn drop(&mut self) {
             std::env::set_current_dir(&self.0).expect("restore current dir");
         }
+    }
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     fn make_history(bead_id: &str, status: &str, files: &[&str]) -> HistoryBeadCompat {
@@ -5653,6 +5740,39 @@ mod tests {
 
         let resolved = resolve_reference_file_path("snapshots/before.jsonl", Some(repo_root))
             .expect("resolve repo-relative path");
+
+        assert_eq!(resolved, before);
+    }
+
+    #[test]
+    fn resolve_cli_reference_file_path_checks_repo_relative_paths_after_workspace_discovery() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let repo_root = root.join("services/api");
+        let snapshots = repo_root.join("snapshots");
+        fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+        fs::create_dir_all(&snapshots).expect("create snapshots dir");
+        fs::write(
+            workspace_dir.join("workspace.yaml"),
+            "repos:\n  - path: services/api\n    prefix: api-\n",
+        )
+        .expect("write workspace config");
+        let before = snapshots.join("before.jsonl");
+        fs::write(&before, "{}\n").expect("write snapshot");
+
+        let repo_arg = repo_root.to_string_lossy().to_string();
+        let cli = Cli::parse_from([
+            "bvr",
+            "--robot-diff",
+            "--diff-since",
+            "snapshots/before.jsonl",
+            "--repo-path",
+            &repo_arg,
+        ]);
+
+        let resolved = resolve_cli_reference_file_path("snapshots/before.jsonl", &cli)
+            .expect("resolve repo-relative path after workspace discovery");
 
         assert_eq!(resolved, before);
     }
@@ -5864,6 +5984,60 @@ mod tests {
         assert_eq!(
             target,
             IssueLoadTarget::WorkspaceConfig(explicit_workspace.join("workspace.yaml"))
+        );
+    }
+
+    #[test]
+    fn load_issues_as_of_uses_workspace_config_instead_of_raw_repo_path() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let api_beads = root.join("services/api/.beads");
+        let web_beads = root.join("apps/web/.beads");
+        fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+        fs::create_dir_all(&api_beads).expect("create api beads");
+        fs::create_dir_all(&web_beads).expect("create web beads");
+        fs::write(
+            workspace_dir.join("workspace.yaml"),
+            "repos:\n  - path: services/api\n    prefix: api-\n  - path: apps/web\n    prefix: web-\n",
+        )
+        .expect("write workspace config");
+        fs::write(
+            api_beads.join("beads.jsonl"),
+            "{\"id\":\"AUTH-1\",\"title\":\"API issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api beads");
+        fs::write(
+            web_beads.join("beads.jsonl"),
+            "{\"id\":\"WEB-1\",\"title\":\"Web issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write web beads");
+
+        run_git(root, &["init"]);
+        run_git(root, &["add", "."]);
+        run_git(root, &["commit", "-m", "snapshot"]);
+
+        let repo_arg = root.join("services/api").to_string_lossy().to_string();
+        let cli = Cli::parse_from([
+            "bvr",
+            "--robot-triage",
+            "--as-of",
+            "HEAD",
+            "--repo-path",
+            &repo_arg,
+        ]);
+        let issues = load_issues(&cli).expect("load workspace issues at HEAD");
+
+        assert_eq!(issues.len(), 2);
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.title == "API issue" && issue.source_repo == "api")
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.title == "Web issue" && issue.source_repo == "web")
         );
     }
 

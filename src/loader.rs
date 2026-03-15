@@ -105,7 +105,7 @@ impl WorkspaceRepoConfig {
         self.enabled.unwrap_or(true)
     }
 
-    fn effective_name(&self) -> String {
+    pub fn effective_name(&self) -> String {
         if !self.name.trim().is_empty() {
             return self.name.trim().to_string();
         }
@@ -117,7 +117,7 @@ impl WorkspaceRepoConfig {
             .to_string()
     }
 
-    fn effective_prefix(&self) -> String {
+    pub fn effective_prefix(&self) -> String {
         if !self.prefix.trim().is_empty() {
             return self.prefix.trim().to_string();
         }
@@ -126,7 +126,7 @@ impl WorkspaceRepoConfig {
         format!("{}-", fallback.to_ascii_lowercase())
     }
 
-    fn effective_beads_path(&self, defaults: Option<&WorkspaceDefaultsConfig>) -> String {
+    pub fn effective_beads_path(&self, defaults: Option<&WorkspaceDefaultsConfig>) -> String {
         if !self.beads_path.trim().is_empty() {
             self.beads_path.trim().to_string()
         } else if let Some(defaults) = defaults
@@ -241,7 +241,7 @@ impl WorkspaceConfig {
     }
 }
 
-fn resolve_workspace_root(config_path: &Path) -> PathBuf {
+pub fn resolve_workspace_root(config_path: &Path) -> PathBuf {
     config_path.parent().and_then(Path::parent).map_or_else(
         || {
             config_path
@@ -392,7 +392,7 @@ fn has_known_prefix(id: &str, prefixes: &[String]) -> bool {
         .any(|prefix| id_lower.starts_with(&prefix.to_ascii_lowercase()))
 }
 
-fn namespace_workspace_issues(
+pub fn namespace_workspace_issues(
     issues: &mut [Issue],
     prefix: &str,
     repo_name: &str,

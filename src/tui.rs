@@ -5524,6 +5524,16 @@ impl BvrApp {
             }
         }
         lines.push(String::new());
+        lines.extend(self.insights_signal_tiles());
+        lines.push(String::new());
+        lines.extend(self.insights_outlier_radar());
+        lines.push(String::new());
+        lines.push(format!(
+            "Panel Focus | {} | {}",
+            self.insights_panel.label(),
+            self.insights_panel_focus_hint()
+        ));
+        lines.push(String::new());
 
         match self.insights_panel {
             InsightsPanel::Bottlenecks => {
@@ -5687,6 +5697,92 @@ impl BvrApp {
         }
 
         lines.join("\n")
+    }
+
+    fn insights_signal_tiles(&self) -> Vec<String> {
+        let insights = self.analyzer.insights();
+        let open_issues = self
+            .analyzer
+            .issues
+            .iter()
+            .filter(|issue| issue.is_open_like())
+            .count();
+        let blocked_open = self
+            .analyzer
+            .issues
+            .iter()
+            .filter(|issue| {
+                issue.is_open_like() && !self.analyzer.graph.open_blockers(&issue.id).is_empty()
+            })
+            .count();
+        let zero_slack = insights.slack.len();
+        let max_k_core = insights
+            .cores
+            .iter()
+            .map(|item| item.value)
+            .max()
+            .unwrap_or(0);
+
+        vec![
+            "Signal Tiles".to_string(),
+            format!(
+                "[Flow ] open={open_issues} blocked={blocked_open} crit-path={} cycles={}",
+                insights.critical_path.len(),
+                insights.cycles.len()
+            ),
+            format!(
+                "[Risk ] bottlenecks={} cut-points={} zero-slack={} max-k={max_k_core}",
+                insights.bottlenecks.len(),
+                insights.articulation_points.len(),
+                zero_slack
+            ),
+        ]
+    }
+
+    fn insights_outlier_radar(&self) -> Vec<String> {
+        let insights = self.analyzer.insights();
+        let priority = self.analyzer.priority(0.0, 1, None, None);
+        let top_bottleneck = insights.bottlenecks.first().map_or_else(
+            || "none".to_string(),
+            |item| {
+                format!(
+                    "{} score={:.3} blocks={}",
+                    item.id, item.score, item.blocks_count
+                )
+            },
+        );
+        let top_influencer = insights.influencers.first().map_or_else(
+            || "none".to_string(),
+            |item| format!("{} pr={:.4}", item.id, item.value),
+        );
+        let top_priority = priority.first().map_or_else(
+            || "none".to_string(),
+            |item| format!("{} score={:.3} p{}", item.id, item.score, item.priority),
+        );
+
+        vec![
+            "Outlier Radar".to_string(),
+            format!("[Lead ] bottleneck={top_bottleneck}"),
+            format!("[Rank ] influencer={top_influencer}"),
+            format!("[Act  ] next-priority={top_priority}"),
+        ]
+    }
+
+    fn insights_panel_focus_hint(&self) -> &'static str {
+        match self.insights_panel {
+            InsightsPanel::Bottlenecks => "blocking pressure and downstream drag",
+            InsightsPanel::Keystones => "foundational chains that unlock follow-on work",
+            InsightsPanel::CriticalPath => "deep dependency rails with little slack",
+            InsightsPanel::Influencers => "highest graph influence by PageRank",
+            InsightsPanel::Betweenness => "bridge nodes that route dependency flow",
+            InsightsPanel::Hubs => "strong outbound influence in the graph",
+            InsightsPanel::Authorities => "strong inbound authority in the graph",
+            InsightsPanel::Cores => "densest cohesion clusters",
+            InsightsPanel::CutPoints => "single-node fragility in connectivity",
+            InsightsPanel::Slack => "zero-buffer scheduling hotspots",
+            InsightsPanel::Cycles => "circular dependency traps",
+            InsightsPanel::Priority => "graph-informed reprioritization candidates",
+        }
     }
 
     fn append_metric_items(
@@ -8314,15 +8410,27 @@ impl BvrApp {
             .get(&issue.id)
             .copied()
             .unwrap_or_default();
+        let blockers = self.analyzer.graph.blockers(&issue.id);
+        let dependents = self.analyzer.graph.dependents(&issue.id);
         let articulation = self
             .analyzer
             .metrics
             .articulation_points
             .contains(&issue.id);
+        let in_critical_path = insights.critical_path.iter().any(|id| id == &issue.id);
+        let in_cycle = insights
+            .cycles
+            .iter()
+            .any(|cycle| cycle.iter().any(|id| id == &issue.id));
+        let top_bottleneck = insights
+            .bottlenecks
+            .first()
+            .is_some_and(|item| item.id == issue.id);
 
         let mut lines = vec![
+            "Analytics Cockpit".to_string(),
             format!(
-                "Insights Summary: bottlenecks={} crit-path={} cycles={} cut-pts={} k-core-max={}",
+                "System Radar | bottlenecks={} crit-path={} cycles={} cut-pts={} k-core-max={}",
                 insights.bottlenecks.len(),
                 insights.critical_path.len(),
                 insights.cycles.len(),
@@ -8332,6 +8440,27 @@ impl BvrApp {
             String::new(),
             format!("Focus: {} ({})", issue.id, issue.title),
             format!("Status: {} | Priority: p{}", issue.status, issue.priority),
+            String::new(),
+            "Metric Strip".to_string(),
+            format!(
+                "[Rank ] pagerank={pagerank:.4} betweenness={betweenness:.4} eigenvector={eigenvector:.4}"
+            ),
+            format!("[HITS ] hub={hubs:.4} authority={authorities:.4} k-core={k_core}"),
+            format!(
+                "[Risk ] crit-depth={depth} slack={slack:.4} cut-point={}",
+                if articulation { "yes" } else { "no" }
+            ),
+            format!(
+                "[Flow ] blockers={} dependents={} crit-path={} cycle={}",
+                blockers.len(),
+                dependents.len(),
+                if in_critical_path { "yes" } else { "no" },
+                if in_cycle { "yes" } else { "no" }
+            ),
+            format!(
+                "[Lead ] top-bottleneck={}",
+                if top_bottleneck { "yes" } else { "no" }
+            ),
             String::new(),
             "All Metrics:".to_string(),
             format!("  PageRank:     {:.4}", pagerank),
@@ -8403,8 +8532,6 @@ impl BvrApp {
         }
 
         // Dependency context with detail cursor
-        let blockers = self.analyzer.graph.blockers(&issue.id);
-        let dependents = self.analyzer.graph.dependents(&issue.id);
         if !blockers.is_empty() || !dependents.is_empty() {
             let show_cursor = self.focus == FocusPane::Detail;
             let mut dep_index = 0usize;
@@ -10801,7 +10928,9 @@ mod tests {
         let list = app.list_panel_text();
         let detail = app.detail_panel_text();
         assert!(list.contains("[Bottlenecks]"));
-        assert!(detail.contains("Insights Summary"));
+        assert!(list.contains("Signal Tiles"));
+        assert!(list.contains("Outlier Radar"));
+        assert!(detail.contains("Analytics Cockpit"));
         assert!(detail.contains("Critical Path Head"));
     }
 
@@ -10886,6 +11015,9 @@ mod tests {
         let mut app = new_app(ViewMode::Insights, 0);
         app.mode = ViewMode::Insights;
         let detail = app.detail_panel_text();
+        assert!(detail.contains("Metric Strip"));
+        assert!(detail.contains("[Rank ]"));
+        assert!(detail.contains("[Flow ]"));
         assert!(detail.contains("PageRank:"));
         assert!(detail.contains("Betweenness:"));
         assert!(detail.contains("Eigenvector:"));

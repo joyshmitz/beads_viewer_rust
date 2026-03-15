@@ -5,13 +5,21 @@ expression: text
 bvr Insights | 3/3 | all
 ┌Insight Queue [focu┐┌Insight Detail───────────────────────┐
 │                   ││                                     │
-│ [Bottlenecks] s/S ││ Insights Summary: bottlenecks=2 cri │
+│ [Bottlenecks] s/S ││ Analytics Cockpit                   │
+│                   ││ System Radar | bottlenecks=2 crit-p │
+│ Signal Tiles      ││                                     │
+│ [Flow ] open=2 bl ││ Focus: A (Root)                     │
+│ [Risk ] bottlenec ││ Status: open | Priority: p0         │
 │                   ││                                     │
-│  1. A             ││ Focus: A (Root)                     │
-│  2. B             ││ Status: open | Priority: p0         │
+│ Outlier Radar     ││ Metric Strip                        │
+│ [Lead ] bottlenec ││ [Rank ] pagerank=0.4805 betweenness │
+│ [Rank ] influence ││ [HITS ] hub=0.0000 authority=1.0000 │
+│ [Act  ] next-prio ││ [Risk ] crit-depth=2 slack=0.0000 c │
+│                   ││ [Flow ] blockers=0 dependents=1 cri │
+│ Panel Focus | Bot ││ [Lead ] top-bottleneck=yes          │
 │                   ││                                     │
-│                   ││ All Metrics:                        │
-│                   ││   PageRank:     0.4805              │
+│  1. A             ││ All Metrics:                        │
+│  2. B             ││   PageRank:     0.4805              │
 │                   ││   Betweenness:  0.0000              │
 │                   ││   Eigenvector:  1.0000              │
 │                   ││   Hub (HITS):   0.0000              │
@@ -20,14 +28,6 @@ bvr Insights | 3/3 | all
 │                   ││   Crit depth:   2                   │
 │                   ││   Slack:        0.0000              │
 │                   ││   Cut point:    no                  │
-│                   ││                                     │
-│                   ││ Critical Path Head:                 │
-│                   ││   - A                               │
-│                   ││   - B                               │
-│                   ││   - C                               │
-│                   ││                                     │
-│                   ││ Cycle Hotspots:                     │
-│                   ││   none                              │
 │                   ││                                     │
 │                   ││                                     │
 └───────────────────┘└─────────────────────────────────────┘

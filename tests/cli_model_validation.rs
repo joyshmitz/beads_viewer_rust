@@ -743,6 +743,41 @@ fn robot_search_without_query_exits_with_error() {
 }
 
 #[test]
+fn robot_schema_command_accepts_bare_command_name() {
+    let output = run_bvr_json(
+        &["--robot-schema", "--schema-command", "search"],
+        "tests/testdata/minimal.jsonl",
+    );
+    assert_eq!(output["command"], "robot-search");
+    assert!(
+        output["schema"].is_object(),
+        "schema payload must be present"
+    );
+}
+
+#[test]
+fn robot_schema_command_accepts_flag_style_command_name() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    let output = bvr()
+        .args([
+            "--robot-schema",
+            "--schema-command=--robot-search",
+            "--beads-file",
+        ])
+        .arg(&beads_path)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON output");
+    assert_eq!(json["command"], "robot-search");
+    assert!(json["schema"].is_object(), "schema payload must be present");
+}
+
+#[test]
 fn robot_diff_without_diff_since_exits_with_error() {
     let root = repo_root();
     let beads_path = root.join("tests/testdata/minimal.jsonl");

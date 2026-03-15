@@ -1109,6 +1109,64 @@ fn preview_pages_reports_session_diagnostics() {
 }
 
 #[test]
+fn preview_pages_request_limit_ignores_empty_preconnects() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    let bundle_dir = repo_dir.join("bundle");
+    fs::create_dir_all(&bundle_dir).expect("create bundle dir");
+    fs::write(
+        bundle_dir.join("index.html"),
+        "<!doctype html><html><body>ok</body></html>",
+    )
+    .expect("write index");
+
+    let probe = TcpListener::bind(("127.0.0.1", 0)).expect("probe port");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args(["--preview-pages", "bundle"])
+        .env("BVR_PREVIEW_PORT", port.to_string())
+        .env("BVR_PREVIEW_MAX_REQUESTS", "2")
+        .env("BV_NO_BROWSER", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+
+    let mut ready = false;
+    for _ in 0..40 {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            ready = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(ready, "failed to connect to preview server");
+
+    let response = preview_request(port, "/");
+    assert!(
+        response.contains("200 OK"),
+        "expected first GET request to succeed after empty preconnect: {response}"
+    );
+
+    let second_response = preview_request(port, "/__preview__/status");
+    assert!(
+        second_response.contains("200 OK"),
+        "expected second GET request to succeed after empty preconnect: {second_response}"
+    );
+
+    let output = child.wait_with_output().expect("wait for preview");
+    assert!(
+        output.status.success(),
+        "preview failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn preview_pages_status_endpoint_reports_bundle_metadata() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();

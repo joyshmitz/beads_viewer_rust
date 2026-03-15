@@ -51,6 +51,24 @@ fn actionable_ids_for_recipe_filters(analyzer: &Analyzer) -> Vec<String> {
     analyzer.graph.actionable_ids()
 }
 
+fn resolve_schema_command_key(schemas: &bvr::robot::RobotSchemas, raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let without_flag_prefix = trimmed.trim_start_matches('-');
+    let candidates = [
+        trimmed.to_string(),
+        without_flag_prefix.to_string(),
+        format!("robot-{without_flag_prefix}"),
+    ];
+
+    candidates
+        .into_iter()
+        .find(|candidate| schemas.commands.contains_key(candidate))
+}
+
 fn feedback_project_dir(cli: &Cli) -> PathBuf {
     project_dir_for_load_target(cli).unwrap_or_else(|_| {
         cli.repo_path
@@ -184,11 +202,15 @@ fn main() -> ExitCode {
         let schemas = generate_robot_schemas();
 
         if let Some(cmd) = cli.schema_command.as_deref() {
-            if let Some(schema) = schemas.commands.get(cmd) {
+            if let Some(command_key) = resolve_schema_command_key(&schemas, cmd) {
+                let schema = schemas
+                    .commands
+                    .get(&command_key)
+                    .expect("resolved schema command must exist");
                 let single = serde_json::json!({
                     "schema_version": schemas.schema_version,
                     "generated_at": schemas.generated_at,
-                    "command": cmd,
+                    "command": command_key,
                     "schema": schema,
                 });
                 if let Err(error) = emit_with_stats(cli.format, &single, cli.stats) {

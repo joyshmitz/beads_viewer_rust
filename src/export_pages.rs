@@ -391,12 +391,18 @@ pub fn run_preview_server(bundle_dir: &Path, live_reload: bool) -> Result<()> {
 
         match listener.accept() {
             Ok((stream, _)) => {
-                if let Err(error) = handle_preview_request(stream, bundle_dir, live_reload, port) {
-                    eprintln!("warning: preview request failed: {error}");
-                }
-                served = served.saturating_add(1);
-                if max_requests.is_some_and(|limit| served >= limit) {
-                    break PreviewShutdownReason::RequestLimitReached;
+                match handle_preview_request(stream, bundle_dir, live_reload, port) {
+                    Ok(count_as_request) => {
+                        if count_as_request {
+                            served = served.saturating_add(1);
+                            if max_requests.is_some_and(|limit| served >= limit) {
+                                break PreviewShutdownReason::RequestLimitReached;
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!("warning: preview request failed: {error}");
+                    }
                 }
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -447,11 +453,11 @@ fn handle_preview_request(
     bundle_dir: &Path,
     live_reload: bool,
     port: u16,
-) -> Result<()> {
+) -> Result<bool> {
     let mut buffer = [0_u8; 8192];
     let bytes = stream.read(&mut buffer)?;
     if bytes == 0 {
-        return Ok(());
+        return Ok(false);
     }
 
     let request = String::from_utf8_lossy(&buffer[..bytes]);
@@ -469,7 +475,7 @@ fn handle_preview_request(
             b"method not allowed\n",
             head_only,
         )?;
-        return Ok(());
+        return Ok(true);
     }
 
     let route = target.split('?').next().unwrap_or("/");
@@ -482,7 +488,7 @@ fn handle_preview_request(
             &payload,
             head_only,
         )?;
-        return Ok(());
+        return Ok(true);
     }
 
     if route == PREVIEW_RELOAD_PATH {
@@ -494,7 +500,7 @@ fn handle_preview_request(
             token.as_bytes(),
             head_only,
         )?;
-        return Ok(());
+        return Ok(true);
     }
 
     let Ok(relative) = normalize_request_path(route) else {
@@ -505,7 +511,7 @@ fn handle_preview_request(
             b"invalid path\n",
             head_only,
         )?;
-        return Ok(());
+        return Ok(true);
     };
 
     let Some(file_path) = resolve_preview_asset_path(bundle_dir, &relative)? else {
@@ -516,7 +522,7 @@ fn handle_preview_request(
             b"not found\n",
             head_only,
         )?;
-        return Ok(());
+        return Ok(true);
     };
 
     let mut body = fs::read(&file_path)?;
@@ -526,7 +532,7 @@ fn handle_preview_request(
     }
 
     write_http_response(&mut stream, "200 OK", mime, &body, head_only)?;
-    Ok(())
+    Ok(true)
 }
 
 fn normalize_request_path(route: &str) -> Result<PathBuf> {

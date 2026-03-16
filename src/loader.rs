@@ -197,6 +197,16 @@ impl WorkspaceConfig {
             }
         }
 
+        for repo in &mut repos {
+            if !repo.is_enabled() || !repo.name.trim().is_empty() {
+                continue;
+            }
+
+            if repo_resolves_to_workspace_root(Path::new(repo.path.trim()), workspace_root) {
+                repo.name = workspace_root_repo_name(workspace_root);
+            }
+        }
+
         let mut seen_repo_paths = HashSet::<String>::new();
         for (index, repo) in repos.iter().enumerate() {
             if !repo.is_enabled() {
@@ -340,6 +350,18 @@ fn repo_identity_key(repo_path: &Path, workspace_root: &Path) -> String {
     normalize_path_for_display(&normalized)
 }
 
+fn workspace_root_repo_name(workspace_root: &Path) -> String {
+    workspace_root
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or("root")
+        .to_string()
+}
+
+fn repo_resolves_to_workspace_root(repo_path: &Path, workspace_root: &Path) -> bool {
+    repo_identity_key(repo_path, workspace_root) == repo_identity_key(Path::new("."), workspace_root)
+}
+
 fn discover_workspace_repos(
     workspace_root: &Path,
     discovery: &WorkspaceDiscoveryConfig,
@@ -362,13 +384,8 @@ fn discover_workspace_repos(
         let beads_dir =
             workspace_root.join(WorkspaceRepoConfig::default().effective_beads_path(Some(defaults)));
         if seen_repo_paths.insert(identity) && beads_dir.is_dir() {
-            let root_name = workspace_root
-                .file_name()
-                .and_then(OsStr::to_str)
-                .unwrap_or("root")
-                .to_string();
             discovered.push(WorkspaceRepoConfig {
-                name: root_name,
+                name: workspace_root_repo_name(workspace_root),
                 path: ".".to_string(),
                 ..WorkspaceRepoConfig::default()
             });
@@ -1245,11 +1262,7 @@ mod tests {
     fn load_workspace_issues_discovers_workspace_root_repo_when_pattern_matches_dot() {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
-        let root_name = root
-            .file_name()
-            .and_then(OsStr::to_str)
-            .expect("workspace root name")
-            .to_string();
+        let root_name = workspace_root_repo_name(root);
         std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
         std::fs::create_dir_all(root.join(".beads")).expect("create root .beads");
         std::fs::write(
@@ -1279,6 +1292,43 @@ mod tests {
         assert_eq!(
             issues[0].id,
             format!("{}-ROOT-1", root_name.to_ascii_lowercase())
+        );
+    }
+
+    #[test]
+    fn load_workspace_issues_namespaces_explicit_workspace_root_repo_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        let root_name = workspace_root_repo_name(root);
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join(".beads")).expect("create root .beads");
+        std::fs::write(root.join(".bv/workspace.yaml"), "repos:\n  - path: ./\n")
+            .expect("write workspace config");
+        std::fs::write(
+            root.join(".beads/issues.jsonl"),
+            "{\"id\":\"ROOT-2\",\"title\":\"Explicit Root\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write root issues");
+
+        let config =
+            load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
+        assert_eq!(config.repos.len(), 1);
+        assert_eq!(config.repos[0].effective_name(), root_name);
+        assert_eq!(
+            config.repos[0].effective_prefix(),
+            format!("{}-", root_name.to_ascii_lowercase())
+        );
+
+        let (issues, summary) =
+            load_workspace_issues_with_summary(&root.join(".bv/workspace.yaml"))
+                .expect("load workspace issues");
+
+        assert_eq!(summary.total_repos, 1);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].source_repo, root_name);
+        assert_eq!(
+            issues[0].id,
+            format!("{}-ROOT-2", issues[0].source_repo.to_ascii_lowercase())
         );
     }
 

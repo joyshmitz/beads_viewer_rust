@@ -316,6 +316,50 @@ fn workspace_discovery_can_include_workspace_root_repo() {
 }
 
 #[test]
+fn workspace_explicit_root_repo_path_uses_workspace_name_for_namespacing() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+    let root_name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("workspace root name")
+        .to_ascii_lowercase();
+
+    let bv_dir = root.join(".bv");
+    fs::create_dir_all(&bv_dir).expect("mkdir .bv");
+    fs::write(
+        bv_dir.join("workspace.yaml"),
+        "name: explicit-root\nrepos:\n  - path: ./\n",
+    )
+    .expect("write config");
+
+    let root_beads = format!("{}\n", issue_line("ROOT-2", "Root explicit task", "open", 1));
+    write_beads(root, &root_beads);
+
+    let ws_path = bv_dir.join("workspace.yaml");
+    let json = run_json(
+        &["--robot-triage", "--workspace", &ws_path.to_string_lossy()],
+        root,
+    );
+
+    let total = json["triage"]["quick_ref"]["total_open"]
+        .as_u64()
+        .unwrap_or(0);
+    assert_eq!(total, 1, "explicit workspace root repo should load");
+
+    let top_picks = json["triage"]["quick_ref"]["top_picks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        top_picks
+            .iter()
+            .any(|pick| pick["id"].as_str() == Some(&format!("{root_name}-ROOT-2"))),
+        "explicit root repo should use workspace directory name instead of '.': {top_picks:?}"
+    );
+}
+
+#[test]
 fn workspace_discovery_excludes_node_modules() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();

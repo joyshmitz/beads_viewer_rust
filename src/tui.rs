@@ -8038,10 +8038,19 @@ impl BvrApp {
     }
 
     fn issue_detail_render_text(&self) -> RichText {
+        let issue_header = self
+            .selected_issue()
+            .map(|issue| format!("{} {}  {}", type_icon(&issue.issue_type), issue.id, issue.title));
         let external_ref = self.selected_issue_external_ref_url();
         let mut lines = Vec::new();
         for line in self.issue_detail_text().lines() {
-            if let Some(url) = external_ref
+            if issue_header.as_deref().is_some_and(|header| line == header) {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw(line),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(C copy id)", tokens::dim()),
+                ]));
+            } else if let Some(url) = external_ref
                 && line == format!("External: {url}")
             {
                 lines.push(RichLine::from_spans([
@@ -14840,6 +14849,10 @@ mod tests {
         assert!(
             rendered.contains("(o open, y copy)"),
             "expected inline external-ref action hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("(C copy id)"),
+            "expected issue-id action hint, got:\n{rendered}"
         );
     }
 

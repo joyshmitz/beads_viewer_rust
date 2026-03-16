@@ -80,29 +80,33 @@ fn robot_capacity_has_valid_envelope() {
 fn robot_label_health_has_valid_envelope() {
     let output = run_bvr_json(&["--robot-label-health"], "tests/testdata/minimal.jsonl");
     assert_valid_version_envelope(&output);
-    assert!(validate_type_at(&output, "result", JsonType::Object).is_empty());
-    assert!(validate_type_at(&output, "result.total_labels", JsonType::Number).is_empty());
-    assert!(validate_type_at(&output, "result.labels", JsonType::Array).is_empty());
-    assert!(validate_type_at(&output, "result.summaries", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "analysis_config", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "results", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "results.total_labels", JsonType::Number).is_empty());
+    assert!(validate_type_at(&output, "results.labels", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "results.summaries", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "usage_hints", JsonType::Array).is_empty());
 }
 
 #[test]
 fn robot_label_flow_has_valid_envelope() {
     let output = run_bvr_json(&["--robot-label-flow"], "tests/testdata/minimal.jsonl");
     assert_valid_version_envelope(&output);
+    assert!(validate_type_at(&output, "analysis_config", JsonType::Object).is_empty());
     assert!(validate_type_at(&output, "flow", JsonType::Object).is_empty());
     assert!(validate_type_at(&output, "flow.labels", JsonType::Array).is_empty());
     assert!(validate_type_at(&output, "flow.flow_matrix", JsonType::Array).is_empty());
     assert!(validate_type_at(&output, "flow.dependencies", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "usage_hints", JsonType::Array).is_empty());
 }
 
 #[test]
 fn robot_label_attention_has_valid_envelope() {
     let output = run_bvr_json(&["--robot-label-attention"], "tests/testdata/minimal.jsonl");
     assert_valid_version_envelope(&output);
-    assert!(validate_type_at(&output, "result", JsonType::Object).is_empty());
-    assert!(validate_type_at(&output, "result.labels", JsonType::Array).is_empty());
-    assert!(validate_type_at(&output, "result.total_labels", JsonType::Number).is_empty());
+    assert!(validate_type_at(&output, "labels", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "total_labels", JsonType::Number).is_empty());
+    assert!(validate_type_at(&output, "usage_hints", JsonType::Array).is_empty());
 }
 
 #[test]
@@ -112,7 +116,7 @@ fn robot_label_attention_respects_limit() {
         "tests/testdata/synthetic_complex.jsonl",
     );
     assert_valid_version_envelope(&output);
-    let labels = output["result"]["labels"].as_array().expect("labels array");
+    let labels = output["labels"].as_array().expect("labels array");
     assert!(labels.len() <= 1);
 }
 
@@ -145,6 +149,20 @@ fn robot_orphans_has_valid_envelope() {
     assert!(validate_type_at(&output, "stats", JsonType::Object).is_empty());
     assert!(validate_type_at(&output, "candidates", JsonType::Array).is_empty());
     assert!(validate_type_at(&output, "stats.total_commits", JsonType::Number).is_empty());
+}
+
+#[test]
+fn robot_search_has_valid_envelope() {
+    let output = run_bvr_json(
+        &["--robot-search", "--search", "parity", "--search-limit", "5"],
+        "tests/testdata/synthetic_complex.jsonl",
+    );
+    assert_valid_version_envelope(&output);
+    assert!(validate_type_at(&output, "query", JsonType::String).is_empty());
+    assert!(validate_type_at(&output, "limit", JsonType::Number).is_empty());
+    assert!(validate_type_at(&output, "mode", JsonType::String).is_empty());
+    assert!(validate_type_at(&output, "results", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "usage_hints", JsonType::Array).is_empty());
 }
 
 // ============================================================================

@@ -475,6 +475,53 @@ fn workspace_defaults_beads_path_applies_to_all_repos() {
     );
 }
 
+#[test]
+fn workspace_discovery_dedupes_explicit_repo_path_aliases() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+
+    let api_beads = format!("{}\n", issue_line("AUTH-1", "API task", "open", 1));
+    write_beads(&root.join("services/api"), &api_beads);
+
+    let bv_dir = root.join(".bv");
+    fs::create_dir_all(&bv_dir).expect("mkdir .bv");
+    fs::write(
+        bv_dir.join("workspace.yaml"),
+        concat!(
+            "name: dedupe\n",
+            "discovery:\n",
+            "  enabled: true\n",
+            "repos:\n",
+            "  - name: backend\n",
+            "    path: services/./api\n",
+            "    prefix: \"backend-\"\n",
+        ),
+    )
+    .expect("write config");
+
+    let ws_path = bv_dir.join("workspace.yaml");
+    let json = run_json(
+        &["--robot-triage", "--workspace", &ws_path.to_string_lossy()],
+        root,
+    );
+
+    let total = json["triage"]["quick_ref"]["total_open"]
+        .as_u64()
+        .unwrap_or(0);
+    assert_eq!(total, 1, "same repo alias should not be loaded twice");
+
+    let top_picks = json["triage"]["quick_ref"]["top_picks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        top_picks
+            .iter()
+            .all(|pick| pick["id"].as_str().is_some_and(|id| !id.starts_with("api-"))),
+        "discovery should not create a second synthetic repo alias: {top_picks:?}"
+    );
+}
+
 // ===================================================================
 // WORKSPACE FAILURE MODES
 // ===================================================================

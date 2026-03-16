@@ -775,6 +775,14 @@ fn resolve_preview_asset_path(bundle_dir: &Path, relative: &Path) -> Result<Opti
     let metadata = fs::metadata(&resolved)?;
     if metadata.is_file() {
         Ok(Some(resolved))
+    } else if metadata.is_dir() {
+        let index_path = resolved.join("index.html");
+        match fs::metadata(&index_path) {
+            Ok(index_metadata) if index_metadata.is_file() => Ok(Some(index_path)),
+            Ok(_) => Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(BvrError::Io(error)),
+        }
     } else {
         Ok(None)
     }

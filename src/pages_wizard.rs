@@ -269,7 +269,9 @@ impl WizardConfig {
 }
 
 fn repair_step_for_saved_config(config: &WizardConfig) -> WizardStep {
-    if config.deploy_target.is_none() {
+    if config.output_path.is_none() {
+        WizardStep::ExportOptions
+    } else if config.deploy_target.is_none() {
         WizardStep::DeployTarget
     } else {
         WizardStep::TargetConfig
@@ -1928,8 +1930,8 @@ mod tests {
             "expected validation failure before repair: {text}"
         );
         assert!(
-            text.contains("Step 4/9: Target settings"),
-            "expected repair to return to target settings: {text}"
+            text.contains("Step 2/9: Export options"),
+            "expected repair to return to export options: {text}"
         );
     }
 

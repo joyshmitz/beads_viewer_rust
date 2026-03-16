@@ -496,6 +496,76 @@ fn sprint_list_reads_sprints_from_workspace_root_when_repo_path_discovers_worksp
     assert_eq!(json["sprints"][0]["name"], "Workspace Sprint");
 }
 
+#[test]
+fn robot_orphans_uses_workspace_root_history_when_repo_path_discovers_workspace() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let workspace_root = tmp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let nested_dir = repo_dir.join("src");
+    let caller_dir = tmp.path().join("caller");
+
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::create_dir_all(repo_dir.join(".beads")).expect("create repo .beads");
+    fs::create_dir_all(workspace_root.join("apps/web/src")).expect("create orphan file dir");
+    fs::create_dir_all(&nested_dir).expect("create nested repo dir");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        repo_dir.join(".beads/beads.jsonl"),
+        "{\"id\":\"BD-1\",\"title\":\"Ship export\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write beads file");
+
+    run_git(&workspace_root, &["init"]);
+    run_git(&workspace_root, &["add", "."]);
+    run_git(&workspace_root, &["commit", "-m", "initial workspace snapshot"]);
+
+    fs::write(
+        workspace_root.join("apps/web/src/orphan.js"),
+        "export const orphan = true;\n",
+    )
+    .expect("write orphan file");
+    run_git(&workspace_root, &["add", "."]);
+    run_git(&workspace_root, &["commit", "-m", "add orphan web file"]);
+
+    let output = bvr()
+        .current_dir(&caller_dir)
+        .args([
+            "--robot-orphans",
+            "--orphans-min-score",
+            "0",
+            "--format",
+            "json",
+            "--repo-path",
+            nested_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON");
+    assert!(
+        json["total_commits"].as_u64().unwrap_or(0) >= 1,
+        "workspace-root git history should be visible to robot-orphans"
+    );
+    assert!(
+        json["candidates"]
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| {
+                row["files"].as_array().is_some_and(|files| {
+                    files.iter().any(|file| file == "apps/web/src/orphan.js")
+                })
+            })),
+        "robot-orphans should include the workspace-root orphan file when --repo-path discovers a workspace"
+    );
+}
+
 // ============================================================================
 // Related work flags (--related-min-relevance, --related-max-results)
 // ============================================================================
@@ -1075,6 +1145,78 @@ fn robot_diff_git_ref_uses_workspace_history_when_repo_path_discovers_workspace(
         .expect("new_issues array");
     assert_eq!(added.len(), 1, "workspace diff should only add the new web issue");
     assert_eq!(added[0]["title"], "Web issue two");
+}
+
+#[test]
+fn robot_diff_snapshot_prefers_workspace_relative_file_over_caller_cwd_shadow() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let workspace_root = tmp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let nested_dir = repo_dir.join("src");
+    let caller_dir = tmp.path().join("caller");
+    let caller_snapshots = caller_dir.join("snapshots");
+    let workspace_snapshots = workspace_root.join("snapshots");
+
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::create_dir_all(repo_dir.join(".beads")).expect("create repo .beads");
+    fs::create_dir_all(&nested_dir).expect("create nested repo dir");
+    fs::create_dir_all(&caller_snapshots).expect("create caller snapshots");
+    fs::create_dir_all(&workspace_snapshots).expect("create workspace snapshots");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        repo_dir.join(".beads/beads.jsonl"),
+        concat!(
+            "{\"id\":\"BD-1\",\"title\":\"Ship alpha\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+            "{\"id\":\"BD-2\",\"title\":\"Ship beta\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n"
+        ),
+    )
+    .expect("write current beads file");
+    fs::write(
+        workspace_snapshots.join("before.jsonl"),
+        "{\"id\":\"BD-1\",\"title\":\"Ship alpha\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write workspace snapshot");
+    fs::write(
+        caller_snapshots.join("before.jsonl"),
+        concat!(
+            "{\"id\":\"BD-1\",\"title\":\"Ship alpha\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+            "{\"id\":\"BD-2\",\"title\":\"Ship beta\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n"
+        ),
+    )
+    .expect("write caller shadow snapshot");
+
+    let output = bvr()
+        .current_dir(&caller_dir)
+        .args([
+            "--robot-diff",
+            "--diff-since",
+            "snapshots/before.jsonl",
+            "--format",
+            "json",
+            "--repo-path",
+            nested_dir.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON");
+    let added = json["diff"]["new_issues"]
+        .as_array()
+        .expect("new_issues array");
+    assert_eq!(
+        added.len(),
+        1,
+        "workspace-relative snapshot should beat caller cwd shadow"
+    );
+    assert_eq!(added[0]["id"], "BD-2");
+    assert_eq!(added[0]["title"], "Ship beta");
 }
 
 // ============================================================================

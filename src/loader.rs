@@ -300,7 +300,8 @@ fn repo_identity_key(repo_path: &Path, workspace_root: &Path) -> String {
     } else {
         workspace_root.join(repo_path)
     };
-    normalize_path_for_display(&resolved)
+    let normalized = std::fs::canonicalize(&resolved).unwrap_or(resolved);
+    normalize_path_for_display(&normalized)
 }
 
 fn discover_workspace_repos(
@@ -1223,6 +1224,38 @@ mod tests {
         assert_eq!(summary.total_repos, 2);
         assert!(issues.iter().any(|issue| issue.id == "api-AUTH-1"));
         assert!(issues.iter().any(|issue| issue.id == "web-UI-1"));
+    }
+
+    #[test]
+    fn load_workspace_config_dedupes_explicit_repo_paths_with_dot_segments() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("services/api/.beads")).expect("create api .beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            concat!(
+                "discovery:\n",
+                "  enabled: true\n",
+                "repos:\n",
+                "  - name: backend\n",
+                "    path: services/./api\n",
+                "    prefix: backend-\n",
+            ),
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join("services/api/.beads/issues.jsonl"),
+            "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api issues");
+
+        let config =
+            load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
+
+        assert_eq!(config.repos.len(), 1, "same repo should not be rediscovered");
+        assert_eq!(config.repos[0].name, "backend");
+        assert_eq!(config.repos[0].path, "services/./api");
     }
 
     #[test]

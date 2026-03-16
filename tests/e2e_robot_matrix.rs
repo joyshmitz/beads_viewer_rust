@@ -520,7 +520,8 @@ fn e2e_robot_search() {
     );
     assert_valid_envelope(&json);
     assert!(
-        validate_fields(&json, &["query", "limit", "mode", "results"], "").is_empty()
+        validate_fields(&json, &["query", "limit", "mode", "results", "usage_hints"], "")
+            .is_empty()
     );
     assert!(validate_type_at(&json, "results", JsonType::Array).is_empty());
 }
@@ -529,14 +530,18 @@ fn e2e_robot_search() {
 fn e2e_robot_label_health() {
     let json = run_robot(&["--robot-label-health"], COMPLEX_FIXTURE);
     assert_valid_envelope(&json);
-    assert!(validate_fields(&json, &["result"], "").is_empty());
+    assert!(
+        validate_fields(&json, &["analysis_config", "results", "usage_hints"], "").is_empty()
+    );
 }
 
 #[test]
 fn e2e_robot_label_flow() {
     let json = run_robot(&["--robot-label-flow"], COMPLEX_FIXTURE);
     assert_valid_envelope(&json);
-    assert!(validate_fields(&json, &["flow"], "").is_empty());
+    assert!(
+        validate_fields(&json, &["analysis_config", "flow", "usage_hints"], "").is_empty()
+    );
 }
 
 #[test]
@@ -546,7 +551,10 @@ fn e2e_robot_label_attention() {
         COMPLEX_FIXTURE,
     );
     assert_valid_envelope(&json);
-    assert!(validate_fields(&json, &["limit", "result"], "").is_empty());
+    assert!(
+        validate_fields(&json, &["limit", "labels", "total_labels", "usage_hints"], "")
+            .is_empty()
+    );
 }
 
 #[test]

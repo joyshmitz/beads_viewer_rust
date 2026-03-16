@@ -307,6 +307,7 @@ pub struct RobotSearchOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weights: Option<SearchWeights>,
     pub results: Vec<SearchResult>,
+    pub usage_hints: Vec<String>,
 }
 
 /// Execute a search query against all issues.

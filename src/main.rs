@@ -1098,13 +1098,25 @@ fn main() -> ExitCode {
     }
 
     if cli.robot_label_health {
+        let generated_at = chrono::Utc::now().to_rfc3339();
         let output = RobotLabelHealthOutput {
             envelope: envelope(&issues),
-            result: bvr::analysis::label_intel::compute_all_label_health(
-                &issues,
-                &analyzer.graph,
-                &analyzer.metrics,
-            ),
+            analysis_config: analyzer.metrics.config.clone(),
+            results: RobotLabelHealthResultsOutput {
+                generated_at,
+                result: bvr::analysis::label_intel::compute_all_label_health(
+                    &issues,
+                    &analyzer.graph,
+                    &analyzer.metrics,
+                ),
+            },
+            usage_hints: vec![
+                "jq '.results.summaries | sort_by(.health) | .[:3]' - lowest-health labels"
+                    .to_string(),
+                "jq '.results.labels[] | select(.health_level == \"critical\")' - critical label details"
+                    .to_string(),
+                "jq '.results.attention_needed' - labels needing attention".to_string(),
+            ],
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
@@ -1116,7 +1128,12 @@ fn main() -> ExitCode {
     if cli.robot_label_flow {
         let output = RobotLabelFlowOutput {
             envelope: envelope(&issues),
+            analysis_config: analyzer.metrics.config.clone(),
             flow: bvr::analysis::label_intel::compute_cross_label_flow(&issues),
+            usage_hints: vec![
+                "jq '.flow.bottleneck_labels' - labels acting as bottlenecks".to_string(),
+                "jq '.flow.dependencies[:10]' - first dependency edges".to_string(),
+            ],
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
@@ -1127,14 +1144,20 @@ fn main() -> ExitCode {
 
     if cli.robot_label_attention {
         let limit = cli.attention_limit;
+        let result =
+            bvr::analysis::label_intel::compute_label_attention(&issues, &analyzer.metrics, limit);
         let output = RobotLabelAttentionOutput {
             envelope: envelope(&issues),
             limit,
-            result: bvr::analysis::label_intel::compute_label_attention(
-                &issues,
-                &analyzer.metrics,
-                limit,
-            ),
+            total_labels: result.total_labels,
+            labels: result.labels.into_iter().map(Into::into).collect(),
+            usage_hints: vec![
+                "jq '.labels[0]' - top attention label details".to_string(),
+                "jq '.labels[] | select(.blocked_count > 0)' - labels with blocked issues"
+                    .to_string(),
+                "jq '.labels[] | {label:.label,score:.attention_score,reason:.reason}'"
+                    .to_string(),
+            ],
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
@@ -1304,7 +1327,7 @@ fn main() -> ExitCode {
         };
 
         if cli.robot_orphans {
-            let repo_root = cli.repo_path.clone().unwrap_or_else(|| PathBuf::from("."));
+            let repo_root = resolve_repo_root(&cli).unwrap_or_else(|| PathBuf::from("."));
             let all_commits = match bvr::analysis::git_history::load_git_commits(
                 &repo_root,
                 cli.history_limit,
@@ -1658,6 +1681,11 @@ fn main() -> ExitCode {
             preset: preset_field,
             weights: weights_field,
             results,
+            usage_hints: vec![
+                "jq '.results[] | {id: .issue_id, score: .score, title: .title}' - extract ranked results"
+                    .to_string(),
+                "jq '.results[0]' - inspect the top match".to_string(),
+            ],
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
@@ -2940,7 +2968,7 @@ fn resolve_git_toplevel(path: &Path) -> Option<PathBuf> {
 
 fn resolve_reference_file_path(reference: &str, repo_path: Option<&Path>) -> Option<PathBuf> {
     let direct = PathBuf::from(reference);
-    if direct.is_file() {
+    if direct.is_absolute() && direct.is_file() {
         return Some(direct);
     }
 
@@ -2951,7 +2979,7 @@ fn resolve_reference_file_path(reference: &str, repo_path: Option<&Path>) -> Opt
         }
     }
 
-    None
+    direct.is_file().then_some(direct)
 }
 
 fn resolve_cli_reference_file_path(reference: &str, cli: &Cli) -> Option<PathBuf> {
@@ -5528,14 +5556,18 @@ impl MetricsMemory {
 struct RobotLabelHealthOutput {
     #[serde(flatten)]
     envelope: bvr::robot::RobotEnvelope,
-    result: bvr::analysis::label_intel::LabelHealthResult,
+    analysis_config: bvr::analysis::graph::AnalysisConfig,
+    results: RobotLabelHealthResultsOutput,
+    usage_hints: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct RobotLabelFlowOutput {
     #[serde(flatten)]
     envelope: bvr::robot::RobotEnvelope,
+    analysis_config: bvr::analysis::graph::AnalysisConfig,
     flow: bvr::analysis::label_intel::CrossLabelFlow,
+    usage_hints: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -5543,7 +5575,47 @@ struct RobotLabelAttentionOutput {
     #[serde(flatten)]
     envelope: bvr::robot::RobotEnvelope,
     limit: usize,
-    result: bvr::analysis::label_intel::LabelAttentionResult,
+    labels: Vec<RobotLabelAttentionScoreOutput>,
+    total_labels: usize,
+    usage_hints: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotLabelHealthResultsOutput {
+    generated_at: String,
+    #[serde(flatten)]
+    result: bvr::analysis::label_intel::LabelHealthResult,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotLabelAttentionScoreOutput {
+    rank: usize,
+    label: String,
+    attention_score: f64,
+    normalized_score: f64,
+    reason: String,
+    open_count: usize,
+    blocked_count: usize,
+    stale_count: usize,
+    pagerank_sum: f64,
+    velocity_factor: f64,
+}
+
+impl From<bvr::analysis::label_intel::LabelAttentionScore> for RobotLabelAttentionScoreOutput {
+    fn from(value: bvr::analysis::label_intel::LabelAttentionScore) -> Self {
+        Self {
+            rank: value.rank,
+            label: value.label,
+            attention_score: value.attention_score,
+            normalized_score: value.normalized_score,
+            reason: value.reason,
+            open_count: value.open_count,
+            blocked_count: value.blocked_count,
+            stale_count: value.stale_count,
+            pagerank_sum: value.pagerank_sum,
+            velocity_factor: value.velocity_factor,
+        }
+    }
 }
 
 // =========================================================================

@@ -556,7 +556,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-label-health",
                 description: "Per-label health, staleness, and blocked-work summary.",
-                key_fields: vec!["result"],
+                key_fields: vec!["analysis_config", "results"],
                 params: vec![],
                 needs_issues: true,
             },
@@ -566,7 +566,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-label-flow",
                 description: "Cross-label dependency flow and bottlenecks.",
-                key_fields: vec!["flow"],
+                key_fields: vec!["analysis_config", "flow"],
                 params: vec![],
                 needs_issues: true,
             },
@@ -576,7 +576,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-label-attention",
                 description: "Attention-ranked labels using graph and freshness signals.",
-                key_fields: vec!["limit", "result"],
+                key_fields: vec!["limit", "labels", "total_labels"],
                 params: vec!["--attention-limit <n>"],
                 needs_issues: true,
             },
@@ -616,7 +616,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-correlation-stats",
                 description: "Summarize stored correlation feedback.",
-                key_fields: vec!["stats"],
+                key_fields: vec!["total_feedback", "confirmed", "rejected", "accuracy_rate"],
                 params: vec![],
                 needs_issues: true,
             },
@@ -626,7 +626,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-orphans",
                 description: "Detect high-signal repository files that are not covered by bead history.",
-                key_fields: vec!["report"],
+                key_fields: vec!["stats", "candidates"],
                 params: vec!["--orphans-min-score <n>"],
                 needs_issues: true,
             },
@@ -730,7 +730,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-search",
                 description: "Run text or hybrid ranking over beads.",
-                key_fields: vec!["query", "limit", "mode", "preset", "weights", "results"],
+                key_fields: vec!["query", "limit", "mode", "results"],
                 params: vec![
                     "--search <query>",
                     "--search-mode text|hybrid",
@@ -1332,7 +1332,9 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
-                "result": {"type": "object"},
+                "analysis_config": {"type": "object"},
+                "results": {"type": "object"},
+                "usage_hints": {"type": "array"},
             }),
         ),
     );
@@ -1344,7 +1346,9 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             serde_json::json!({
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
+                "analysis_config": {"type": "object"},
                 "flow": {"type": "object"},
+                "usage_hints": {"type": "array"},
             }),
         ),
     );
@@ -1357,7 +1361,9 @@ pub fn generate_robot_schemas() -> RobotSchemas {
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
                 "limit": schema_prop("integer"),
-                "result": {"type": "object"},
+                "labels": {"type": "array"},
+                "total_labels": schema_prop("integer"),
+                "usage_hints": {"type": "array"},
             }),
         ),
     );
@@ -1582,6 +1588,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
                 "preset": schema_prop("string"),
                 "weights": {"type": "object"},
                 "results": {"type": "array"},
+                "usage_hints": {"type": "array"},
             }),
         ),
     );
@@ -1724,6 +1731,37 @@ mod tests {
     fn robot_docs_version_matches_cargo() {
         let docs = generate_robot_docs("guide");
         assert_eq!(docs["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn robot_docs_command_entries_match_current_flattened_payloads() {
+        let docs = generate_robot_docs("commands");
+        let commands = docs["commands"].as_object().unwrap();
+
+        assert_eq!(
+            commands["robot-correlation-stats"]["key_fields"],
+            json!(["total_feedback", "confirmed", "rejected", "accuracy_rate"])
+        );
+        assert_eq!(
+            commands["robot-orphans"]["key_fields"],
+            json!(["stats", "candidates"])
+        );
+        assert_eq!(
+            commands["robot-search"]["key_fields"],
+            json!(["query", "limit", "mode", "results"])
+        );
+        assert_eq!(
+            commands["robot-label-health"]["key_fields"],
+            json!(["analysis_config", "results"])
+        );
+        assert_eq!(
+            commands["robot-label-flow"]["key_fields"],
+            json!(["analysis_config", "flow"])
+        );
+        assert_eq!(
+            commands["robot-label-attention"]["key_fields"],
+            json!(["limit", "labels", "total_labels"])
+        );
     }
 
     // --robot-schema tests

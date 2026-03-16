@@ -445,6 +445,51 @@ fn workspace_disabled_repo_is_excluded() {
 }
 
 #[test]
+fn workspace_discovery_ignores_disabled_explicit_repo_alias() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+
+    let api_beads = format!("{}\n", issue_line("AUTH-1", "API task", "open", 1));
+    write_beads(&root.join("services/api"), &api_beads);
+
+    let bv_dir = root.join(".bv");
+    fs::create_dir_all(&bv_dir).expect("mkdir .bv");
+    let config = concat!(
+        "name: disabled-alias\n",
+        "discovery:\n",
+        "  enabled: true\n",
+        "repos:\n",
+        "  - name: disabled-api\n",
+        "    path: services/./api\n",
+        "    prefix: \"disabled-\"\n",
+        "    enabled: false\n",
+    );
+    fs::write(bv_dir.join("workspace.yaml"), config).expect("write config");
+
+    let ws_path = bv_dir.join("workspace.yaml");
+    let json = run_json(
+        &["--robot-triage", "--workspace", &ws_path.to_string_lossy()],
+        root,
+    );
+
+    let total = json["triage"]["quick_ref"]["total_open"]
+        .as_u64()
+        .unwrap_or(0);
+    assert_eq!(total, 1, "disabled explicit alias should not suppress discovery");
+
+    let top_picks = json["triage"]["quick_ref"]["top_picks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        top_picks
+            .iter()
+            .all(|pick| pick["id"].as_str().is_some_and(|id| !id.starts_with("disabled-"))),
+        "disabled explicit alias should not namespace the discovered repo: {top_picks:?}"
+    );
+}
+
+#[test]
 fn workspace_defaults_beads_path_applies_to_all_repos() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();
@@ -573,6 +618,39 @@ fn workspace_duplicate_prefix_returns_error() {
     assert!(
         stderr.contains("duplicate prefix"),
         "expected duplicate prefix error: {stderr}"
+    );
+}
+
+#[test]
+fn workspace_duplicate_repo_alias_returns_error() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+
+    let api_beads = format!("{}\n", issue_line("AUTH-1", "API task", "open", 1));
+    write_beads(&root.join("services/api"), &api_beads);
+
+    let bv_dir = root.join(".bv");
+    fs::create_dir_all(&bv_dir).expect("mkdir .bv");
+    let config = concat!(
+        "name: dup-alias\n",
+        "repos:\n",
+        "  - name: api\n",
+        "    path: services/api\n",
+        "    prefix: \"api-\"\n",
+        "  - name: backend\n",
+        "    path: services/./api\n",
+        "    prefix: \"backend-\"\n",
+    );
+    fs::write(bv_dir.join("workspace.yaml"), config).expect("write config");
+
+    let ws_path = bv_dir.join("workspace.yaml");
+    let stderr = run_failing(
+        &["--robot-triage", "--workspace", &ws_path.to_string_lossy()],
+        root,
+    );
+    assert!(
+        stderr.contains("duplicates repository path"),
+        "expected duplicate repo alias error: {stderr}"
     );
 }
 

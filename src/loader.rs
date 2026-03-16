@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::model::{Issue, Sprint};
@@ -197,6 +197,20 @@ impl WorkspaceConfig {
             }
         }
 
+        let mut seen_repo_paths = HashSet::<String>::new();
+        for (index, repo) in repos.iter().enumerate() {
+            if !repo.is_enabled() {
+                continue;
+            }
+
+            let identity = repo_identity_key(Path::new(repo.path.trim()), workspace_root);
+            if !seen_repo_paths.insert(identity.clone()) {
+                return Err(BvrError::InvalidArgument(format!(
+                    "workspace repo[{index}] duplicates repository path '{identity}'"
+                )));
+            }
+        }
+
         Ok(repos)
     }
 
@@ -257,6 +271,23 @@ fn normalize_path_for_display(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn normalize_path_for_identity(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(segment) => normalized.push(segment),
+            Component::RootDir | Component::Prefix(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+    normalized
+}
+
 fn relative_path_matches_pattern(relative_path: &Path, pattern: &str) -> bool {
     let path_segments = relative_path
         .components()
@@ -300,7 +331,8 @@ fn repo_identity_key(repo_path: &Path, workspace_root: &Path) -> String {
     } else {
         workspace_root.join(repo_path)
     };
-    let normalized = std::fs::canonicalize(&resolved).unwrap_or(resolved);
+    let normalized = std::fs::canonicalize(&resolved)
+        .unwrap_or_else(|_| normalize_path_for_identity(&resolved));
     normalize_path_for_display(&normalized)
 }
 
@@ -313,6 +345,7 @@ fn discover_workspace_repos(
     let mut discovered = Vec::<WorkspaceRepoConfig>::new();
     let mut seen_repo_paths = explicit_repos
         .iter()
+        .filter(|repo| repo.is_enabled())
         .map(|repo| repo_identity_key(Path::new(repo.path.trim()), workspace_root))
         .collect::<HashSet<_>>();
     let mut stack = vec![(workspace_root.to_path_buf(), 0usize)];
@@ -1748,5 +1781,94 @@ mod tests {
 
         let error = load_workspace_config(&config_path).expect_err("duplicate prefixes rejected");
         assert!(error.to_string().contains("duplicate prefix"));
+    }
+
+    #[test]
+    fn load_workspace_config_rejects_duplicate_repo_path_aliases() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("services/api/.beads")).expect("create repo");
+
+        let workspace_dir = root.join(".bv");
+        std::fs::create_dir_all(&workspace_dir).expect("create .bv");
+        let config_path = workspace_dir.join("workspace.yaml");
+        std::fs::write(
+            &config_path,
+            concat!(
+                "repos:\n",
+                "  - path: services/api\n",
+                "    prefix: api-\n",
+                "  - path: services/./api\n",
+                "    prefix: backend-\n",
+            ),
+        )
+        .expect("write config");
+
+        let error =
+            load_workspace_config(&config_path).expect_err("duplicate repo aliases rejected");
+        assert!(error.to_string().contains("duplicates repository path"));
+    }
+
+    #[test]
+    fn load_workspace_config_rejects_duplicate_missing_repo_aliases() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        let workspace_dir = root.join(".bv");
+        std::fs::create_dir_all(&workspace_dir).expect("create .bv");
+        let config_path = workspace_dir.join("workspace.yaml");
+        std::fs::write(
+            &config_path,
+            concat!(
+                "repos:\n",
+                "  - path: services/api\n",
+                "    prefix: api-\n",
+                "  - path: services/./api\n",
+                "    prefix: backend-\n",
+            ),
+        )
+        .expect("write config");
+
+        let error = load_workspace_config(&config_path)
+            .expect_err("duplicate missing repo aliases rejected");
+        assert!(error.to_string().contains("duplicates repository path"));
+    }
+
+    #[test]
+    fn load_workspace_config_discovery_ignores_disabled_explicit_repo_aliases() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("services/api/.beads")).expect("create api .beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            concat!(
+                "discovery:\n",
+                "  enabled: true\n",
+                "repos:\n",
+                "  - name: disabled-api\n",
+                "    path: services/./api\n",
+                "    prefix: disabled-\n",
+                "    enabled: false\n",
+            ),
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join("services/api/.beads/issues.jsonl"),
+            "{\"id\":\"AUTH-1\",\"title\":\"API Auth\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api issues");
+
+        let config =
+            load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
+
+        assert_eq!(config.repos.len(), 2, "disabled explicit alias should not block discovery");
+        assert!(
+            config
+                .repos
+                .iter()
+                .any(|repo| repo.is_enabled() && repo.path == "services/api"),
+            "discovery should still include the real repo path"
+        );
     }
 }

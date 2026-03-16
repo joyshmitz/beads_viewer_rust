@@ -259,6 +259,16 @@ fn cached_view_width() -> u16 {
     LAST_VIEW_WIDTH.with(Cell::get)
 }
 
+fn is_http_url(value: &str) -> bool {
+    value.starts_with("https://") || value.starts_with("http://")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CommandHint<'a> {
+    key: &'a str,
+    desc: &'a str,
+}
+
 /// Semantic colour tokens (dark-background palette).
 #[allow(dead_code)]
 mod tokens {
@@ -1586,12 +1596,9 @@ impl Model for BvrApp {
         let footer_text = match self.mode {
             ViewMode::Main => {
                 if self.status_msg.is_empty() {
-                    format!(
-                        "b/i/g/h modes | / search | s sort ({}) | p hints | C copy | x export | O edit",
-                        self.list_sort.label()
-                    )
+                    None
                 } else {
-                    self.status_msg.clone()
+                    Some(RichText::raw(self.status_msg.clone()))
                 }
             }
             ViewMode::Board => {
@@ -1609,15 +1616,15 @@ impl Model for BvrApp {
                         }
                     },
                 );
-                format!(
+                Some(RichText::raw(format!(
                     "Board mode: lane counts, queued IDs, and selected issue delivery context | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
                     self.board_grouping.label(),
                     self.board_empty_visibility.label(),
                     detail_hint,
-                )
+                )))
             }
             ViewMode::Insights => {
-                format!(
+                Some(RichText::raw(format!(
                     "Insights [{}] | s/S panel | e explanations={} | x proof={}",
                     self.insights_panel.short_label(),
                     if self.insights_show_explanations {
@@ -1630,47 +1637,47 @@ impl Model for BvrApp {
                     } else {
                         "off"
                     }
-                )
+                )))
             }
-            ViewMode::Graph => "Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back".to_string(),
+            ViewMode::Graph => Some(RichText::raw(
+                "Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back",
+            )),
             ViewMode::History => {
                 if self.history_search_active {
-                    format!(
+                    Some(RichText::raw(format!(
                         "History ({}): [{}] Tab cycles mode | Enter confirm | Esc cancel",
                         self.history_view_mode.label(),
                         self.history_search_mode.label(),
-                    )
+                    )))
                 } else {
-                    format!(
-                        "History ({}): c confidence (>= {:.0}%) | v bead/git | / search (Tab mode) | f file-tree | h/Esc back",
-                        self.history_view_mode.label(),
-                        self.history_min_confidence() * 100.0
-                    )
+                    None
                 }
             }
             ViewMode::Actionable => {
                 let plan = self.actionable_plan.as_ref();
                 let track_count = plan.map_or(0, |p| p.tracks.len());
                 let item_count = plan.map_or(0, |p| p.summary.actionable_count);
-                format!(
+                Some(RichText::raw(format!(
                     "Actionable: {track_count} tracks, {item_count} items | j/k navigate | Tab focus | a/Esc back"
-                )
+                )))
             }
             ViewMode::Attention => {
                 let label_count = self.attention_result.as_ref().map_or(0, |r| r.labels.len());
-                format!(
+                Some(RichText::raw(format!(
                     "Attention: {label_count} labels ranked | j/k navigate | Tab focus | !/Esc back"
-                )
+                )))
             }
             ViewMode::Tree => {
                 let node_count = self.tree_flat_nodes.len();
-                format!(
+                Some(RichText::raw(format!(
                     "Tree: {node_count} nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back"
-                )
+                )))
             }
             ViewMode::LabelDashboard => {
                 let label_count = self.label_dashboard.as_ref().map_or(0, |r| r.labels.len());
-                format!("Labels: {label_count} | j/k navigate | Tab focus | [/Esc back")
+                Some(RichText::raw(format!(
+                    "Labels: {label_count} | j/k navigate | Tab focus | [/Esc back"
+                )))
             }
             ViewMode::FlowMatrix => {
                 let label_count = self.flow_matrix.as_ref().map_or(0, |f| f.labels.len());
@@ -1678,28 +1685,100 @@ impl Model for BvrApp {
                     .flow_matrix
                     .as_ref()
                     .map_or(0, |f| f.total_cross_label_deps);
-                format!(
+                Some(RichText::raw(format!(
                     "Flow: {label_count} labels, {dep_count} cross-deps | j/k rows | h/l cols | Tab focus | ]/Esc back"
-                )
+                )))
             }
             ViewMode::TimeTravelDiff => {
                 if self.time_travel_input_active {
-                    format!(
+                    Some(RichText::raw(
                         "Time-travel: enter git ref or file path | Enter confirm | Esc cancel"
-                    )
+                    ))
                 } else if self.time_travel_diff.is_some() {
-                    "Time-travel: j/k navigate | Tab focus | T reload | t/Esc back".to_string()
+                    Some(RichText::raw(
+                        "Time-travel: j/k navigate | Tab focus | T reload | t/Esc back",
+                    ))
                 } else {
-                    "Time-travel: no diff loaded | t to enter ref | Esc back".to_string()
+                    Some(RichText::raw(
+                        "Time-travel: no diff loaded | t to enter ref | Esc back",
+                    ))
                 }
             }
             ViewMode::Sprint => {
                 let sprint_count = self.sprint_data.len();
-                format!(
+                Some(RichText::raw(format!(
                     "Sprint: {sprint_count} sprint(s) | j/k navigate | Tab focus | S/Esc back"
-                )
+                )))
             }
         };
+        let footer_text = footer_text.unwrap_or_else(|| match self.mode {
+            ViewMode::Main => wrap_command_hints(
+                &[
+                    CommandHint {
+                        key: "b/i/g/h",
+                        desc: "modes",
+                    },
+                    CommandHint {
+                        key: "/",
+                        desc: "search",
+                    },
+                    CommandHint {
+                        key: "s",
+                        desc: self.list_sort.label(),
+                    },
+                    CommandHint {
+                        key: "p",
+                        desc: "hints",
+                    },
+                    CommandHint {
+                        key: "C",
+                        desc: "copy",
+                    },
+                    CommandHint {
+                        key: "x",
+                        desc: "export",
+                    },
+                    CommandHint {
+                        key: "O",
+                        desc: "edit",
+                    },
+                ],
+                rows[2].width.saturating_sub(1) as usize,
+            ),
+            ViewMode::History => {
+                let confidence = format!("confidence >= {:.0}%", self.history_min_confidence() * 100.0);
+                wrap_command_hints(
+                    &[
+                        CommandHint {
+                            key: "c",
+                            desc: confidence.as_str(),
+                        },
+                        CommandHint {
+                            key: "v",
+                            desc: "bead/git",
+                        },
+                        CommandHint {
+                            key: "/",
+                            desc: "search",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "mode",
+                        },
+                        CommandHint {
+                            key: "f",
+                            desc: "file-tree",
+                        },
+                        CommandHint {
+                            key: "h/Esc",
+                            desc: "back",
+                        },
+                    ],
+                    rows[2].width.saturating_sub(1) as usize,
+                )
+            }
+            _ => unreachable!("footer rich hints only apply to main/history"),
+        });
         Paragraph::new(footer_text)
             .style(tokens::footer())
             .render(rows[2], frame);
@@ -2912,8 +2991,14 @@ impl BvrApp {
             KeyCode::Char('y') if matches!(self.mode, ViewMode::History) => {
                 self.history_copy_to_clipboard();
             }
+            KeyCode::Char('y') if self.should_copy_selected_issue_external_ref() => {
+                self.copy_selected_issue_external_ref();
+            }
             KeyCode::Char('o') if matches!(self.mode, ViewMode::History) => {
                 self.history_open_in_browser();
+            }
+            KeyCode::Char('o') if self.should_open_selected_issue_external_ref() => {
+                self.open_selected_issue_external_ref();
             }
             KeyCode::Char('f' | 'F') if matches!(self.mode, ViewMode::History) => {
                 self.toggle_history_file_tree();
@@ -4893,6 +4978,50 @@ impl BvrApp {
             .selected_visible_slot(&visible)
             .map_or(visible[0], |_| self.selected);
         self.analyzer.issues.get(index)
+    }
+
+    fn selected_issue_external_ref_url(&self) -> Option<&str> {
+        self.selected_issue()
+            .and_then(|issue| issue.external_ref.as_deref())
+            .filter(|url| is_http_url(url))
+    }
+
+    fn should_open_selected_issue_external_ref(&self) -> bool {
+        matches!(self.mode, ViewMode::Main)
+            && matches!(self.focus, FocusPane::Detail)
+            && self.selected_issue_external_ref_url().is_some()
+    }
+
+    fn should_copy_selected_issue_external_ref(&self) -> bool {
+        matches!(self.mode, ViewMode::Main)
+            && matches!(self.focus, FocusPane::Detail)
+            && self.selected_issue_external_ref_url().is_some()
+    }
+
+    fn open_selected_issue_external_ref(&mut self) {
+        let Some(url) = self.selected_issue_external_ref_url().map(str::to_string) else {
+            self.status_msg = "No external issue reference".into();
+            return;
+        };
+
+        if open_url_in_browser(&url) {
+            self.status_msg = "Opened external issue reference".into();
+        } else {
+            self.status_msg = "Could not open browser".into();
+        }
+    }
+
+    fn copy_selected_issue_external_ref(&mut self) {
+        let Some(url) = self.selected_issue_external_ref_url().map(str::to_string) else {
+            self.status_msg = "No external issue reference".into();
+            return;
+        };
+
+        if copy_text_to_clipboard(&url) {
+            self.status_msg = "Copied external issue reference to clipboard".into();
+        } else {
+            self.status_msg = "Clipboard not available".into();
+        }
     }
 
     fn issue_by_id(&self, issue_id: &str) -> Option<&Issue> {
@@ -7887,9 +8016,28 @@ impl BvrApp {
 
     fn detail_panel_render_text(&self) -> RichText {
         match self.mode {
+            ViewMode::Main => self.issue_detail_render_text(),
             ViewMode::History => self.history_detail_render_text(),
             _ => RichText::raw(self.detail_panel_text()),
         }
+    }
+
+    fn issue_detail_render_text(&self) -> RichText {
+        let external_ref = self.selected_issue_external_ref_url();
+        let mut lines = Vec::new();
+        for line in self.issue_detail_text().lines() {
+            if let Some(url) = external_ref
+                && line == format!("External: {url}")
+            {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw("External: "),
+                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                ]));
+            } else {
+                lines.push(RichLine::raw(line));
+            }
+        }
+        RichText::from_lines(lines)
     }
 
     fn board_detail_render_state(&self, visible_height: usize) -> (String, usize, usize) {
@@ -9995,6 +10143,51 @@ fn truncate_display(value: &str, max_len: usize) -> String {
     truncate_with_ellipsis(value, max_len, "…")
 }
 
+fn command_hint_width(hint: CommandHint<'_>) -> usize {
+    display_width(hint.key) + 1 + display_width(hint.desc)
+}
+
+fn command_hint_line(hints: &[CommandHint<'_>]) -> RichLine {
+    let mut line = RichLine::new();
+    for (index, hint) in hints.iter().enumerate() {
+        if index > 0 {
+            line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        }
+        line.push_span(RichSpan::styled(hint.key, tokens::help_key()));
+        line.push_span(RichSpan::raw(" "));
+        line.push_span(RichSpan::styled(hint.desc, tokens::help_desc()));
+    }
+    line
+}
+
+fn wrap_command_hints(hints: &[CommandHint<'_>], width: usize) -> RichText {
+    if hints.is_empty() || width == 0 {
+        return RichText::new();
+    }
+
+    let mut lines = Vec::new();
+    let mut line_start = 0usize;
+    let mut line_width = 0usize;
+
+    for (index, hint) in hints.iter().copied().enumerate() {
+        let hint_width = command_hint_width(hint);
+        let separator_width = usize::from(index > line_start) * 3;
+        if index > line_start && line_width + separator_width + hint_width > width {
+            lines.push(command_hint_line(&hints[line_start..index]));
+            line_start = index;
+            line_width = hint_width;
+        } else {
+            line_width += separator_width + hint_width;
+        }
+    }
+
+    if line_start < hints.len() {
+        lines.push(command_hint_line(&hints[line_start..]));
+    }
+
+    RichText::from_lines(lines)
+}
+
 fn fit_display(value: &str, width: usize) -> String {
     let mut out = truncate_display(value, width);
     let visible = display_width(&out);
@@ -10297,14 +10490,15 @@ fn buffer_to_text(buf: &ftui::Buffer, pool: &ftui::GraphemePool) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        BackgroundTickDecision, BoardGrouping, BvrApp, EmptyLaneVisibility, FocusPane,
-        GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
-        HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
-        ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
-        buffer_to_text, compact_history_duration_label, decide_background_tick, display_width,
-        fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
-        record_view_size, render_debug_view, should_apply_background_reload, sprint_reference_now,
-        truncate_display,
+        BackgroundTickDecision, BoardGrouping, BvrApp, CommandHint, EmptyLaneVisibility,
+        FocusPane, GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache,
+        HistoryLayout, HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode,
+        InsightsPanel, ListFilter, ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode,
+        background_warning_message, buffer_to_text, compact_history_duration_label,
+        decide_background_tick, display_width, fit_display, history_legacy_lifecycle_lines,
+        legacy_history_author_initials, record_view_size, render_debug_view,
+        should_apply_background_reload, sprint_reference_now, truncate_display,
+        wrap_command_hints,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -14520,6 +14714,86 @@ mod tests {
     }
 
     #[test]
+    fn wrap_command_hints_preserves_groups_and_styles() {
+        let hints = [
+            CommandHint {
+                key: "Tab",
+                desc: "mode",
+            },
+            CommandHint {
+                key: "/",
+                desc: "search",
+            },
+            CommandHint {
+                key: "O",
+                desc: "edit",
+            },
+        ];
+
+        let wrapped = wrap_command_hints(&hints, 18);
+        assert_eq!(wrapped.lines().len(), 2);
+        assert_eq!(wrapped.lines()[0].to_plain_text(), "Tab mode");
+        assert_eq!(wrapped.lines()[1].to_plain_text(), "/ search | O edit");
+
+        let first_line = wrapped.lines()[0].spans();
+        let second_line = wrapped.lines()[1].spans();
+        assert_eq!(first_line[0].style, Some(tokens::help_key()));
+        assert_eq!(first_line[2].style, Some(tokens::help_desc()));
+        assert_eq!(second_line[3].style, Some(tokens::dim()));
+    }
+
+    #[test]
+    fn main_footer_command_hints_wrap_across_multiple_lines() {
+        let hints = [
+            CommandHint {
+                key: "b/i/g/h",
+                desc: "modes",
+            },
+            CommandHint {
+                key: "/",
+                desc: "search",
+            },
+            CommandHint {
+                key: "s",
+                desc: "sort",
+            },
+            CommandHint {
+                key: "p",
+                desc: "hints",
+            },
+            CommandHint {
+                key: "C",
+                desc: "copy",
+            },
+            CommandHint {
+                key: "x",
+                desc: "export",
+            },
+            CommandHint {
+                key: "O",
+                desc: "edit",
+            },
+        ];
+
+        let wrapped = wrap_command_hints(&hints, 20);
+        let plain_lines = wrapped
+            .lines()
+            .iter()
+            .map(ftui::text::Line::to_plain_text)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            plain_lines,
+            vec![
+                "b/i/g/h modes".to_string(),
+                "/ search | s sort".to_string(),
+                "p hints | C copy".to_string(),
+                "x export | O edit".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn history_detail_renders_hyperlink_for_selected_commit() {
         let repo = init_temp_repo_with_remote("git@github.com:owner/repo.git");
         let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
@@ -14531,6 +14805,65 @@ mod tests {
                 .any(|url| url == "https://github.com/owner/repo/commit/aaaa1111"),
             "expected commit hyperlink to be rendered, got {urls:?}"
         );
+    }
+
+    #[test]
+    fn main_detail_renders_hyperlink_for_external_issue_reference() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let urls = rendered_link_urls(&app, 120, 40);
+        assert!(
+            urls.iter()
+                .any(|url| url == "https://github.com/org/repo/issues/42"),
+            "expected external issue hyperlink to be rendered, got {urls:?}"
+        );
+    }
+
+    #[test]
+    fn main_detail_open_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Main, 0);
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("mailto:test@example.com".into());
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        assert!(app.should_open_selected_issue_external_ref());
+    }
+
+    #[test]
+    fn main_detail_copy_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Main, 0);
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("mailto:test@example.com".into());
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        assert!(app.should_copy_selected_issue_external_ref());
+    }
+
+    #[test]
+    fn main_mode_o_keeps_open_filter_shortcut_without_external_ref() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+        app.update(key(KeyCode::Char('o')));
+        assert_eq!(app.list_filter, ListFilter::Open);
+    }
+
+    #[test]
+    fn main_mode_y_without_external_ref_does_not_set_status_message() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+        app.update(key(KeyCode::Char('y')));
+        assert!(app.status_msg.is_empty());
     }
 
     #[test]

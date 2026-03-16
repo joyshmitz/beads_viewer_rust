@@ -202,9 +202,7 @@ impl WorkspaceConfig {
                 continue;
             }
 
-            if repo_resolves_to_workspace_root(Path::new(repo.path.trim()), workspace_root) {
-                repo.name = workspace_root_repo_name(workspace_root);
-            }
+            repo.name = inferred_repo_name(Path::new(repo.path.trim()), workspace_root);
         }
 
         let mut seen_repo_paths = HashSet::<String>::new();
@@ -358,8 +356,18 @@ fn workspace_root_repo_name(workspace_root: &Path) -> String {
         .to_string()
 }
 
-fn repo_resolves_to_workspace_root(repo_path: &Path, workspace_root: &Path) -> bool {
-    repo_identity_key(repo_path, workspace_root) == repo_identity_key(Path::new("."), workspace_root)
+fn inferred_repo_name(repo_path: &Path, workspace_root: &Path) -> String {
+    let resolved = if repo_path.is_absolute() {
+        repo_path.to_path_buf()
+    } else {
+        workspace_root.join(repo_path)
+    };
+    let normalized =
+        std::fs::canonicalize(&resolved).unwrap_or_else(|_| normalize_path_for_identity(&resolved));
+    normalized
+        .file_name()
+        .and_then(OsStr::to_str)
+        .map_or_else(|| workspace_root_repo_name(workspace_root), ToString::to_string)
 }
 
 fn discover_workspace_repos(
@@ -1330,6 +1338,39 @@ mod tests {
             issues[0].id,
             format!("{}-ROOT-2", issues[0].source_repo.to_ascii_lowercase())
         );
+    }
+
+    #[test]
+    fn load_workspace_issues_namespaces_explicit_parent_segment_repo_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join("services/.beads")).expect("create services .beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            "repos:\n  - path: services/api/..\n",
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join("services/.beads/issues.jsonl"),
+            "{\"id\":\"SRV-1\",\"title\":\"Service Root\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write services issues");
+
+        let config =
+            load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
+        assert_eq!(config.repos.len(), 1);
+        assert_eq!(config.repos[0].effective_name(), "services");
+        assert_eq!(config.repos[0].effective_prefix(), "services-");
+
+        let (issues, summary) =
+            load_workspace_issues_with_summary(&root.join(".bv/workspace.yaml"))
+                .expect("load workspace issues");
+
+        assert_eq!(summary.total_repos, 1);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].source_repo, "services");
+        assert_eq!(issues[0].id, "services-SRV-1");
     }
 
     #[test]

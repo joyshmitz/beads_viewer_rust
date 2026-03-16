@@ -360,6 +360,45 @@ fn workspace_explicit_root_repo_path_uses_workspace_name_for_namespacing() {
 }
 
 #[test]
+fn workspace_explicit_parent_segment_repo_path_uses_resolved_repo_name() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+
+    let bv_dir = root.join(".bv");
+    fs::create_dir_all(&bv_dir).expect("mkdir .bv");
+    fs::write(
+        bv_dir.join("workspace.yaml"),
+        "name: explicit-parent\nrepos:\n  - path: services/api/..\n",
+    )
+    .expect("write config");
+
+    let service_beads = format!("{}\n", issue_line("SRV-1", "Service task", "open", 1));
+    write_beads(&root.join("services"), &service_beads);
+
+    let ws_path = bv_dir.join("workspace.yaml");
+    let json = run_json(
+        &["--robot-triage", "--workspace", &ws_path.to_string_lossy()],
+        root,
+    );
+
+    let total = json["triage"]["quick_ref"]["total_open"]
+        .as_u64()
+        .unwrap_or(0);
+    assert_eq!(total, 1, "explicit parent-segment repo path should load");
+
+    let top_picks = json["triage"]["quick_ref"]["top_picks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        top_picks
+            .iter()
+            .any(|pick| pick["id"].as_str() == Some("services-SRV-1")),
+        "explicit parent-segment repo path should use resolved repo basename: {top_picks:?}"
+    );
+}
+
+#[test]
 fn workspace_discovery_excludes_node_modules() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();

@@ -8041,6 +8041,19 @@ impl BvrApp {
         let issue_header = self
             .selected_issue()
             .map(|issue| format!("{} {}  {}", type_icon(&issue.issue_type), issue.id, issue.title));
+        let repo_line = self.selected_issue().map(|issue| {
+            format!(
+                "Assignee: {} | Repo: {} | Estimate: {}",
+                display_or_fallback(&issue.assignee, "unassigned"),
+                display_or_fallback(&issue.source_repo, "local"),
+                issue
+                    .estimated_minutes
+                    .map_or_else(|| "n/a".to_string(), |minutes| format!("{minutes}m"))
+            )
+        });
+        let show_repo_hint = self
+            .selected_issue()
+            .is_some_and(|issue| !issue.source_repo.trim().is_empty());
         let external_ref = self.selected_issue_external_ref_url();
         let mut lines = Vec::new();
         for line in self.issue_detail_text().lines() {
@@ -8049,6 +8062,12 @@ impl BvrApp {
                     RichSpan::raw(line),
                     RichSpan::styled("  ", tokens::dim()),
                     RichSpan::styled("(C copy id)", tokens::dim()),
+                ]));
+            } else if show_repo_hint && repo_line.as_deref().is_some_and(|repo_line| line == repo_line) {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw(line),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(w repo filter)", tokens::dim()),
                 ]));
             } else if let Some(url) = external_ref
                 && line == format!("External: {url}")
@@ -14853,6 +14872,10 @@ mod tests {
         assert!(
             rendered.contains("(C copy id)"),
             "expected issue-id action hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("(w repo filter)"),
+            "expected repo-filter action hint, got:\n{rendered}"
         );
     }
 

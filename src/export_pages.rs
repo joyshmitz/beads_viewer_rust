@@ -492,6 +492,17 @@ fn handle_preview_request(
     }
 
     if route == PREVIEW_RELOAD_PATH {
+        if !live_reload {
+            write_http_response(
+                &mut stream,
+                "404 Not Found",
+                "text/plain; charset=utf-8",
+                b"not found\n",
+                head_only,
+            )?;
+            return Ok(true);
+        }
+
         let token = latest_modified_token(bundle_dir)?.to_string();
         write_http_response(
             &mut stream,

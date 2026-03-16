@@ -1905,7 +1905,7 @@ mod tests {
             include_history: false,
             ..WizardConfig::default()
         };
-        let input = "y\n./saved-out\nn\n";
+        let input = "y\n\nn\n\n\n3\n./saved-out\nn\n";
         let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
         let mut output = Vec::new();
         let result = run_wizard_interactive(

@@ -1282,6 +1282,56 @@ fn preview_pages_no_live_reload_omits_reload_script() {
 }
 
 #[test]
+fn preview_pages_no_live_reload_disables_reload_endpoint() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = temp.path();
+    let bundle_dir = repo_dir.join("bundle");
+    fs::create_dir_all(&bundle_dir).expect("create bundle dir");
+    fs::write(
+        bundle_dir.join("index.html"),
+        "<!doctype html><html><body>ok</body></html>",
+    )
+    .expect("write index");
+
+    let probe = TcpListener::bind(("127.0.0.1", 0)).expect("probe port");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(repo_dir)
+        .args(["--preview-pages", "bundle", "--no-live-reload"])
+        .env("BVR_PREVIEW_PORT", port.to_string())
+        .env("BVR_PREVIEW_MAX_REQUESTS", "1")
+        .env("BV_NO_BROWSER", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+
+    let mut response = None::<String>;
+    for _ in 0..40 {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            response = Some(preview_request(port, "/.bvr/livereload"));
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let response = response.expect("reload response");
+    assert!(
+        response.contains("404 Not Found"),
+        "reload endpoint should be disabled when live reload is off: {response}"
+    );
+
+    let output = child.wait_with_output().expect("wait for preview");
+    assert!(
+        output.status.success(),
+        "preview reload request failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn preview_pages_serves_directory_index_without_trailing_slash() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();

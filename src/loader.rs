@@ -289,6 +289,10 @@ fn normalize_path_for_identity(path: &Path) -> PathBuf {
 }
 
 fn relative_path_matches_pattern(relative_path: &Path, pattern: &str) -> bool {
+    if relative_path.as_os_str().is_empty() {
+        return pattern.trim().is_empty() || pattern == ".";
+    }
+
     let path_segments = relative_path
         .components()
         .map(|component| component.as_os_str().to_string_lossy().to_string())
@@ -331,8 +335,8 @@ fn repo_identity_key(repo_path: &Path, workspace_root: &Path) -> String {
     } else {
         workspace_root.join(repo_path)
     };
-    let normalized = std::fs::canonicalize(&resolved)
-        .unwrap_or_else(|_| normalize_path_for_identity(&resolved));
+    let normalized =
+        std::fs::canonicalize(&resolved).unwrap_or_else(|_| normalize_path_for_identity(&resolved));
     normalize_path_for_display(&normalized)
 }
 
@@ -348,6 +352,29 @@ fn discover_workspace_repos(
         .filter(|repo| repo.is_enabled())
         .map(|repo| repo_identity_key(Path::new(repo.path.trim()), workspace_root))
         .collect::<HashSet<_>>();
+
+    if discovery
+        .patterns
+        .iter()
+        .any(|pattern| relative_path_matches_pattern(Path::new(""), pattern))
+    {
+        let identity = repo_identity_key(Path::new("."), workspace_root);
+        let beads_dir =
+            workspace_root.join(WorkspaceRepoConfig::default().effective_beads_path(Some(defaults)));
+        if seen_repo_paths.insert(identity) && beads_dir.is_dir() {
+            let root_name = workspace_root
+                .file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or("root")
+                .to_string();
+            discovered.push(WorkspaceRepoConfig {
+                name: root_name,
+                path: ".".to_string(),
+                ..WorkspaceRepoConfig::default()
+            });
+        }
+    }
+
     let mut stack = vec![(workspace_root.to_path_buf(), 0usize)];
 
     while let Some((current_dir, depth)) = stack.pop() {
@@ -1215,6 +1242,47 @@ mod tests {
     }
 
     #[test]
+    fn load_workspace_issues_discovers_workspace_root_repo_when_pattern_matches_dot() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        let root_name = root
+            .file_name()
+            .and_then(OsStr::to_str)
+            .expect("workspace root name")
+            .to_string();
+        std::fs::create_dir_all(root.join(".bv")).expect("create .bv");
+        std::fs::create_dir_all(root.join(".beads")).expect("create root .beads");
+        std::fs::write(
+            root.join(".bv/workspace.yaml"),
+            "discovery:\n  enabled: true\n  patterns: ['.']\n",
+        )
+        .expect("write workspace config");
+        std::fs::write(
+            root.join(".beads/issues.jsonl"),
+            "{\"id\":\"ROOT-1\",\"title\":\"Workspace Root\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write root issues");
+
+        let config =
+            load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
+        assert_eq!(config.repos.len(), 1);
+        assert_eq!(config.repos[0].path, ".");
+
+        let (issues, summary) =
+            load_workspace_issues_with_summary(&root.join(".bv/workspace.yaml"))
+                .expect("load workspace issues");
+
+        assert_eq!(summary.total_repos, 1);
+        assert_eq!(summary.successful_repos, 1);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].source_repo, root_name);
+        assert_eq!(
+            issues[0].id,
+            format!("{}-ROOT-1", root_name.to_ascii_lowercase())
+        );
+    }
+
+    #[test]
     fn load_workspace_issues_applies_default_beads_path_to_explicit_and_discovered_repos() {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
@@ -1286,7 +1354,11 @@ mod tests {
         let config =
             load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
 
-        assert_eq!(config.repos.len(), 1, "same repo should not be rediscovered");
+        assert_eq!(
+            config.repos.len(),
+            1,
+            "same repo should not be rediscovered"
+        );
         assert_eq!(config.repos[0].name, "backend");
         assert_eq!(config.repos[0].path, "services/./api");
     }
@@ -1862,7 +1934,11 @@ mod tests {
         let config =
             load_workspace_config(&root.join(".bv/workspace.yaml")).expect("load workspace config");
 
-        assert_eq!(config.repos.len(), 2, "disabled explicit alias should not block discovery");
+        assert_eq!(
+            config.repos.len(),
+            2,
+            "disabled explicit alias should not block discovery"
+        );
         assert!(
             config
                 .repos

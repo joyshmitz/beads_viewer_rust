@@ -1712,39 +1712,10 @@ impl Model for BvrApp {
             }
         };
         let footer_text = footer_text.unwrap_or_else(|| match self.mode {
-            ViewMode::Main => wrap_command_hints(
-                &[
-                    CommandHint {
-                        key: "b/i/g/h",
-                        desc: "modes",
-                    },
-                    CommandHint {
-                        key: "/",
-                        desc: "search",
-                    },
-                    CommandHint {
-                        key: "s",
-                        desc: self.list_sort.label(),
-                    },
-                    CommandHint {
-                        key: "p",
-                        desc: "hints",
-                    },
-                    CommandHint {
-                        key: "C",
-                        desc: "copy",
-                    },
-                    CommandHint {
-                        key: "x",
-                        desc: "export",
-                    },
-                    CommandHint {
-                        key: "O",
-                        desc: "edit",
-                    },
-                ],
-                rows[2].width.saturating_sub(1) as usize,
-            ),
+            ViewMode::Main => {
+                let hints = self.main_footer_command_hints();
+                wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
+            }
             ViewMode::History => {
                 let confidence = format!("confidence >= {:.0}%", self.history_min_confidence() * 100.0);
                 wrap_command_hints(
@@ -4986,6 +4957,50 @@ impl BvrApp {
             .filter(|url| is_http_url(url))
     }
 
+    fn main_footer_command_hints(&self) -> Vec<CommandHint<'static>> {
+        let mut hints = vec![
+            CommandHint {
+                key: "b/i/g/h",
+                desc: "modes",
+            },
+            CommandHint {
+                key: "/",
+                desc: "search",
+            },
+            CommandHint {
+                key: "s",
+                desc: self.list_sort.label(),
+            },
+            CommandHint {
+                key: "p",
+                desc: "hints",
+            },
+            CommandHint {
+                key: "C",
+                desc: "copy",
+            },
+            CommandHint {
+                key: "x",
+                desc: "export",
+            },
+            CommandHint {
+                key: "O",
+                desc: "edit",
+            },
+        ];
+        if self.selected_issue_external_ref_url().is_some() && matches!(self.focus, FocusPane::Detail) {
+            hints.push(CommandHint {
+                key: "o",
+                desc: "open link",
+            });
+            hints.push(CommandHint {
+                key: "y",
+                desc: "copy link",
+            });
+        }
+        hints
+    }
+
     fn should_open_selected_issue_external_ref(&self) -> bool {
         matches!(self.mode, ViewMode::Main)
             && matches!(self.focus, FocusPane::Detail)
@@ -8032,6 +8047,8 @@ impl BvrApp {
                 lines.push(RichLine::from_spans([
                     RichSpan::raw("External: "),
                     RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(o open, y copy)", tokens::dim()),
                 ]));
             } else {
                 lines.push(RichLine::raw(line));
@@ -14818,6 +14835,12 @@ mod tests {
                 .any(|url| url == "https://github.com/org/repo/issues/42"),
             "expected external issue hyperlink to be rendered, got {urls:?}"
         );
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("(o open, y copy)"),
+            "expected inline external-ref action hint, got:\n{rendered}"
+        );
     }
 
     #[test]
@@ -14864,6 +14887,24 @@ mod tests {
         app.focus = FocusPane::Detail;
         app.update(key(KeyCode::Char('y')));
         assert!(app.status_msg.is_empty());
+    }
+
+    #[test]
+    fn main_footer_shows_external_ref_commands_when_detail_link_is_available() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(rendered.contains("o open link"), "expected open-link hint, got:\n{rendered}");
+        assert!(rendered.contains("y copy link"), "expected copy-link hint, got:\n{rendered}");
+    }
+
+    #[test]
+    fn main_footer_hides_external_ref_commands_without_detail_link() {
+        let rendered = render_frame(ViewMode::Main, 120, 40);
+        assert!(!rendered.contains("o open link"), "unexpected open-link hint in:\n{rendered}");
+        assert!(!rendered.contains("y copy link"), "unexpected copy-link hint in:\n{rendered}");
     }
 
     #[test]

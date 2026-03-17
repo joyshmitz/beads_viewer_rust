@@ -8063,12 +8063,21 @@ impl BvrApp {
                 join_display_values(&issue.labels, 4)
             )
         });
+        let timeline_line = self.selected_issue().map(|issue| {
+            format!(
+                "Created: {} | Updated: {} | Due: {}",
+                format_compact_timestamp(issue.created_at),
+                format_compact_timestamp(issue.updated_at),
+                format_compact_timestamp(issue.due_date)
+            )
+        });
         let show_repo_hint = self
             .selected_issue()
             .is_some_and(|issue| !issue.source_repo.trim().is_empty());
         let show_label_hint = self
             .selected_issue()
             .is_some_and(|issue| !issue.labels.is_empty());
+        let show_timeline_hint = self.selected_issue().is_some();
         let external_ref = self.selected_issue_external_ref_url();
         let mut lines = Vec::new();
         for line in self.issue_detail_text().lines() {
@@ -8089,6 +8098,14 @@ impl BvrApp {
                     RichSpan::raw(line),
                     RichSpan::styled("  ", tokens::dim()),
                     RichSpan::styled("(L label filter)", tokens::dim()),
+                ]));
+            } else if show_timeline_hint
+                && timeline_line.as_deref().is_some_and(|timeline_line| line == timeline_line)
+            {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw(line),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(t time-travel)", tokens::dim()),
                 ]));
             } else if let Some(url) = external_ref
                 && line == format!("External: {url}")
@@ -14901,6 +14918,10 @@ mod tests {
         assert!(
             rendered.contains("(L label filter)"),
             "expected label-filter action hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("(t time-travel)"),
+            "expected time-travel action hint, got:\n{rendered}"
         );
     }
 

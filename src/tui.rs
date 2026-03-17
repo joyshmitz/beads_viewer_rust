@@ -8051,9 +8051,24 @@ impl BvrApp {
                     .map_or_else(|| "n/a".to_string(), |minutes| format!("{minutes}m"))
             )
         });
+        let labels_line = self.selected_issue().map(|issue| {
+            let closed_display = if issue.is_closed_like() {
+                format_compact_timestamp(issue.closed_at.or(issue.updated_at))
+            } else {
+                "n/a".to_string()
+            };
+            format!(
+                "Closed: {} | Labels: {}",
+                closed_display,
+                join_display_values(&issue.labels, 4)
+            )
+        });
         let show_repo_hint = self
             .selected_issue()
             .is_some_and(|issue| !issue.source_repo.trim().is_empty());
+        let show_label_hint = self
+            .selected_issue()
+            .is_some_and(|issue| !issue.labels.is_empty());
         let external_ref = self.selected_issue_external_ref_url();
         let mut lines = Vec::new();
         for line in self.issue_detail_text().lines() {
@@ -8068,6 +8083,12 @@ impl BvrApp {
                     RichSpan::raw(line),
                     RichSpan::styled("  ", tokens::dim()),
                     RichSpan::styled("(w repo filter)", tokens::dim()),
+                ]));
+            } else if show_label_hint && labels_line.as_deref().is_some_and(|labels_line| line == labels_line) {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw(line),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(L label filter)", tokens::dim()),
                 ]));
             } else if let Some(url) = external_ref
                 && line == format!("External: {url}")
@@ -14876,6 +14897,10 @@ mod tests {
         assert!(
             rendered.contains("(w repo filter)"),
             "expected repo-filter action hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("(L label filter)"),
+            "expected label-filter action hint, got:\n{rendered}"
         );
     }
 

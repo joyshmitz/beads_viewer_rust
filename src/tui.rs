@@ -1372,7 +1372,7 @@ impl Model for BvrApp {
         };
 
         if graph_single_pane {
-            Paragraph::new(self.graph_detail_text())
+            Paragraph::new(self.graph_detail_render_text())
                 .block(
                     Block::bordered()
                         .title(&detail_title)
@@ -1578,7 +1578,7 @@ impl Model for BvrApp {
                 board_detail_line = Some((offset, total_lines));
                 RichText::raw(text)
             } else if matches!(self.mode, ViewMode::Graph) {
-                RichText::raw(self.graph_detail_text())
+                self.graph_detail_render_text()
             } else {
                 self.detail_panel_render_text()
             };
@@ -5002,13 +5002,13 @@ impl BvrApp {
     }
 
     fn should_open_selected_issue_external_ref(&self) -> bool {
-        matches!(self.mode, ViewMode::Main)
+        matches!(self.mode, ViewMode::Main | ViewMode::Graph)
             && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
 
     fn should_copy_selected_issue_external_ref(&self) -> bool {
-        matches!(self.mode, ViewMode::Main)
+        matches!(self.mode, ViewMode::Main | ViewMode::Graph)
             && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
@@ -8032,6 +8032,7 @@ impl BvrApp {
     fn detail_panel_render_text(&self) -> RichText {
         match self.mode {
             ViewMode::Main => self.issue_detail_render_text(),
+            ViewMode::Graph => self.graph_detail_render_text(),
             ViewMode::History => self.history_detail_render_text(),
             _ => RichText::raw(self.detail_panel_text()),
         }
@@ -8119,6 +8120,41 @@ impl BvrApp {
             } else {
                 lines.push(RichLine::raw(line));
             }
+        }
+        RichText::from_lines(lines)
+    }
+
+    fn graph_detail_render_text(&self) -> RichText {
+        let external_ref = self.selected_issue_external_ref_url();
+        let mut lines = Vec::new();
+        let mut rendered_external_link = false;
+        for line in self.graph_detail_text().lines() {
+            if let Some(url) = external_ref
+                && line
+                    .strip_prefix("External: ")
+                    .is_some_and(|rendered| rendered == url || rendered.ends_with('…'))
+            {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw("External: "),
+                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(o open, y copy)", tokens::dim()),
+                ]));
+                rendered_external_link = true;
+            } else {
+                lines.push(RichLine::raw(line));
+            }
+        }
+        if let Some(url) = external_ref
+            && !rendered_external_link
+        {
+            lines.push(RichLine::raw(""));
+            lines.push(RichLine::from_spans([
+                RichSpan::raw("External Link: "),
+                RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                RichSpan::styled("  ", tokens::dim()),
+                RichSpan::styled("(o open, y copy)", tokens::dim()),
+            ]));
         }
         RichText::from_lines(lines)
     }
@@ -14926,6 +14962,34 @@ mod tests {
     }
 
     #[test]
+    fn graph_detail_renders_hyperlink_for_external_issue_reference() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let detail = app.graph_detail_render_text();
+        let urls = detail
+            .lines()
+            .iter()
+            .flat_map(ftui::text::Line::spans)
+            .filter_map(|span| span.link.as_deref())
+            .collect::<Vec<_>>();
+        assert!(
+            urls.iter()
+                .any(|url| *url == "https://github.com/org/repo/issues/42"),
+            "expected graph detail hyperlink span to be rendered, got {urls:?}"
+        );
+
+        let rendered = detail.to_plain_text();
+        assert!(
+            rendered.contains("(o open, y copy)"),
+            "expected graph detail inline external-ref action hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
     fn main_detail_open_shortcut_only_activates_for_detail_focus_with_http_ref() {
         let mut app = new_app(ViewMode::Main, 0);
         assert!(!app.should_open_selected_issue_external_ref());
@@ -14941,6 +15005,25 @@ mod tests {
     }
 
     #[test]
+    fn graph_detail_open_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("mailto:test@example.com".into());
+        }
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+        assert!(app.should_open_selected_issue_external_ref());
+    }
+
+    #[test]
     fn main_detail_copy_shortcut_only_activates_for_detail_focus_with_http_ref() {
         let mut app = new_app(ViewMode::Main, 0);
         assert!(!app.should_copy_selected_issue_external_ref());
@@ -14952,6 +15035,25 @@ mod tests {
         assert!(!app.should_copy_selected_issue_external_ref());
 
         app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        assert!(app.should_copy_selected_issue_external_ref());
+    }
+
+    #[test]
+    fn graph_detail_copy_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("mailto:test@example.com".into());
+        }
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
         assert!(app.should_copy_selected_issue_external_ref());
     }
 

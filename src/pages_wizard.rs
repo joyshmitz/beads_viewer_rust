@@ -218,9 +218,15 @@ impl Default for WizardConfig {
 }
 
 impl WizardConfig {
+    fn has_output_path(&self) -> bool {
+        self.output_path
+            .as_ref()
+            .is_some_and(|path| !path.as_os_str().is_empty())
+    }
+
     /// Validate the config for completeness before export.
     pub fn validate_for_export(&self) -> Result<()> {
-        if self.output_path.is_none() {
+        if !self.has_output_path() {
             return Err(BvrError::InvalidArgument(
                 "output path is required for export".into(),
             ));
@@ -269,7 +275,7 @@ impl WizardConfig {
 }
 
 fn repair_step_for_saved_config(config: &WizardConfig) -> WizardStep {
-    if config.output_path.is_none() {
+    if !config.has_output_path() {
         WizardStep::ExportOptions
     } else if config.deploy_target.is_none() {
         WizardStep::DeployTarget
@@ -1936,6 +1942,45 @@ mod tests {
     }
 
     #[test]
+    fn wizard_interactive_saved_local_config_empty_output_reprompts_export_options() {
+        let saved = WizardConfig {
+            deploy_target: Some(DeployTarget::Local),
+            output_path: Some(PathBuf::new()),
+            include_closed: true,
+            include_history: false,
+            ..WizardConfig::default()
+        };
+        let input = "y\n\nn\n\n\n3\n./saved-out\nn\n";
+        let mut reader = std::io::Cursor::new(input.as_bytes().to_vec());
+        let mut output = Vec::new();
+        let result = run_wizard_interactive(
+            &mut reader,
+            &mut output,
+            None,
+            Some(saved),
+            |_| Ok(()),
+            |_| Ok(()),
+        );
+        assert!(
+            result.is_ok(),
+            "output: {}",
+            String::from_utf8_lossy(&output)
+        );
+        let config = result.unwrap().unwrap();
+        assert_eq!(config.deploy_target, Some(DeployTarget::Local));
+        assert_eq!(config.output_path, Some(PathBuf::from("./saved-out")));
+        let text = String::from_utf8_lossy(&output);
+        assert!(
+            text.contains("Config validation failed"),
+            "expected validation failure before repair: {text}"
+        );
+        assert!(
+            text.contains("Step 2/9: Export options"),
+            "expected repair to return to export options: {text}"
+        );
+    }
+
+    #[test]
     fn wizard_interactive_decline_saved_config_starts_fresh() {
         let saved = WizardConfig {
             deploy_target: Some(DeployTarget::Github),
@@ -2073,6 +2118,16 @@ mod tests {
         let config = WizardConfig {
             deploy_target: Some(DeployTarget::Local),
             output_path: None,
+            ..WizardConfig::default()
+        };
+        assert!(config.validate_for_export().is_err());
+    }
+
+    #[test]
+    fn wizard_validate_for_export_rejects_empty_output_path() {
+        let config = WizardConfig {
+            deploy_target: Some(DeployTarget::Local),
+            output_path: Some(PathBuf::new()),
             ..WizardConfig::default()
         };
         assert!(config.validate_for_export().is_err());

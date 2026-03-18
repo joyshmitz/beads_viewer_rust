@@ -2501,7 +2501,13 @@ fn count_pages_export_issues(
 fn resolve_watch_export_paths(cli: &Cli) -> bvr::Result<Vec<PathBuf>> {
     match resolve_issue_load_target(cli)? {
         IssueLoadTarget::BeadsFile(path) => Ok(vec![path]),
-        IssueLoadTarget::WorkspaceConfig(path) => loader::find_workspace_issue_paths(&path),
+        IssueLoadTarget::WorkspaceConfig(path) => {
+            let mut paths = vec![path.clone()];
+            paths.extend(loader::find_workspace_issue_paths(&path)?);
+            paths.sort();
+            paths.dedup();
+            Ok(paths)
+        }
         IssueLoadTarget::RepoPath(repo_path) => {
             let beads_dir = loader::get_beads_dir(repo_path.as_deref())
                 .map_err(|error| with_workspace_discovery_guidance(cli, error))?;
@@ -6316,6 +6322,35 @@ mod tests {
                 .iter()
                 .any(|issue| issue.title == "Web issue" && issue.source_repo == "web")
         );
+    }
+
+    #[test]
+    fn resolve_watch_export_paths_includes_workspace_config_file() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let api_beads = root.join("services/api/.beads");
+        fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+        fs::create_dir_all(&api_beads).expect("create api beads");
+        let config_path = workspace_dir.join("workspace.yaml");
+        fs::write(
+            &config_path,
+            "repos:\n  - path: services/api\n    prefix: api-\n",
+        )
+        .expect("write workspace config");
+        let issues_path = api_beads.join("issues.jsonl");
+        fs::write(
+            &issues_path,
+            "{\"id\":\"AUTH-1\",\"title\":\"API issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api issues");
+
+        let cli = Cli::parse_from(["bvr", "--export-pages", "pages-out", "--watch-export", "--workspace", "."]);
+        let _guard = CurrentDirGuard::set(root);
+        let watched_paths = resolve_watch_export_paths(&cli).expect("resolve watch paths");
+
+        assert!(watched_paths.contains(&config_path));
+        assert!(watched_paths.contains(&issues_path));
     }
 
     #[test]

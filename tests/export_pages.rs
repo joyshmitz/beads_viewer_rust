@@ -1050,9 +1050,6 @@ fn watch_export_regenerates_after_workspace_change() {
             "  - name: api\n",
             "    path: services/api\n",
             "    prefix: api-\n",
-            "  - name: web\n",
-            "    path: apps/web\n",
-            "    prefix: web-\n",
         ),
     )
     .expect("write workspace");
@@ -1085,16 +1082,19 @@ fn watch_export_regenerates_after_workspace_change() {
         .expect("spawn workspace watch export");
 
     thread::sleep(Duration::from_millis(350));
-    let mut beads = fs::OpenOptions::new()
-        .append(true)
-        .open(repo_dir.join("apps/web/.beads/issues.jsonl"))
-        .expect("open web beads for append");
-    beads
-        .write_all(
-            b"{\"id\":\"UI-2\",\"title\":\"Web UI Two\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
-        )
-        .expect("append web issue");
-    beads.flush().expect("flush append");
+    fs::write(
+        repo_dir.join(".bv/workspace.yaml"),
+        concat!(
+            "repos:\n",
+            "  - name: api\n",
+            "    path: services/api\n",
+            "    prefix: api-\n",
+            "  - name: web\n",
+            "    path: apps/web\n",
+            "    prefix: web-\n",
+        ),
+    )
+    .expect("update workspace");
 
     let output = child.wait_with_output().expect("wait for workspace watch");
     assert!(
@@ -1112,7 +1112,10 @@ fn watch_export_regenerates_after_workspace_change() {
     let issues = fs::read_to_string(repo_dir.join("pages-out/data/issues.json")).expect("issues");
     assert!(issues.contains("api-AUTH-1"));
     assert!(issues.contains("web-UI-1"));
-    assert!(issues.contains("web-UI-2"));
+    assert!(
+        stderr.contains(".bv/workspace.yaml"),
+        "expected workspace config to be watched, got: {stderr}"
+    );
 }
 
 #[test]

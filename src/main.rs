@@ -2542,6 +2542,117 @@ fn load_issues_from_git_relative_path(
     parse_issues_from_jsonl_text(&String::from_utf8_lossy(&output.stdout))
 }
 
+fn historical_jsonl_skip_file_name(file_name: &str) -> bool {
+    file_name.contains(".backup")
+        || file_name.contains(".orig")
+        || file_name.contains(".merge")
+        || file_name == "deletions.jsonl"
+        || file_name.starts_with("beads.left")
+        || file_name.starts_with("beads.right")
+}
+
+fn git_blob_size(repo_root: &Path, object_spec: &str) -> bvr::Result<Option<u64>> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .arg("cat-file")
+        .arg("-s")
+        .arg(object_spec)
+        .output()?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let size = raw.trim().parse::<u64>().map_err(|error| {
+        bvr::BvrError::InvalidArgument(format!(
+            "git returned an invalid blob size for {object_spec}: {error}"
+        ))
+    })?;
+    Ok(Some(size))
+}
+
+fn resolve_historical_jsonl_relative_path(
+    repo_root: &Path,
+    beads_dir_relative: &Path,
+    revision: &str,
+) -> bvr::Result<PathBuf> {
+    for preferred in ["beads.jsonl", "issues.jsonl", "beads.base.jsonl"] {
+        let candidate = beads_dir_relative.join(preferred);
+        let object_spec = format!("{revision}:{}", candidate.to_string_lossy());
+        if git_blob_size(repo_root, &object_spec)?.is_some_and(|size| size > 0) {
+            return Ok(candidate);
+        }
+    }
+
+    let directory_spec = format!("{revision}:{}", beads_dir_relative.to_string_lossy());
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .arg("ls-tree")
+        .arg("--name-only")
+        .arg(&directory_spec)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(bvr::BvrError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "could not resolve historical beads directory {} at revision {revision}",
+                beads_dir_relative.display()
+            ),
+        )));
+    }
+
+    let mut fallback_candidates = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| line.ends_with(".jsonl"))
+        .filter(|line| !historical_jsonl_skip_file_name(&line.to_ascii_lowercase()))
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    fallback_candidates.sort();
+
+    fallback_candidates
+        .into_iter()
+        .next()
+        .map(|relative_file_name| beads_dir_relative.join(relative_file_name))
+        .ok_or_else(|| {
+            bvr::BvrError::InvalidArgument(format!(
+                "could not resolve historical beads JSONL inside {} at revision {revision}",
+                beads_dir_relative.display()
+            ))
+        })
+}
+
+fn load_issues_from_history_beads_dir(
+    beads_dir: &Path,
+    revision: &str,
+) -> bvr::Result<Vec<bvr::model::Issue>> {
+    let absolute_beads_dir = absolute_from_current_dir(beads_dir);
+    let repo_root =
+        resolve_git_toplevel(absolute_beads_dir.parent().unwrap_or_else(|| Path::new(".")))
+            .ok_or_else(|| {
+                bvr::BvrError::InvalidArgument(format!(
+                    "could not determine repository root for historical beads dir {}",
+                    absolute_beads_dir.display()
+                ))
+            })?;
+    let beads_dir_relative = absolute_beads_dir.strip_prefix(&repo_root).map_err(|_| {
+        bvr::BvrError::InvalidArgument(format!(
+            "historical beads dir {} is outside repository root {}",
+            absolute_beads_dir.display(),
+            repo_root.display()
+        ))
+    })?;
+    let jsonl_relative =
+        resolve_historical_jsonl_relative_path(&repo_root, beads_dir_relative, revision)?;
+
+    load_issues_from_git_relative_path(&repo_root, &jsonl_relative, revision)
+}
+
 fn load_issues_from_history_file_path(
     path: &Path,
     revision: &str,
@@ -2596,8 +2707,7 @@ fn load_workspace_issues_at_revision(
         let beads_dir = repo_path.join(repo.effective_beads_path(Some(&config.defaults)));
 
         let repo_issues = (|| -> bvr::Result<Vec<bvr::model::Issue>> {
-            let jsonl_path = loader::find_jsonl_path(&beads_dir)?;
-            let mut issues = load_issues_from_history_file_path(&jsonl_path, revision)?;
+            let mut issues = load_issues_from_history_beads_dir(&beads_dir, revision)?;
             loader::namespace_workspace_issues(
                 &mut issues,
                 &prefix,
@@ -2694,9 +2804,7 @@ fn load_historical_issues_for_load_target(
         IssueLoadTarget::RepoPath(repo_path) => {
             let beads_dir = loader::get_beads_dir(repo_path.as_deref())
                 .map_err(|error| with_workspace_discovery_guidance(cli, error))?;
-            let beads_path = loader::find_jsonl_path(&beads_dir)
-                .map_err(|error| with_workspace_discovery_guidance(cli, error))?;
-            load_issues_from_history_file_path(&beads_path, reference)
+            load_issues_from_history_beads_dir(&beads_dir, reference)
         }
     }
 }

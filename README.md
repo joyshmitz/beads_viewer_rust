@@ -1,217 +1,1004 @@
 # beads_viewer_rust (`bvr`)
 
-Rust port of `legacy_beads_viewer_code/beads_viewer` (`bv`).
+<div align="center">
 
-Current objective: full-fidelity robot-mode parity plus an evidence-driven FrankenTUI redesign for the interactive TUI while leveraging:
-- `/dp/frankentui` for TUI runtime and widgets
-- Background async via `std::thread::spawn` + `mpsc::channel` (two-phase metric computation for large graphs)
-
-Current project reality:
-- Robot/CLI parity is far ahead and is backed by fixture-heavy regression coverage.
-- The interactive TUI is functional, but it is not yet at credible product parity with legacy `bv`.
-- The active TUI goal is parity-first-then-beyond: recover legacy operator confidence and look/feel with fuller FrankenTUI usage, then exceed it with Rust-native improvements once the evidence exists.
-
-> **Note:** `asupersync` is declared as an optional Cargo dependency (`asupersync-runtime` feature gate) but is not used at runtime. It is reserved as a post-parity enhancement path for structured async orchestration (watcher pipelines, background index builds). The current async needs (background metric computation, file reload) are handled directly with standard library primitives. Go's `bv` has no equivalent async framework, so this is not a parity requirement.
-
-## Binary
-
-```bash
-cargo run -- --robot-help
-cargo run -- --robot-triage
-cargo run -- --robot-next
-cargo run -- --robot-plan
-cargo run -- --robot-insights
-cargo run -- --robot-priority
-cargo run -- --robot-alerts
-cargo run -- --robot-alerts --severity warning --alert-type stale_issue
-cargo run -- --robot-suggest
-cargo run -- --robot-suggest --suggest-type cycle
-cargo run -- --robot-suggest --suggest-confidence 0.7 --suggest-bead bd-101
-cargo run -- --robot-diff --diff-since tests/testdata/minimal.jsonl
-cargo run -- --robot-history --history-limit 20
-cargo run -- --robot-history --history-since "2024-01-01T00:00:00Z" --history-limit 50
-cargo run -- --robot-capacity --agents 2
-cargo run -- --robot-capacity --capacity-label backend --agents 3
-cargo run -- --robot-burndown current
-cargo run -- --robot-forecast all --forecast-agents 2
-cargo run -- --robot-forecast all --forecast-sprint sprint-1 --forecast-label backend
-cargo run -- --robot-graph
-cargo run -- --robot-graph --graph-format dot
-cargo run -- --robot-graph --graph-format mermaid --graph-root B --graph-depth 2
-cargo run -- --robot-graph --label api
-cargo run -- --robot-metrics
-cargo run -- --robot-docs guide
-cargo run -- --robot-schema
-cargo run -- --robot-sprint-list
-cargo run -- --robot-sprint-show sprint-1
-cargo run -- --robot-label-health
-cargo run -- --robot-label-flow
-cargo run -- --robot-label-attention
-cargo run -- --robot-label-attention --attention-limit 5
-cargo run -- --robot-search --search "auth" --search-limit 20
-cargo run -- --robot-recipes
-cargo run -- --robot-triage --recipe critical-blockers
-
-# Profiling
-cargo run -- --profile-startup --beads-file tests/testdata/synthetic_complex.jsonl
-cargo run -- --profile-startup --profile-json --beads-file tests/testdata/synthetic_complex.jsonl
-
-# Export
-cargo run -- --export-md /tmp/report.md
-cargo run -- --priority-brief /tmp/brief.md
-cargo run -- --agent-brief /tmp/agent-output
-cargo run -- --export-graph /tmp/deps.json
-cargo run -- --export-graph /tmp/deps.dot --graph-preset roomy --graph-title "Dependency Snapshot"
-cargo run -- --export-graph /tmp/deps.svg --graph-style grid --graph-preset roomy
-cargo run -- --export-pages ./bv-pages --pages-title "Sprint Dashboard"
-cargo run -- --preview-pages ./bv-pages
-cargo run -- --pages
-
-# Background mode
-cargo run -- --background-mode --robot-triage
-cargo run -- --no-background-mode --robot-triage
-
-# Run against an explicit fixture file
-cargo run -- --robot-triage --beads-file tests/testdata/minimal.jsonl
+```text
+JSONL / workspace config / git history
+                │
+                ▼
+         loader + model validation
+                │
+                ▼
+   IssueGraph + Analyzer + graph metrics
+                │
+     ┌──────────┼──────────┬───────────────┐
+     ▼          ▼          ▼               ▼
+  robot JSON   TOON       FrankenTUI      static pages
 ```
 
-Background mode compatibility controls (TUI only) are accepted with legacy precedence:
-- CLI flags: `--background-mode` / `--no-background-mode`
-- Env override: `BV_BACKGROUND_MODE=1|0`
-- User config fallback: `~/.config/bv/config.yaml` with:
-  ```yaml
-  experimental:
-    background_mode: true
-  ```
+[![CI](https://github.com/Dicklesworthstone/beads_viewer_rust/actions/workflows/ci.yml/badge.svg)](https://github.com/Dicklesworthstone/beads_viewer_rust/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-When enabled, TUI mode runs a bounded background reload loop that periodically refreshes issues and applies updates without blocking key handling.
+</div>
 
-Bare command launches the interactive TUI:
+`bvr` is a graph-aware issue triage engine for `.beads` data that gives you machine-friendly robot output, an interactive terminal UI, and a self-contained static dashboard export from the same binary.
+
+## Quick Install
 
 ```bash
-cargo run
+cargo install --git https://github.com/Dicklesworthstone/beads_viewer_rust.git bvr
 ```
 
-## TUI Key Map
+## TL;DR
 
-| Key | Context | Action |
+**The Problem:** issue backlogs are easy to store but hard to prioritize. Once dependencies, blockers, stale work, cross-label bottlenecks, workspace layouts, and git history enter the picture, manual sorting or ad-hoc `jq` scripts stop being trustworthy.
+
+**The Solution:** `bvr` loads `.beads` issue data, builds a dependency graph, computes centrality and planning metrics, and then exposes the result through robot commands, a TUI, markdown briefs, graph export, and static pages bundles.
+
+### Why Use `bvr`?
+
+| Capability | What It Does |
+|---|---|
+| **Robot-first triage** | Emits structured JSON or TOON for agents, scripts, and automation via `--robot-*` commands. |
+| **Graph-aware planning** | Computes PageRank, betweenness, HITS, eigenvector, k-core, cycles, critical path, articulation points, and slack. |
+| **Multiple operator surfaces** | Supports automation, a FrankenTUI, markdown briefs, graph export, and pages export from one codebase. |
+| **Workspace-aware loading** | Understands `.beads/` layouts, compatibility filenames, and `.bv/workspace.yaml` aggregation. |
+| **History and feedback loops** | Correlates git history, supports drift baselines, recommendation feedback, and correlation review commands. |
+| **Evidence-heavy testing** | Backed by conformance, schema, e2e, workspace/history, export, snapshot, and stress tests. |
+
+## Quick Example
+
+```bash
+# 1. Ask for the single best next move
+bvr --robot-next
+
+# 2. Get the full triage payload
+bvr --robot-triage
+
+# 3. Inspect graph metrics and cycles
+bvr --robot-insights
+
+# 4. See an execution plan grouped into parallel tracks
+bvr --robot-plan
+
+# 5. Search across issue text and metadata
+bvr --robot-search --search "auth" --search-limit 5
+
+# 6. Export a static bundle for sharing
+bvr --export-pages ./bv-pages --pages-title "Sprint Dashboard"
+
+# 7. Preview it locally
+bvr --preview-pages ./bv-pages
+```
+
+## What `bvr` Solves
+
+`bvr` is the Rust port of the legacy Go `bv` tool, but the current codebase is no longer just a straight porting spike. Today it includes:
+
+- Robot-mode parity work for the legacy CLI surface.
+- A much larger analysis surface than simple ranking.
+- A functional FrankenTUI with the main issue view plus 11 specialized modes.
+- Static pages export, preview, watch mode, and a pages deployment wizard.
+- Workspace-aware loading and git-history-aware analysis.
+
+The current direction is parity-first-then-beyond:
+
+- Keep the machine-facing behavior compatible and evidence-driven.
+- Recover operator confidence in the interactive workflows.
+- Extend the Rust version with capabilities that make sense natively here.
+
+## Problem Cases `bvr` Handles Well
+
+`bvr` is most useful when a backlog has enough structure that naive sorting starts lying to you. Common cases:
+
+### 1. A high-priority issue is noisy, but not actually central
+
+An issue can be marked urgent and still not unblock much of anything. `bvr` distinguishes declared priority from structural importance, which is why the triage surface includes both priority signals and graph-derived signals.
+
+### 2. A mediocre-looking issue is the real bottleneck
+
+Sometimes the most important work is a root blocker, a bridge between clusters, or an articulation point that keeps whole branches connected. Those rarely stand out in a plain list view.
+
+### 3. A team is drowning in stale work and cannot tell what is safely ignorable
+
+Staleness by itself is not enough. A stale leaf item and a stale central blocker are very different problems. `bvr` combines freshness, dependency structure, and blocker counts so the stale-work story is not just "oldest first."
+
+### 4. Multiple repos act like one delivery system
+
+In a workspace layout, the API repo, frontend repo, and shared library repo can form one planning graph. `bvr` can aggregate that via `.bv/workspace.yaml` instead of forcing you to triage each repo in isolation.
+
+### 5. Operators need different surfaces for the same underlying truth
+
+Agents want structured output. Humans want TUI workflows. Stakeholders may want a static dashboard. `bvr` exists so those do not drift into separate, contradictory tools.
+
+### 6. "What changed?" matters as much as "What exists?"
+
+Baselines, diffs, history correlation, and export/watch flows exist because triage is usually about movement over time, not just a snapshot of open issues.
+
+## Design Philosophy
+
+### 1. One source of truth, many surfaces
+
+The loader and analyzer feed everything else. Robot output, TUI screens, markdown briefs, and pages export all work from the same issue graph instead of reimplementing their own logic.
+
+### 2. Graph structure matters more than raw counts
+
+Priority is not just a field on an issue. `bvr` looks at blockers, centrality, flow, and path structure so it can distinguish a noisy task from a true bottleneck.
+
+### 3. Automation should not scrape terminal output
+
+Robot commands are first-class. If you are integrating with agents or scripts, use `--robot-*` and optionally `--format toon` instead of screen-scraping the TUI.
+
+### 4. Workspace and path semantics are product behavior
+
+This project treats `.beads` discovery, workspace aggregation, repo-path handling, watch paths, preview serving, and history resolution as part of the real contract, not implementation trivia.
+
+### 5. Parity claims need evidence
+
+The repo carries conformance fixtures, schema validation, e2e coverage, snapshots, and stress fixtures because "probably compatible" is not a useful standard for a triage engine.
+
+## Why Graph-Aware Triage Beats Naive Sorting
+
+A normal issue list encourages bad habits:
+
+- sort by declared priority
+- maybe filter by status
+- maybe scan titles by hand
+
+That works until dependencies matter. Once issues block each other, connect teams, span repos, or form cycles, the backlog becomes a graph problem rather than a spreadsheet problem.
+
+`bvr` treats the backlog that way. Instead of asking only "what is marked important?", it also asks:
+
+- what work influences the most downstream work?
+- what issues sit on the bridges between clusters?
+- what items are central but not obviously loud?
+- what gets value moving fastest if finished now?
+- what work is risky because it is in cycles or behind blockers?
+
+That is why `--robot-next` and `--robot-triage` are not just fancy sort orders. They are graph-aware ranking outputs.
+
+## How Scoring Works
+
+The recommendation engine does not rely on a single metric. The current impact score combines multiple normalized components and then renormalizes them into a single score.
+
+At a high level, the scoring model considers:
+
+| Component | What It Captures | Why It Matters |
 |---|---|---|
-| `?` | All | Toggle help overlay |
-| `Tab` | All | Toggle list/detail focus |
-| `Esc` | All | Back / clear filter / quit confirm |
-| `b` | All | Toggle board view |
-| `i` | All | Toggle insights view |
-| `g` | All | Toggle graph view |
-| `h` | All | Toggle history view |
-| `s` | Main | Cycle sort (created asc/desc, priority, updated, default) |
-| `o/c/r/a` | All | Filter by open/closed/review/all |
-| `a` | All | Toggle actionable view |
-| `!` | All | Toggle attention view |
-| `T` | All | Toggle tree view |
-| `[` | All | Toggle label dashboard |
-| `]` | All | Toggle flow matrix |
-| `t` | All | Toggle time-travel diff |
-| `/` | Board, Graph, Insights, History | Search with n/N cycling |
-| `J/K` | Board, Graph, Insights | Navigate dependency detail pane |
-| `1/2/3/4` | Board | Jump to lane |
-| `H/L` | Board | First/last lane |
-| `0/$` | Board | First/last in lane |
-| `e` | Board | Toggle empty lanes |
-| `s` | Board | Cycle grouping (status/priority/type) |
-| `e` | Insights | Toggle explanation |
-| `x` | Insights | Toggle calculation proof |
-| `c` | History | Cycle confidence |
-| `v` | History | Toggle bead/git timeline |
-| `Enter` | History (git) | Jump to issue detail |
+| **PageRank** | Global centrality in the dependency graph | Finds issues that influence a lot of important work |
+| **Betweenness** | Bridge importance between regions of the graph | Finds chokepoints and routing issues |
+| **BlockerRatio** | How much open work this issue blocks | Rewards high-unblock items |
+| **Staleness** | How recently the issue moved | Prevents long-dead work from floating to the top by default |
+| **PriorityBoost** | Declared issue priority | Respects operator intent without blindly obeying it |
+| **TimeToImpact** | How quickly value propagates after completion | Rewards work near the roots of dependency chains |
+| **Urgency** | Status-based urgency signal | Distinguishes active, open, review, blocked, and deferred states |
+| **Risk** | Open blockers, cycle membership, articulation-point risk | Discounts work that is structurally risky to execute now |
 
-## Porting Docs
+Two important design choices:
 
-- `PLAN_TO_PORT_BEADS_VIEWER_TO_RUST.md`
-- `EXISTING_BEADS_VIEWER_STRUCTURE.md`
-- `PROPOSED_ARCHITECTURE.md`
-- `FEATURE_PARITY.md`
+- The model is **multi-signal**, so no single bad field dominates the ranking.
+- The model is **explainable**, because recommendations carry reasons rather than just a score.
 
-## Conformance Harness
+This is also why `bvr` can support recommendation feedback: the score is composed from named components, not a black-box classifier.
 
-Generate reference fixture from legacy Go implementation:
+## Algorithms Under the Hood
+
+The analysis engine uses standard graph algorithms, but it applies them to issue planning rather than academic toy graphs.
+
+### Core metrics
+
+| Algorithm | Used For |
+|---|---|
+| **PageRank** | Global influence / importance |
+| **Betweenness centrality** | Bridge and bottleneck detection |
+| **Eigenvector centrality** | Influence based on influential neighbors |
+| **HITS** | Hub and authority style ranking |
+| **K-core decomposition** | Dense structural cores in the graph |
+| **Articulation point detection** | Single points of structural failure |
+| **Critical depth / critical path signals** | Long dependency-chain importance |
+| **Slack computation** | How much scheduling flexibility exists |
+| **Strongly connected component cycle detection** | Detecting circular dependencies |
+
+### Related analysis families
+
+Beyond pure graph centrality, the repo also includes:
+
+- forecast analysis
+- execution plan grouping
+- label health and cross-label flow
+- git-history correlation
+- drift against saved baselines
+- search and recipe filtering
+- file-to-bead and hotspot analysis
+- blocker-chain, impact-network, and causality views
+
+### Practical note on scale
+
+The code intentionally treats some metrics as more expensive than others. Faster metrics can be computed immediately, while slower metrics can be deferred or sampled on larger graphs.
+
+## Why These Algorithms Matter for Issue Triage
+
+Listing algorithms is not enough. Their value in this repo is operational:
+
+- **PageRank** helps surface issues that matter globally, not just locally.
+- **Betweenness** highlights bridge work that sits between clusters or teams.
+- **Articulation points** expose single issues whose removal would fragment the dependency graph.
+- **K-core** helps distinguish deep structural clusters from shallow leaves.
+- **Cycle detection** catches planning deadlocks that look normal in a flat list.
+- **Critical depth and slack** make scheduling more defensible than gut feel.
+
+If you have ever asked "why is this weird-looking issue ranked so high?", the answer is usually one of those structural effects.
+
+## How `bvr` Compares
+
+| Feature | `bvr` | legacy Go `bv` | ad-hoc `jq` / scripts | manual triage |
+|---|---|---|---|---|
+| Structured robot output | ✅ JSON + TOON | ✅ JSON-style robot output | ⚠️ custom per script | ❌ |
+| Interactive TUI | ✅ functional, expanding | ✅ mature baseline | ❌ | ❌ |
+| Static pages export | ✅ built in | ✅ | ❌ | ❌ |
+| Workspace-aware loading | ✅ `.bv/workspace.yaml` + repo-path semantics | ✅ baseline behavior | ❌ usually custom | ❌ |
+| Graph metrics | ✅ broad built-in set | ✅ core set | ⚠️ manual and brittle | ❌ |
+| Drift/correlation/file intel surfaces | ✅ built in | ⚠️ mixed / legacy-dependent | ❌ | ❌ |
+| Best fit today | automation + analysis + export | legacy operator muscle memory | one-off filtering | small backlogs |
+
+**Use `bvr` when:**
+
+- You want a single binary for triage, diagnostics, dashboards, and automation.
+- You are working in a `.beads`-based repo and need dependency-aware ranking.
+- You want machine output that is easier to consume than terminal text.
+
+**Prefer something else when:**
+
+- You only need one quick text filter on a tiny file.
+- You require exact legacy TUI feel today and do not want parity-in-progress behavior.
+
+## Installation
+
+### 1. Install from GitHub with Cargo
 
 ```bash
-go run ./tests/conformance/go_reference/cmd/bvr/main.go \
-  --legacy-root /data/projects/beads_viewer_rust/legacy_beads_viewer_code/beads_viewer \
-  --beads-file /data/projects/beads_viewer_rust/tests/testdata/minimal.jsonl \
-  --output /data/projects/beads_viewer_rust/tests/conformance/fixtures/go_outputs/bvr.json
-
-# extended fixture with git-backed diff/history coverage
-go run ./tests/conformance/go_reference/cmd/bvr/main.go \
-  --legacy-root /data/projects/beads_viewer_rust/legacy_beads_viewer_code/beads_viewer \
-  --beads-file /data/projects/beads_viewer_rust/tests/testdata/synthetic_complex.jsonl \
-  --diff-before-file /data/projects/beads_viewer_rust/tests/testdata/minimal.jsonl \
-  --output /data/projects/beads_viewer_rust/tests/conformance/fixtures/go_outputs/bvr_extended.json
-
-# adversarial fixture with cycles + reopen churn + label edge cases
-go run ./tests/conformance/go_reference/cmd/bvr/main.go \
-  --legacy-root /data/projects/beads_viewer_rust/legacy_beads_viewer_code/beads_viewer \
-  --beads-file /data/projects/beads_viewer_rust/tests/testdata/adversarial_parity.jsonl \
-  --diff-before-file /data/projects/beads_viewer_rust/tests/testdata/minimal.jsonl \
-  --output /data/projects/beads_viewer_rust/tests/conformance/fixtures/go_outputs/bvr_adversarial.json
+cargo install --git https://github.com/Dicklesworthstone/beads_viewer_rust.git bvr
 ```
 
-Run Rust conformance tests:
+### 2. Build from a local checkout
+
+```bash
+git clone https://github.com/Dicklesworthstone/beads_viewer_rust.git
+cd beads_viewer_rust
+cargo build --release
+./target/release/bvr --robot-help
+```
+
+### 3. Install from a local checkout into your Cargo bin dir
+
+```bash
+git clone https://github.com/Dicklesworthstone/beads_viewer_rust.git
+cd beads_viewer_rust
+cargo install --path .
+```
+
+### Toolchain
+
+- Rust edition: `2024`
+- Minimum Rust version: `1.85`
+- Binary name: `bvr`
+
+## Quick Start
+
+### 1. Point `bvr` at issue data
+
+By default, `bvr` looks for `.beads/` data in the current repository. It also supports compatibility filenames such as `issues.jsonl` and `beads.base.jsonl`.
+
+```bash
+bvr --robot-triage
+```
+
+If you want to bypass auto-discovery:
+
+```bash
+bvr --robot-triage --beads-file tests/testdata/minimal.jsonl
+```
+
+### 2. Use workspace mode when one repo is not enough
+
+`bvr` can aggregate multiple repos through `.bv/workspace.yaml`.
+
+```yaml
+repos:
+  - path: services/api
+  - path: apps/web
+```
+
+```bash
+bvr --workspace .bv/workspace.yaml --robot-plan
+```
+
+### 3. Start with the high-signal robot commands
+
+```bash
+bvr --robot-next
+bvr --robot-triage
+bvr --robot-plan
+bvr --robot-insights
+```
+
+### 4. Use the TUI for operator workflows
+
+```bash
+bvr
+```
+
+### 5. Export a shareable dashboard bundle
+
+```bash
+bvr --export-pages ./bv-pages --pages-title "Sprint Dashboard"
+bvr --preview-pages ./bv-pages
+```
+
+## Input Model
+
+### Default data sources
+
+`bvr` loads issues from `.beads` by default, with compatibility for:
+
+- `beads.jsonl`
+- `issues.jsonl`
+- `beads.base.jsonl`
+
+It can also aggregate repositories via `.bv/workspace.yaml`.
+
+### Output formats
+
+Robot commands can emit:
+
+- `json` via `--format json`
+- `toon` via `--format toon`
+
+Examples:
+
+```bash
+bvr --robot-triage --format json
+bvr --robot-triage --format toon
+BV_OUTPUT_FORMAT=toon bvr --robot-next
+```
+
+## Robot Output Philosophy
+
+The robot surface exists so external automation does not have to guess at terminal text.
+
+### Design goals
+
+- **Deterministic structure** for scripts and agents
+- **Shared envelope fields** such as generation timestamp, data hash, output format, and version
+- **Discoverability** through `--robot-help`, `--robot-docs`, and `--robot-schema`
+- **Compact output** through TOON when JSON is too expensive for agent loops
+
+### Why both JSON and TOON exist
+
+JSON is the safest default for downstream tooling. TOON exists because agent workflows often care about token cost and readability more than strict JSON syntax.
+
+### Why the schema/docs commands matter
+
+The repo does not just emit payloads; it also emits machine-readable descriptions of the payload contracts. That matters for:
+
+- agent integration
+- regression detection
+- contract review
+- new command discovery
+
+## Workspace and Path Semantics
+
+Path handling is one of the subtle but critical parts of `bvr`.
+
+### What can be discovered automatically
+
+`bvr` can look for:
+
+- `.beads/` in the current repo or ancestors
+- compatibility JSONL filenames
+- `.bv/workspace.yaml` for multi-repo aggregation
+
+### Why this gets its own section
+
+In this project, path resolution is not just plumbing. It affects:
+
+- which issues are loaded
+- whether workspace aggregation happens
+- where watch mode listens for changes
+- where historical loads and diffs resolve from
+- where pages workflows and persisted state live
+
+### Practical usage rules
+
+- Use `--beads-file` when you want an exact source file and do not want discovery.
+- Use `--workspace` when you want an exact workspace config and do not want discovery.
+- Let auto-discovery work when the repo layout is conventional and you want convenience.
+
+## Static Pages, Preview, Watch, and Wizard
+
+The pages system is a first-class surface, not an afterthought.
+
+### What export produces
+
+The bundle includes:
+
+- `index.html`
+- local viewer assets
+- JSON payloads for issues, metadata, triage, and optional history
+- a SQLite database bundle
+- static-host helper files such as `_headers`
+- a deploy-facing bundle README
+
+### Why pages export exists
+
+It solves a different problem than robot mode:
+
+- robot mode is for agents and automation
+- the TUI is for interactive operators
+- pages export is for sharing, review, and lightweight dashboard publishing
+
+### Preview server
+
+The preview flow provides a local HTTP server for the exported bundle, a status endpoint, and optional live reload. It is intentionally geared toward testing the real exported artifact rather than a separate dev-only web app.
+
+### Watch mode
+
+`--watch-export` exists for a fast edit-refresh cycle when the issue data changes and you want the static bundle to keep up.
+
+### Pages wizard
+
+`--pages` is an interactive deployment-oriented workflow that helps collect export options, target settings, preview choices, and deployment instructions without requiring the operator to remember every flag.
+
+## Command Reference
+
+For the machine-readable inventory, use:
+
+```bash
+bvr --robot-help
+bvr --robot-docs commands
+bvr --robot-schema
+```
+
+### Core triage and planning
+
+```bash
+bvr --robot-next
+bvr --robot-triage
+bvr --robot-triage-by-track
+bvr --robot-triage-by-label
+bvr --robot-plan
+bvr --robot-priority
+bvr --robot-alerts
+bvr --robot-suggest
+```
+
+Use these when you want ranked recommendations, quick wins, blockers to clear, grouped tracks, or priority mismatch detection.
+
+### Graph analysis and forecasting
+
+```bash
+bvr --robot-insights
+bvr --robot-graph --graph-format json
+bvr --robot-graph --graph-format dot --graph-root B --graph-depth 2
+bvr --robot-forecast all --forecast-agents 2
+bvr --robot-capacity --agents 3
+bvr --robot-burndown current
+bvr --robot-sprint-list
+bvr --robot-sprint-show sprint-1
+```
+
+Use these when you need graph metrics, projected execution, sprint state, or graph exports for downstream tools.
+
+### History, diff, drift, and correlation
+
+```bash
+bvr --robot-history --history-limit 20
+bvr --robot-diff --diff-since HEAD~10
+bvr --save-baseline baseline.json
+bvr --robot-drift
+bvr --check-drift
+bvr --robot-explain-correlation <sha:bead>
+bvr --robot-confirm-correlation <sha:bead>
+bvr --robot-reject-correlation <sha:bead>
+bvr --robot-correlation-stats
+```
+
+Use these when you want git-aware change tracking, baseline comparisons, or a feedback loop for commit-to-bead correlations.
+
+### Label, search, and file intelligence
+
+```bash
+bvr --robot-label-health
+bvr --robot-label-flow
+bvr --robot-label-attention --attention-limit 5
+bvr --robot-search --search "auth" --search-limit 10
+bvr --robot-recipes
+bvr --robot-orphans
+bvr --robot-file-beads src/main.rs
+bvr --robot-file-hotspots
+bvr --robot-impact bd-123
+bvr --robot-file-relations src/main.rs
+bvr --robot-related bd-123
+bvr --robot-blocker-chain bd-123
+bvr --robot-impact-network bd-123 --network-depth 3
+bvr --robot-causality bd-123
+```
+
+Use these when you need label health, workspace search, orphan detection, file-to-bead mapping, or impact analysis.
+
+### Export, reports, and automation helpers
+
+```bash
+bvr --export-md /tmp/report.md
+bvr --priority-brief /tmp/priority-brief.md
+bvr --agent-brief /tmp/agent-brief
+bvr --export-graph /tmp/deps.json
+bvr --export-pages ./bv-pages
+bvr --preview-pages ./bv-pages
+bvr --export-pages ./bv-pages --watch-export
+bvr --pages
+```
+
+These commands generate static artifacts, local previews, and operator-facing deployment guidance.
+
+### TUI and diagnostics
+
+```bash
+bvr
+bvr --debug-render graph --debug-width 160 --debug-height 50
+bvr --profile-startup
+bvr --profile-startup --profile-json
+bvr --background-mode --robot-triage
+bvr --no-background-mode --robot-triage
+```
+
+Use these when you want the interactive UI, deterministic render output for debugging, or startup timing diagnostics.
+
+### AGENTS.md workflow helpers
+
+```bash
+bvr --agents-check
+bvr --agents-add
+bvr --agents-update
+bvr --agents-remove
+```
+
+These commands inspect or manage the beads workflow blurb inside `AGENTS.md`.
+
+## TUI Overview
+
+Bare `bvr` launches the interactive terminal UI. For automation, do not run the bare command; use `--robot-*`.
+
+### Main view plus 11 specialized modes
+
+| Key | Mode | Purpose |
+|---|---|---|
+| default | Main | Issue list with detail pane |
+| `b` | Board | Kanban-style lane view |
+| `i` | Insights | Metric and explanation panels |
+| `g` | Graph | Dependency graph and edge inspection |
+| `h` | History | Bead/git timeline and file tree |
+| `a` | Actionable | Parallel execution tracks |
+| `!` | Attention | Label attention ranking |
+| `T` | Tree | Dependency tree |
+| `[` | Labels | Label health dashboard |
+| `]` | Flow | Cross-label flow matrix |
+| `t` | Time Travel | Diff-against-ref view |
+| `S` | Sprint | Sprint planning/detail view |
+
+### Common keys
+
+| Key | Action |
+|---|---|
+| `?` | Toggle help overlay |
+| `Tab` | Toggle list/detail focus |
+| `Esc` | Back, clear, or quit confirm |
+| `j` / `k` | Move within the focused pane |
+| `/` | Search in supported views |
+
+## TUI Design Goals
+
+The TUI is not trying to be a pretty wrapper around one list. Its job is to support different operator tasks without making the user mentally re-derive the graph from a table every time.
+
+### Why there are many modes
+
+Different planning questions need different visual structures:
+
+- **Main** for backlog scanning and detail reading
+- **Board** for lane-based operational overview
+- **Insights** for metric interpretation
+- **Graph** for structural debugging
+- **History** for time and git context
+- **Actionable** for "what can teams do in parallel right now?"
+- **Attention / Labels / Flow** for label-centric health and bottleneck analysis
+- **Tree / Time Travel / Sprint** for dependency, comparison, and planning workflows
+
+### Why the TUI is still evolving
+
+The project explicitly treats operator trust as something that has to be earned. The Rust TUI is already useful, but parity and workflow polish are still active goals rather than a finished story.
+
+## Configuration
+
+### Workspace config: `.bv/workspace.yaml`
+
+```yaml
+repos:
+  - path: services/api
+  - path: apps/web
+discovery:
+  patterns:
+    - services/*
+    - apps/*
+```
+
+### User config for TUI background reload: `~/.config/bv/config.yaml`
+
+```yaml
+experimental:
+  background_mode: true
+```
+
+### Useful environment variables
+
+| Variable | Purpose |
+|---|---|
+| `BV_OUTPUT_FORMAT` | Default robot output format: `json` or `toon` |
+| `TOON_DEFAULT_FORMAT` | Fallback output format if `BV_OUTPUT_FORMAT` is unset |
+| `TOON_STATS` | Print JSON vs TOON token estimates on stderr |
+| `TOON_KEY_FOLDING` | Configure TOON key folding |
+| `TOON_INDENT` | Configure TOON indentation |
+| `BV_SEARCH_PRESET` | Default hybrid search preset |
+| `BVR_PREVIEW_PORT` | Preferred preview server port |
+| `BVR_PREVIEW_MAX_REQUESTS` | Auto-stop the preview server after N requests |
+| `BV_BACKGROUND_MODE` | Enable or disable TUI background reload |
+| `BVR_E2E_ARTIFACT_DIR` | Persist e2e regression artifacts for test runs |
+
+## Architecture
+
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│ Input layer                                                       │
+│  - .beads/*.jsonl                                                 │
+│  - compatibility filenames                                        │
+│  - .bv/workspace.yaml                                             │
+│  - git history / baselines / feedback files                       │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ Loader + model validation                                         │
+│  - path discovery                                                 │
+│  - workspace aggregation                                          │
+│  - issue parsing + validation                                     │
+│  - warning suppression for robot mode                             │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌────────────────────────────────────────────────────────────────────┐
+│ Analyzer                                                          │
+│  - IssueGraph build                                               │
+│  - fast metrics phase                                             │
+│  - optional slow metrics phase in background thread               │
+│  - triage / plan / alerts / search / history / drift / file intel │
+└────────────────────────────────────────────────────────────────────┘
+                                │
+         ┌──────────────────────┼──────────────────────┬─────────────┐
+         ▼                      ▼                      ▼             ▼
+┌─────────────────┐   ┌─────────────────┐   ┌────────────────┐   ┌──────────────────┐
+│ Robot / TOON    │   │ FrankenTUI      │   │ Reports / MD   │   │ Pages / SQLite   │
+│ --robot-*       │   │ bare bvr        │   │ briefs/export  │   │ export/preview   │
+└─────────────────┘   └─────────────────┘   └────────────────┘   └──────────────────┘
+```
+
+## Performance Model
+
+Not all analysis work costs the same amount, and the code reflects that.
+
+### Two-phase analysis
+
+The engine distinguishes between:
+
+- **fast structural work** that is cheap enough to do immediately
+- **slower graph work** that can be deferred, backgrounded, or sampled on larger graphs
+
+This lets the tool stay responsive without pretending expensive graph algorithms are free.
+
+### Large-graph behavior
+
+For larger graphs, some computations change strategy instead of doing the most expensive exact version every time. One example is sampled betweenness on larger graphs.
+
+### Why background mode exists
+
+Background mode is about operator responsiveness in the TUI. The point is not to maximize theoretical purity; it is to keep the interface usable while the deeper analysis catches up.
+
+## Data and Artifact Layout
+
+### Input-side layout
+
+| Path / Artifact | Role |
+|---|---|
+| `.beads/` | Primary issue-data home |
+| `beads.jsonl` / `issues.jsonl` / `beads.base.jsonl` | Supported JSONL issue sources |
+| `.bv/workspace.yaml` | Multi-repo aggregation config |
+| git history | History correlation and timeline input |
+
+### Output-side layout
+
+| Artifact | Produced By |
+|---|---|
+| robot JSON / TOON payloads | `--robot-*` |
+| markdown reports and briefs | `--export-md`, `--priority-brief`, `--agent-brief` |
+| graph exports | `--export-graph`, `--robot-graph` |
+| static pages bundle | `--export-pages` |
+| preview server responses | `--preview-pages` |
+| baseline comparisons | `--save-baseline`, `--robot-drift`, `--check-drift` |
+
+### Pages bundle layout
+
+At a high level, exported bundles contain:
+
+- a root HTML entry point
+- local viewer assets
+- `data/` payloads
+- a SQLite database export
+- deployment helper files
+
+That layout is intentionally self-contained so preview and static hosting use the same artifact shape.
+
+## Testing and Verification
+
+This repo carries multiple verification layers rather than relying on a single happy-path suite:
+
+- Conformance tests against a Go reference harness.
+- JSON schema validation for robot output contracts.
+- E2E robot, export, and workspace/history integration tests.
+- TUI snapshots and keyflow journeys.
+- Stress fixtures for large and pathological graphs.
+- Benchmarks for the analysis pipeline.
+
+Useful commands:
 
 ```bash
 cargo test --test conformance
+cargo test --test schema_validation
+cargo test --test e2e_robot_matrix
+cargo test --test e2e_workspace_history
+cargo test --test export_pages
+cargo bench --bench triage
 ```
 
-Validate stress/adversarial fixture provenance metadata:
-
-```bash
-cargo test --test conformance stress_fixture_manifest_has_provenance_and_validated_counts
-```
-
-## Test Suite
-
-| Suite | Command | Count |
-|---|---|---|
-| Unit tests | `cargo test --lib` | 936 |
-| Snapshots | `cargo test --lib snap_` | 55 |
-| Keyflow journeys | `cargo test --lib keyflow_` | 25 |
-| E2E TUI journeys | `cargo test --lib e2e_journey_` | 5 |
-| Conformance | `cargo test --test conformance` | 75 |
-| Schema validation | `cargo test --test schema_validation` | 50 |
-| E2E tests | `cargo test --test e2e_robot_matrix --test e2e_workspace_history --test e2e_export_pages` | 96 |
-| Stress fixtures | `cargo test --test stress_fixtures` | 49 |
-| Integration tests | `cargo test --test robot_alerts --test robot_burndown_scope --test robot_history_since --test export_md --test export_pages --test admin_cli --test background_mode --test cli_model_validation` | 148 |
-
-Full suite:
-
-```bash
-cargo test
-```
-
-Optional e2e artifact bundles (stdout/stderr, replay command, metadata) for robot/debug-render triage:
+Optional artifact capture for robot regressions:
 
 ```bash
 BVR_E2E_ARTIFACT_DIR=target/bvr-e2e-artifacts cargo test --test e2e_robot_matrix
 ```
 
-## CI
+## Workflow Recipes
 
-GitHub Actions workflow at `.github/workflows/ci.yml` runs on push/PR to main:
-- **Check**: `cargo fmt --check` + `cargo clippy`
-- **Unit**: lib tests + snapshot verification
-- **Conformance**: conformance + schema validation
-- **E2E**: robot command matrix + all integration tests
-- **Bench**: Criterion smoke run
-- **Build**: release binary with artifact upload
-
-## Benchmark
+### I am an agent and need the next best move
 
 ```bash
-cargo bench --bench triage
+bvr --robot-next
+bvr --robot-triage
+bvr --robot-plan
 ```
 
-12 benchmark groups covering analyzer construction, triage, insights, plan, diff, forecast, suggest, alerts, history, cycle detection, real fixture, and stress fixture. Synthetic generators create sparse/dense/cyclic graphs at 100/500/1000 issues.
+Start narrow, then expand. `--robot-next` gives the top pick, `--robot-triage` gives context, and `--robot-plan` tells you whether parallel work exists.
+
+### I am a human operator triaging a sprint
+
+```bash
+bvr
+# then use Main, Actionable, Sprint, and History modes
+```
+
+This is the best path when you need to move between ranking, dependency structure, and recent changes interactively.
+
+### I need to understand dependency bottlenecks
+
+```bash
+bvr --robot-insights
+bvr --robot-graph --graph-format dot
+bvr --robot-blocker-chain bd-123
+```
+
+Use graph metrics for global context and blocker-chain output for a specific issue.
+
+### I need to review what changed since the last checkpoint
+
+```bash
+bvr --save-baseline baseline.json
+# later
+bvr --robot-drift
+bvr --check-drift
+bvr --robot-diff --diff-since HEAD~10
+```
+
+Use baselines for structural drift and `--robot-diff` for issue-level change summaries.
+
+### I need a shareable dashboard
+
+```bash
+bvr --export-pages ./bv-pages --pages-title "Review Dashboard"
+bvr --preview-pages ./bv-pages
+```
+
+This is the path for sharing triage output with someone who is not going to run the CLI locally.
+
+## Testing Philosophy
+
+The test strategy exists because this tool has several different contracts at once.
+
+### 1. Parity contract
+
+Conformance tests protect behavior that is supposed to match legacy expectations.
+
+### 2. Robot contract
+
+Schema validation protects machine-facing output shape. This matters because agents and scripts are less forgiving than humans.
+
+### 3. Operator contract
+
+Snapshot and journey tests protect the TUI from accidental regressions in navigation and rendering.
+
+### 4. Integration contract
+
+Workspace/history/export tests exist because path semantics, workspace promotion, preview behavior, and pages flows are easy to break accidentally.
+
+### 5. Stress contract
+
+Stress fixtures protect the tool from becoming "correct only on toy graphs."
+
+## Troubleshooting
+
+### "My script hung"
+
+You probably ran bare `bvr`, which launches the TUI.
+
+```bash
+# Use robot mode for automation
+bvr --robot-triage
+```
+
+### "No issues were found"
+
+Be explicit about the source instead of relying on discovery.
+
+```bash
+bvr --robot-triage --beads-file /path/to/issues.jsonl
+bvr --workspace /path/to/.bv/workspace.yaml --robot-triage
+```
+
+### "Workspace auto-discovery is ambiguous"
+
+Tell `bvr` exactly which workspace or beads file you want.
+
+```bash
+bvr --workspace .bv/workspace.yaml --robot-plan
+# or
+bvr --beads-file .beads/beads.jsonl --robot-plan
+```
+
+### "Preview pages failed to bind a port"
+
+Pick an explicit port.
+
+```bash
+BVR_PREVIEW_PORT=9010 bvr --preview-pages ./bv-pages
+```
+
+### "Robot output is too verbose"
+
+Use TOON.
+
+```bash
+bvr --robot-next --format toon
+BV_OUTPUT_FORMAT=toon bvr --robot-triage
+```
+
+## Non-Goals
+
+`bvr` is intentionally not trying to be all things:
+
+- It is **not** a hosted project-management platform.
+- It is **not** a replacement for issue creation or collaboration systems.
+- It is **not** just a pretty terminal wrapper around `jq`.
+- It is **not** currently claiming perfect legacy TUI parity.
+- It is **not** optimized around community contribution workflows.
+
+Those boundaries help keep the project focused on triage, analysis, automation, and export.
+
+## Roadmap and Current Priorities
+
+The current high-level priorities are straightforward:
+
+### 1. Keep robot and CLI semantics tight
+
+Machine-facing correctness is one of the highest-value parts of the tool, so command contracts, schema truthfulness, and parity evidence remain central.
+
+### 2. Continue improving TUI operator confidence
+
+The TUI is already broad, but workflow completeness, navigation feel, and parity-sensitive behavior are still active work.
+
+### 3. Harden pages/export/workspace behavior
+
+Export, preview, watch mode, wizard flows, and workspace path semantics all matter because they are real user-facing workflows.
+
+### 4. Keep additive Rust-native features coherent
+
+Search, label intelligence, drift, correlation review, and file-intel surfaces are valuable, but they need to feel like one product rather than a bag of commands.
+
+## Limitations
+
+### What `bvr` does not do perfectly yet
+
+- **Legacy TUI parity is still in progress.** The TUI is functional and much broader than a toy interface, but the project is still actively refining operator workflows relative to legacy `bv`.
+- **Distribution is still Cargo-centric.** The repo does not currently ship a dedicated curl installer, Homebrew formula, or packaged release manager workflow in this README.
+- **Some surfaces are newer than the older README era.** Search, correlation feedback, drift, file intel, and some label flows are current capabilities, but they are evolving quickly.
+- **This is a CLI/TUI/dashboard tool, not a hosted service.** You bring the `.beads` data, git history, and deployment target.
+
+## FAQ
+
+### Is `bvr` just a Rust rewrite of `bv`?
+
+It started there, but the current repo also includes newer Rust-native surfaces such as richer pages export workflows, drift/baseline tooling, correlation review commands, file intelligence, and a broader TUI.
+
+### Should agents use the TUI?
+
+Usually no. Agents and scripts should prefer `--robot-*` with `json` or `toon`. The TUI is for humans.
+
+### What should I run first?
+
+Start with:
+
+```bash
+bvr --robot-next
+bvr --robot-triage
+bvr --robot-plan
+```
+
+### Can it work across multiple repos?
+
+Yes. Use `.bv/workspace.yaml` and either let `bvr` discover it or pass `--workspace` explicitly.
+
+### Does it only read `.beads/beads.jsonl`?
+
+No. It also supports compatibility filenames such as `issues.jsonl` and `beads.base.jsonl`, plus workspace aggregation.
+
+### Can I share results without giving people the repo?
+
+Yes. Export a static bundle:
+
+```bash
+bvr --export-pages ./bv-pages
+bvr --preview-pages ./bv-pages
+```
+
+### Is TOON optional?
+
+Yes. JSON remains the default. TOON is there for more compact agent-facing output.
+
+## Development Notes
+
+### Build metadata
+
+`build.rs` embeds build timestamp, target triple, and rustc metadata via `vergen-gix`.
+
+### CI
+
+GitHub Actions currently runs:
+
+- format + clippy
+- unit + snapshot verification
+- conformance + schema validation
+- e2e and integration suites
+- benchmark smoke
+- release build artifact creation
+
+## About Contributions
+
+> *About Contributions:* Please don't take this the wrong way, but I do not accept outside contributions for any of my projects. I simply don't have the mental bandwidth to review anything, and it's my name on the thing, so I'm responsible for any problems it causes; thus, the risk-reward is highly asymmetric from my perspective. I'd also have to worry about other "stakeholders," which seems unwise for tools I mostly make for myself for free. Feel free to submit issues, and even PRs if you want to illustrate a proposed fix, but know I won't merge them directly. Instead, I'll have Claude or Codex review submissions via `gh` and independently decide whether and how to address them. Bug reports in particular are welcome. Sorry if this offends, but I want to avoid wasted time and hurt feelings. I understand this isn't in sync with the prevailing open-source ethos that seeks community contributions, but it's the only way I can move at this velocity and keep my sanity.
 
 ## License
 
-MIT License (with OpenAI/Anthropic Rider). See `LICENSE`.
+MIT License with the OpenAI/Anthropic rider. See [LICENSE](LICENSE).

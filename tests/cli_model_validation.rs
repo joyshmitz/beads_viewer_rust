@@ -787,6 +787,48 @@ fn single_issue_triage_produces_one_recommendation() {
     );
 }
 
+#[test]
+fn as_of_uses_historical_jsonl_filename_when_current_filename_changed() {
+    let tmp = tempfile::tempdir_in(repo_root()).expect("temp dir");
+    let repo_dir = tmp.path().join("repo");
+    fs::create_dir_all(repo_dir.join(".beads")).expect("create .beads");
+
+    run_git(&repo_dir, &["init"]);
+
+    fs::write(
+        repo_dir.join(".beads/beads.jsonl"),
+        "{\"id\":\"OLD-1\",\"title\":\"Old issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write historical beads.jsonl");
+    run_git(&repo_dir, &["add", "."]);
+    run_git(&repo_dir, &["commit", "-m", "initial beads filename"]);
+
+    fs::remove_file(repo_dir.join(".beads/beads.jsonl")).expect("remove old beads filename");
+    fs::write(
+        repo_dir.join(".beads/issues.jsonl"),
+        "{\"id\":\"NEW-1\",\"title\":\"New issue\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"task\"}\n",
+    )
+    .expect("write current issues.jsonl");
+    run_git(&repo_dir, &["add", "."]);
+    run_git(&repo_dir, &["commit", "-m", "rename beads file"]);
+
+    let output = bvr()
+        .current_dir(&repo_dir)
+        .args(["--robot-triage", "--as-of", "HEAD~1"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON");
+    let recommendations = json["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations array");
+    assert_eq!(recommendations.len(), 1, "historical triage should load one issue");
+    assert_eq!(recommendations[0]["id"], "OLD-1");
+}
+
 // ============================================================================
 // Flag parsing edge cases
 // ============================================================================

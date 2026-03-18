@@ -636,7 +636,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-file-beads <path>",
                 description: "Look up beads correlated with a file path.",
-                key_fields: vec!["result"],
+                key_fields: vec!["file_path", "total_beads", "open_beads", "closed_beads"],
                 params: vec!["--file-beads-limit <n>"],
                 needs_issues: true,
             },
@@ -656,7 +656,13 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-impact <path[,path...]>",
                 description: "Estimate issue impact for one or more file paths.",
-                key_fields: vec!["result"],
+                key_fields: vec![
+                    "risk_level",
+                    "risk_score",
+                    "summary",
+                    "files",
+                    "affected_beads",
+                ],
                 params: vec![],
                 needs_issues: true,
             },
@@ -666,7 +672,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-file-relations <path>",
                 description: "Find related files using shared bead-history evidence.",
-                key_fields: vec!["result"],
+                key_fields: vec!["source_file", "related_files", "total_commits_for_source"],
                 params: vec!["--relations-threshold <n>", "--relations-limit <n>"],
                 needs_issues: true,
             },
@@ -676,7 +682,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-related <bead-id>",
                 description: "Find related work from file and history overlap.",
-                key_fields: vec!["result"],
+                key_fields: vec!["source_bead", "related"],
                 params: vec![
                     "--related-min-relevance <n>",
                     "--related-max-results <n>",
@@ -690,7 +696,13 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-blocker-chain <bead-id>",
                 description: "Show upstream blockers for a target bead.",
-                key_fields: vec!["result"],
+                key_fields: vec![
+                    "target_id",
+                    "chain_length",
+                    "is_blocked",
+                    "has_cycle",
+                    "root_blockers",
+                ],
                 params: vec![],
                 needs_issues: true,
             },
@@ -700,7 +712,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-impact-network <bead-id>",
                 description: "Build a causal impact network around a target bead.",
-                key_fields: vec!["result"],
+                key_fields: vec!["bead_id", "depth", "network", "top_connected"],
                 params: vec!["--network-depth <n>"],
                 needs_issues: true,
             },
@@ -710,7 +722,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-causality <bead-id>",
                 description: "Build a causality chain using graph and history evidence.",
-                key_fields: vec!["result"],
+                key_fields: vec!["chain", "insights"],
                 params: vec![],
                 needs_issues: true,
             },
@@ -720,7 +732,7 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
             CmdDoc {
                 flag: "--robot-drift",
                 description: "Compare current state to a saved baseline and emit structured drift alerts.",
-                key_fields: vec!["result"],
+                key_fields: vec!["summary", "alerts", "baseline"],
                 params: vec![],
                 needs_issues: true,
             },

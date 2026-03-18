@@ -715,7 +715,8 @@ pub fn find_workspace_issue_paths(path: &Path) -> Result<Vec<PathBuf>> {
         let repo_path = if Path::new(repo.path.trim()).is_absolute() {
             PathBuf::from(repo.path.trim())
         } else {
-            workspace_root.join(repo.path.trim())
+            let joined = workspace_root.join(repo.path.trim());
+            std::fs::canonicalize(&joined).unwrap_or_else(|_| normalize_path_for_identity(&joined))
         };
         let beads_dir = repo_path.join(repo.effective_beads_path(Some(&config.defaults)));
 
@@ -764,7 +765,8 @@ pub fn load_workspace_issues_with_summary(
         let repo_path = if Path::new(repo.path.trim()).is_absolute() {
             PathBuf::from(repo.path.trim())
         } else {
-            workspace_root.join(repo.path.trim())
+            let joined = workspace_root.join(repo.path.trim());
+            std::fs::canonicalize(&joined).unwrap_or_else(|_| normalize_path_for_identity(&joined))
         };
         let beads_dir = repo_path.join(repo.effective_beads_path(Some(&config.defaults)));
 

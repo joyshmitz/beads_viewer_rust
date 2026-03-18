@@ -91,8 +91,15 @@ struct HookContext {
 
 impl HookContext {
     fn new(export_path: &Path, export_format: &str, issue_count: usize) -> Self {
+        let resolved = if export_path.is_absolute() {
+            export_path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(export_path))
+                .unwrap_or_else(|_| export_path.to_path_buf())
+        };
         Self {
-            export_path: export_path.to_string_lossy().to_string(),
+            export_path: resolved.to_string_lossy().to_string(),
             export_format: export_format.to_string(),
             issue_count,
             timestamp: Utc::now().to_rfc3339(),

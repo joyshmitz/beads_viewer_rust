@@ -1719,35 +1719,43 @@ impl Model for BvrApp {
                     "confidence >= {:.0}%",
                     self.history_min_confidence() * 100.0
                 );
-                wrap_command_hints(
-                    &[
-                        CommandHint {
-                            key: "c",
-                            desc: confidence.as_str(),
-                        },
-                        CommandHint {
-                            key: "v",
-                            desc: "bead/git",
-                        },
-                        CommandHint {
-                            key: "/",
-                            desc: "search",
-                        },
-                        CommandHint {
-                            key: "Tab",
-                            desc: "mode",
-                        },
-                        CommandHint {
-                            key: "f",
-                            desc: "file-tree",
-                        },
-                        CommandHint {
-                            key: "h/Esc",
-                            desc: "back",
-                        },
-                    ],
-                    rows[2].width.saturating_sub(1) as usize,
-                )
+                let mut hints = vec![
+                    CommandHint {
+                        key: "c",
+                        desc: confidence.as_str(),
+                    },
+                    CommandHint {
+                        key: "v",
+                        desc: "bead/git",
+                    },
+                    CommandHint {
+                        key: "/",
+                        desc: "search",
+                    },
+                    CommandHint {
+                        key: "Tab",
+                        desc: "mode",
+                    },
+                    CommandHint {
+                        key: "y",
+                        desc: "copy",
+                    },
+                    CommandHint {
+                        key: "f",
+                        desc: "file-tree",
+                    },
+                ];
+                if self.history_selected_commit_url().is_some() {
+                    hints.push(CommandHint {
+                        key: "o",
+                        desc: "open commit",
+                    });
+                }
+                hints.push(CommandHint {
+                    key: "h/Esc",
+                    desc: "back",
+                });
+                wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
             _ => unreachable!("footer rich hints only apply to main/history"),
         });
@@ -9630,7 +9638,11 @@ impl BvrApp {
             text.push_line(RichLine::raw(""));
             text.push_line(RichLine::from_spans([
                 RichSpan::raw("Browser Link: "),
-                RichSpan::styled("open selected commit", tokens::panel_title_focused()).link(url),
+                RichSpan::styled(
+                    "open selected commit (o open)",
+                    tokens::panel_title_focused(),
+                )
+                .link(url),
             ]));
         }
         text
@@ -14940,6 +14952,44 @@ mod tests {
             urls.iter()
                 .any(|url| url == "https://github.com/owner/repo/commit/aaaa1111"),
             "expected commit hyperlink to be rendered, got {urls:?}"
+        );
+
+        let rendered = app.history_detail_render_text().to_plain_text();
+        assert!(
+            rendered.contains("open selected commit (o open)"),
+            "expected inline open hint for commit hyperlink, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn history_footer_shows_commit_actions_when_selected_commit_url_is_available() {
+        let repo = init_temp_repo_with_remote("git@github.com:owner/repo.git");
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.repo_root = Some(repo.path().to_path_buf());
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("y copy"),
+            "expected history footer to advertise copy action, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("o open commit"),
+            "expected history footer to advertise open action when a commit URL exists, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn history_footer_hides_open_commit_hint_without_selected_commit_url() {
+        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("y copy"),
+            "expected history footer to keep the copy action, got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("o open commit"),
+            "expected history footer to hide open action without a commit URL, got:\n{rendered}"
         );
     }
 

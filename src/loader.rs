@@ -821,6 +821,13 @@ pub fn load_workspace_issues_with_summary(
         issues.extend(result.issues);
     }
 
+    if summary.successful_repos == 0 && summary.failed_repos > 0 {
+        return Err(BvrError::InvalidArgument(format!(
+            "workspace load failed for all repositories: {}",
+            summary.failed_repo_names.join(", ")
+        )));
+    }
+
     Ok((issues, summary))
 }
 
@@ -1542,6 +1549,29 @@ mod tests {
         assert_eq!(summary.failed_repo_names, vec!["missing".to_string()]);
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "api-AUTH-1");
+    }
+
+    #[test]
+    fn load_workspace_issues_errors_when_all_repos_fail() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        let workspace_dir = root.join(".bv");
+        std::fs::create_dir_all(&workspace_dir).expect("create .bv");
+
+        std::fs::write(
+            workspace_dir.join("workspace.yaml"),
+            "repos:\n  - name: missing-api\n    path: services/api\n    prefix: api-\n  - name: missing-web\n    path: apps/web\n    prefix: web-\n",
+        )
+        .expect("write workspace config");
+
+        let error = load_workspace_issues_with_summary(&workspace_dir.join("workspace.yaml"))
+            .expect_err("all repo failures should bubble up");
+        let message = error.to_string();
+
+        assert!(message.contains("workspace load failed for all repositories"));
+        assert!(message.contains("missing-api"));
+        assert!(message.contains("missing-web"));
     }
 
     // --- qualify_id tests ---

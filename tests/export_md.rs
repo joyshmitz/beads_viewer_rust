@@ -245,3 +245,54 @@ fn export_md_uses_workspace_root_hooks_when_repo_path_discovers_workspace() {
         "nested repo should not become the hook working directory"
     );
 }
+
+#[test]
+fn export_md_relative_export_path_uses_workspace_root_when_repo_path_discovers_workspace() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let nested_dir = repo_dir.join("src");
+    let caller_dir = temp.path().join("caller");
+
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::create_dir_all(&nested_dir).expect("create nested repo dir");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n",
+    )
+    .expect("write workspace config");
+    write_minimal_beads(&repo_dir);
+    write_hooks(
+        &workspace_root,
+        r#"hooks:
+  pre-export:
+    - name: export-path-check
+      command: 'printf "%s\n" "$BV_EXPORT_PATH" > export-path.txt'
+"#,
+    );
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let mut command = Command::new(bvr_bin);
+    command
+        .current_dir(&caller_dir)
+        .arg("--repo-path")
+        .arg(&nested_dir)
+        .arg("--export-md")
+        .arg("report.md");
+
+    command.assert().success();
+
+    assert!(workspace_root.join("report.md").exists());
+    assert!(
+        !caller_dir.join("report.md").exists(),
+        "relative export path should resolve from workspace root"
+    );
+
+    let export_path =
+        fs::read_to_string(workspace_root.join("export-path.txt")).expect("read export path");
+    assert_eq!(
+        export_path.trim(),
+        workspace_root.join("report.md").display().to_string()
+    );
+}

@@ -91,17 +91,8 @@ struct HookContext {
 
 impl HookContext {
     fn new(export_path: &Path, export_format: &str, issue_count: usize) -> Self {
-        // Resolve to absolute so BV_EXPORT_PATH is valid regardless of the
-        // hook's working directory (which may differ when --repo-path is used).
-        let abs_path = if export_path.is_absolute() {
-            export_path.to_path_buf()
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(export_path)
-        };
         Self {
-            export_path: abs_path.to_string_lossy().to_string(),
+            export_path: export_path.to_string_lossy().to_string(),
             export_format: export_format.to_string(),
             issue_count,
             timestamp: Utc::now().to_rfc3339(),
@@ -130,7 +121,7 @@ pub fn export_markdown_with_hooks(
         issues.len(),
         no_hooks,
         repo_path,
-        || write_markdown_report(issues, export_path),
+        |resolved_export_path| write_markdown_report(issues, resolved_export_path),
     )
 }
 
@@ -143,10 +134,11 @@ pub fn run_export_with_hooks<T, F>(
     export_fn: F,
 ) -> Result<T>
 where
-    F: FnOnce() -> Result<T>,
+    F: FnOnce(&Path) -> Result<T>,
 {
     let project_dir = resolve_project_dir(repo_path)?;
-    let hook_context = HookContext::new(export_path, export_format, issue_count);
+    let resolved_export_path = resolve_export_path(export_path, &project_dir);
+    let hook_context = HookContext::new(&resolved_export_path, export_format, issue_count);
 
     let hooks = if no_hooks {
         HookPhases::default()
@@ -178,7 +170,7 @@ where
         }
     }
 
-    let output = export_fn()?;
+    let output = export_fn(&resolved_export_path)?;
 
     let mut post_failure = None::<String>;
     for hook in normalize_hooks(&hooks.post_export, HookPhase::PostExport) {
@@ -216,6 +208,14 @@ fn resolve_project_dir(repo_path: Option<&Path>) -> Result<PathBuf> {
         Ok(base)
     } else {
         Ok(std::env::current_dir()?.join(base))
+    }
+}
+
+fn resolve_export_path(export_path: &Path, project_dir: &Path) -> PathBuf {
+    if export_path.is_absolute() {
+        export_path.to_path_buf()
+    } else {
+        project_dir.join(export_path)
     }
 }
 

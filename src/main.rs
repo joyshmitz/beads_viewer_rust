@@ -376,7 +376,9 @@ fn main() -> ExitCode {
                     count,
                     no_hooks,
                     Some(hook_project_dir.as_path()),
-                    || bvr::export_pages::export_pages_bundle(&issues, output, &options),
+                    |resolved_output| {
+                        bvr::export_pages::export_pages_bundle(&issues, resolved_output, &options)
+                    },
                 )?;
                 Ok(())
             },
@@ -1155,8 +1157,7 @@ fn main() -> ExitCode {
                 "jq '.labels[0]' - top attention label details".to_string(),
                 "jq '.labels[] | select(.blocked_count > 0)' - labels with blocked issues"
                     .to_string(),
-                "jq '.labels[] | {label:.label,score:.attention_score,reason:.reason}'"
-                    .to_string(),
+                "jq '.labels[] | {label:.label,score:.attention_score,reason:.reason}'".to_string(),
             ],
         };
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
@@ -1877,7 +1878,9 @@ fn main() -> ExitCode {
             issue_count,
             cli.no_hooks,
             Some(hook_project_dir.as_path()),
-            || bvr::export_pages::export_pages_bundle(&issues, export_path, &options),
+            |resolved_export_path| {
+                bvr::export_pages::export_pages_bundle(&issues, resolved_export_path, &options)
+            },
         ) {
             Ok(summary) => {
                 eprintln!(
@@ -2042,10 +2045,10 @@ fn main() -> ExitCode {
                     refreshed_issue_count,
                     cli.no_hooks,
                     Some(hook_project_dir.as_path()),
-                    || {
+                    |resolved_export_path| {
                         bvr::export_pages::export_pages_bundle(
                             &refreshed_issues,
-                            export_path,
+                            resolved_export_path,
                             &options,
                         )
                     },
@@ -2632,14 +2635,17 @@ fn load_issues_from_history_beads_dir(
     revision: &str,
 ) -> bvr::Result<Vec<bvr::model::Issue>> {
     let absolute_beads_dir = absolute_from_current_dir(beads_dir);
-    let repo_root =
-        resolve_git_toplevel(absolute_beads_dir.parent().unwrap_or_else(|| Path::new(".")))
-            .ok_or_else(|| {
-                bvr::BvrError::InvalidArgument(format!(
-                    "could not determine repository root for historical beads dir {}",
-                    absolute_beads_dir.display()
-                ))
-            })?;
+    let repo_root = resolve_git_toplevel(
+        absolute_beads_dir
+            .parent()
+            .unwrap_or_else(|| Path::new(".")),
+    )
+    .ok_or_else(|| {
+        bvr::BvrError::InvalidArgument(format!(
+            "could not determine repository root for historical beads dir {}",
+            absolute_beads_dir.display()
+        ))
+    })?;
     let beads_dir_relative = absolute_beads_dir.strip_prefix(&repo_root).map_err(|_| {
         bvr::BvrError::InvalidArgument(format!(
             "historical beads dir {} is outside repository root {}",
@@ -2708,12 +2714,7 @@ fn load_workspace_issues_at_revision(
 
         let repo_issues = (|| -> bvr::Result<Vec<bvr::model::Issue>> {
             let mut issues = load_issues_from_history_beads_dir(&beads_dir, revision)?;
-            loader::namespace_workspace_issues(
-                &mut issues,
-                &prefix,
-                &repo_name,
-                &known_prefixes,
-            );
+            loader::namespace_workspace_issues(&mut issues, &prefix, &repo_name, &known_prefixes);
             Ok(issues)
         })();
 
@@ -2800,7 +2801,9 @@ fn load_historical_issues_for_load_target(
 ) -> bvr::Result<Vec<bvr::model::Issue>> {
     match resolve_issue_load_target(cli)? {
         IssueLoadTarget::BeadsFile(path) => load_issues_from_history_file_path(&path, reference),
-        IssueLoadTarget::WorkspaceConfig(path) => load_workspace_issues_at_revision(&path, reference),
+        IssueLoadTarget::WorkspaceConfig(path) => {
+            load_workspace_issues_at_revision(&path, reference)
+        }
         IssueLoadTarget::RepoPath(repo_path) => {
             let beads_dir = loader::get_beads_dir(repo_path.as_deref())
                 .map_err(|error| with_workspace_discovery_guidance(cli, error))?;
@@ -5849,8 +5852,8 @@ mod tests {
         discover_workspace_config_from_starts, feedback_project_dir, filter_by_repo,
         generate_daily_burndown_points, handle_operational_commands, load_issues,
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
-        resolve_background_mode, resolve_git_toplevel, resolve_issue_load_target,
-        resolve_cli_reference_file_path, resolve_reference_file_path, resolve_workspace_config_path,
+        resolve_background_mode, resolve_cli_reference_file_path, resolve_git_toplevel,
+        resolve_issue_load_target, resolve_reference_file_path, resolve_workspace_config_path,
     };
 
     struct CurrentDirGuard(PathBuf);

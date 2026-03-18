@@ -515,13 +515,23 @@ fn e2e_robot_metrics() {
 #[test]
 fn e2e_robot_search() {
     let json = run_robot(
-        &["--robot-search", "--search", "parity", "--search-limit", "5"],
+        &[
+            "--robot-search",
+            "--search",
+            "parity",
+            "--search-limit",
+            "5",
+        ],
         COMPLEX_FIXTURE,
     );
     assert_valid_envelope(&json);
     assert!(
-        validate_fields(&json, &["query", "limit", "mode", "results", "usage_hints"], "")
-            .is_empty()
+        validate_fields(
+            &json,
+            &["query", "limit", "mode", "results", "usage_hints"],
+            ""
+        )
+        .is_empty()
     );
     assert!(validate_type_at(&json, "results", JsonType::Array).is_empty());
 }
@@ -530,18 +540,14 @@ fn e2e_robot_search() {
 fn e2e_robot_label_health() {
     let json = run_robot(&["--robot-label-health"], COMPLEX_FIXTURE);
     assert_valid_envelope(&json);
-    assert!(
-        validate_fields(&json, &["analysis_config", "results", "usage_hints"], "").is_empty()
-    );
+    assert!(validate_fields(&json, &["analysis_config", "results", "usage_hints"], "").is_empty());
 }
 
 #[test]
 fn e2e_robot_label_flow() {
     let json = run_robot(&["--robot-label-flow"], COMPLEX_FIXTURE);
     assert_valid_envelope(&json);
-    assert!(
-        validate_fields(&json, &["analysis_config", "flow", "usage_hints"], "").is_empty()
-    );
+    assert!(validate_fields(&json, &["analysis_config", "flow", "usage_hints"], "").is_empty());
 }
 
 #[test]
@@ -552,17 +558,19 @@ fn e2e_robot_label_attention() {
     );
     assert_valid_envelope(&json);
     assert!(
-        validate_fields(&json, &["limit", "labels", "total_labels", "usage_hints"], "")
-            .is_empty()
+        validate_fields(
+            &json,
+            &["limit", "labels", "total_labels", "usage_hints"],
+            ""
+        )
+        .is_empty()
     );
 }
 
 #[test]
 fn e2e_robot_recipes() {
     let json = run_robot(&["--robot-recipes"], FIXTURE);
-    assert!(
-        validate_fields(&json, &["generated_at", "output_format", "version"], "").is_empty()
-    );
+    assert!(validate_fields(&json, &["generated_at", "output_format", "version"], "").is_empty());
     assert!(validate_fields(&json, &["recipes"], "").is_empty());
     assert!(validate_type_at(&json, "recipes", JsonType::Array).is_empty());
 }
@@ -634,6 +642,137 @@ fn e2e_robot_docs() {
 fn e2e_robot_schema() {
     let json = run_robot(&["--robot-schema"], FIXTURE);
     assert!(validate_fields(&json, &["schema_version", "commands"], "").is_empty());
+}
+
+// =========================================================================
+// Robot commands: causal / file-intel / blocker-chain / correlation
+// =========================================================================
+
+#[test]
+fn e2e_robot_blocker_chain() {
+    let json = run_robot(&["--robot-blocker-chain", "bd-101"], COMPLEX_FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(
+        validate_fields(
+            &json,
+            &[
+                "target_id",
+                "chain_length",
+                "is_blocked",
+                "has_cycle",
+                "root_blockers"
+            ],
+            ""
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn e2e_robot_causality() {
+    let json = run_robot(&["--robot-causality", "bd-101"], COMPLEX_FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(validate_fields(&json, &["chain", "insights"], "").is_empty());
+    // chain and insights are objects, not arrays
+    assert!(validate_type_at(&json, "chain", JsonType::Object).is_empty());
+    assert!(validate_type_at(&json, "insights", JsonType::Object).is_empty());
+}
+
+#[test]
+fn e2e_robot_file_beads() {
+    let json = run_robot(&["--robot-file-beads", "src/main.rs"], COMPLEX_FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(
+        validate_fields(
+            &json,
+            &["file_path", "total_beads", "open_beads", "closed_beads"],
+            ""
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn e2e_robot_impact() {
+    let json = run_robot(&["--robot-impact", "bd-101"], COMPLEX_FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(
+        validate_fields(
+            &json,
+            &[
+                "risk_level",
+                "risk_score",
+                "summary",
+                "files",
+                "affected_beads"
+            ],
+            ""
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn e2e_robot_file_relations() {
+    let json = run_robot(&["--robot-file-relations", "src/main.rs"], COMPLEX_FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(
+        validate_fields(
+            &json,
+            &["source_file", "related_files", "total_commits_for_source"],
+            ""
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn e2e_robot_explain_correlation_rejects_invalid_format() {
+    let output = bvr()
+        .args(["--robot-explain-correlation", "INVALID"])
+        .arg("--beads-file")
+        .arg(COMPLEX_FIXTURE)
+        .output()
+        .expect("failed to execute");
+    assert!(
+        !output.status.success(),
+        "explain-correlation should reject arguments without SHA:beadID format"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stderr}{stdout}");
+    assert!(
+        combined.contains("SHA:beadID") || combined.contains("Expected format"),
+        "should mention expected format: stderr={stderr} stdout={stdout}"
+    );
+}
+
+#[test]
+fn e2e_robot_confirm_correlation_rejects_invalid_format() {
+    let output = bvr()
+        .args(["--robot-confirm-correlation", "INVALID"])
+        .arg("--beads-file")
+        .arg(COMPLEX_FIXTURE)
+        .output()
+        .expect("failed to execute");
+    assert!(
+        !output.status.success(),
+        "confirm-correlation should reject arguments without SHA:beadID format"
+    );
+}
+
+#[test]
+fn e2e_robot_reject_correlation_rejects_invalid_format() {
+    let output = bvr()
+        .args(["--robot-reject-correlation", "INVALID"])
+        .arg("--beads-file")
+        .arg(COMPLEX_FIXTURE)
+        .output()
+        .expect("failed to execute");
+    assert!(
+        !output.status.success(),
+        "reject-correlation should reject arguments without SHA:beadID format"
+    );
 }
 
 // =========================================================================

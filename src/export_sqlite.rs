@@ -1902,10 +1902,7 @@ mod tests {
     #[test]
     fn export_config_path_joins_filename() {
         let path = export_config_path(Path::new("/tmp/out"));
-        assert_eq!(
-            path,
-            PathBuf::from("/tmp/out/beads.sqlite3.config.json")
-        );
+        assert_eq!(path, PathBuf::from("/tmp/out/beads.sqlite3.config.json"));
     }
 
     #[test]
@@ -1915,8 +1912,7 @@ mod tests {
         let content = vec![0xAA_u8; 1000];
         std::fs::write(&db_path, &content).expect("write test db");
 
-        let chunks =
-            write_database_chunks(temp.path(), &db_path, 300).expect("write chunks");
+        let chunks = write_database_chunks(temp.path(), &db_path, 300).expect("write chunks");
 
         assert_eq!(chunks.len(), 4);
         let total_size: u64 = chunks.iter().map(|c| c.size).sum();

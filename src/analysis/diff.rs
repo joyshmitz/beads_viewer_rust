@@ -689,9 +689,9 @@ mod tests {
     use crate::model::{Dependency, Issue};
 
     use super::{
-        average_map_value, calculate_summary, compare_cycles, compare_snapshots, detect_changes,
-        format_string_set, into_option, non_empty, normalize_cycle, option_len, snapshot_counts,
-        SummaryInputs,
+        SummaryInputs, average_map_value, calculate_summary, compare_cycles, compare_snapshots,
+        detect_changes, format_string_set, into_option, non_empty, normalize_cycle, option_len,
+        snapshot_counts,
     };
 
     #[test]

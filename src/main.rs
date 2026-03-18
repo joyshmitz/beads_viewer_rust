@@ -133,6 +133,14 @@ fn project_dir_for_export_hooks(cli: &Cli) -> bvr::Result<PathBuf> {
     project_dir_for_load_target(cli)
 }
 
+fn resolve_cli_path_from_project_dir(cli: &Cli, path: &Path) -> bvr::Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(project_dir_for_load_target(cli)?.join(path))
+    }
+}
+
 fn load_sprints_for_cli(cli: &Cli) -> bvr::Result<Vec<bvr::model::Sprint>> {
     let project_dir = project_dir_for_load_target(cli)?;
     loader::load_sprints(Some(&project_dir))
@@ -382,7 +390,10 @@ fn main() -> ExitCode {
                 )?;
                 Ok(())
             },
-            |path| bvr::export_pages::run_preview_server(path, !no_live_reload),
+            |path| {
+                let resolved_preview_path = resolve_cli_path_from_project_dir(&cli, path)?;
+                bvr::export_pages::run_preview_server(&resolved_preview_path, !no_live_reload)
+            },
         ) {
             Ok(Some(_config)) => return ExitCode::SUCCESS,
             Ok(None) => {
@@ -397,7 +408,15 @@ fn main() -> ExitCode {
     }
 
     if let Some(bundle_path) = cli.preview_pages.as_deref() {
-        if let Err(error) = bvr::export_pages::run_preview_server(bundle_path, !cli.no_live_reload)
+        let resolved_bundle_path = match resolve_cli_path_from_project_dir(&cli, bundle_path) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+        };
+        if let Err(error) =
+            bvr::export_pages::run_preview_server(&resolved_bundle_path, !cli.no_live_reload)
         {
             eprintln!("error: {error}");
             return ExitCode::from(1);
@@ -5852,8 +5871,9 @@ mod tests {
         discover_workspace_config_from_starts, feedback_project_dir, filter_by_repo,
         generate_daily_burndown_points, handle_operational_commands, load_issues,
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
-        resolve_background_mode, resolve_cli_reference_file_path, resolve_git_toplevel,
-        resolve_issue_load_target, resolve_reference_file_path, resolve_workspace_config_path,
+        resolve_background_mode, resolve_cli_path_from_project_dir,
+        resolve_cli_reference_file_path, resolve_git_toplevel, resolve_issue_load_target,
+        resolve_reference_file_path, resolve_workspace_config_path,
     };
 
     struct CurrentDirGuard(PathBuf);
@@ -6087,6 +6107,34 @@ mod tests {
 
         let project_dir = project_dir_for_export_hooks(&cli).expect("project dir");
         assert_eq!(project_dir, root);
+    }
+
+    #[test]
+    fn resolve_cli_path_from_project_dir_uses_workspace_root_when_repo_path_discovers_workspace() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let nested = root.join("services/api/src");
+        fs::create_dir_all(&workspace_dir).expect("create .bv");
+        fs::create_dir_all(&nested).expect("create nested");
+        fs::write(
+            workspace_dir.join("workspace.yaml"),
+            "repos:\n  - path: services/api\n",
+        )
+        .expect("write workspace");
+
+        let nested_arg = nested.to_string_lossy().to_string();
+        let cli = Cli::parse_from([
+            "bvr",
+            "--repo-path",
+            &nested_arg,
+            "--preview-pages",
+            "bundle",
+        ]);
+
+        let resolved =
+            resolve_cli_path_from_project_dir(&cli, Path::new("bundle")).expect("resolved path");
+        assert_eq!(resolved, root.join("bundle"));
     }
 
     #[test]

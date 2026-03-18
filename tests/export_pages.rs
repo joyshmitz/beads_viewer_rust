@@ -912,6 +912,74 @@ fn preview_pages_is_handled_before_issue_loading() {
 }
 
 #[test]
+fn preview_pages_relative_path_uses_workspace_root_when_repo_path_discovers_workspace() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let workspace_root = temp.path().join("workspace");
+    let repo_dir = workspace_root.join("services/api");
+    let caller_dir = temp.path().join("caller");
+    let bundle_dir = workspace_root.join("bundle");
+    fs::create_dir_all(&repo_dir).expect("create repo dir");
+    fs::create_dir_all(&caller_dir).expect("create caller dir");
+    fs::create_dir_all(&bundle_dir).expect("create bundle dir");
+    fs::create_dir_all(workspace_root.join(".bv")).expect("create workspace .bv");
+    fs::write(
+        workspace_root.join(".bv/workspace.yaml"),
+        "repos:\n  - path: services/api\n",
+    )
+    .expect("write workspace config");
+    fs::write(
+        bundle_dir.join("index.html"),
+        "<!doctype html><html><body>workspace preview</body></html>",
+    )
+    .expect("write preview bundle");
+
+    let probe = TcpListener::bind(("127.0.0.1", 0)).expect("probe port");
+    let port = probe.local_addr().expect("probe addr").port();
+    drop(probe);
+
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
+    let child = ProcessCommand::new(bvr_bin)
+        .current_dir(&caller_dir)
+        .args([
+            "--preview-pages",
+            "bundle",
+            "--repo-path",
+            repo_dir.to_str().expect("repo path"),
+        ])
+        .env("BVR_PREVIEW_PORT", port.to_string())
+        .env("BVR_PREVIEW_MAX_REQUESTS", "1")
+        .env("BV_NO_BROWSER", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn preview");
+
+    let mut connected = false;
+    for _ in 0..40 {
+        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+            stream
+                .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .expect("write request");
+            connected = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(connected, "failed to connect to preview server");
+
+    let output = child.wait_with_output().expect("wait for preview");
+    assert!(
+        output.status.success(),
+        "preview failed with stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(&workspace_root.join("bundle").display().to_string()));
+    assert!(stdout.contains("Preview server running at http://127.0.0.1:"));
+}
+
+#[test]
 fn watch_export_regenerates_after_change_and_keeps_repo_filter() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();

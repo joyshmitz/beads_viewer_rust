@@ -333,7 +333,10 @@ fn workspace_explicit_root_repo_path_uses_workspace_name_for_namespacing() {
     )
     .expect("write config");
 
-    let root_beads = format!("{}\n", issue_line("ROOT-2", "Root explicit task", "open", 1));
+    let root_beads = format!(
+        "{}\n",
+        issue_line("ROOT-2", "Root explicit task", "open", 1)
+    );
     write_beads(root, &root_beads);
 
     let ws_path = bv_dir.join("workspace.yaml");
@@ -602,16 +605,19 @@ fn workspace_discovery_ignores_disabled_explicit_repo_alias() {
     let total = json["triage"]["quick_ref"]["total_open"]
         .as_u64()
         .unwrap_or(0);
-    assert_eq!(total, 1, "disabled explicit alias should not suppress discovery");
+    assert_eq!(
+        total, 1,
+        "disabled explicit alias should not suppress discovery"
+    );
 
     let top_picks = json["triage"]["quick_ref"]["top_picks"]
         .as_array()
         .cloned()
         .unwrap_or_default();
     assert!(
-        top_picks
-            .iter()
-            .all(|pick| pick["id"].as_str().is_some_and(|id| !id.starts_with("disabled-"))),
+        top_picks.iter().all(|pick| pick["id"]
+            .as_str()
+            .is_some_and(|id| !id.starts_with("disabled-"))),
         "disabled explicit alias should not namespace the discovered repo: {top_picks:?}"
     );
 }
@@ -687,9 +693,9 @@ fn workspace_discovery_dedupes_explicit_repo_path_aliases() {
         .cloned()
         .unwrap_or_default();
     assert!(
-        top_picks
-            .iter()
-            .all(|pick| pick["id"].as_str().is_some_and(|id| !id.starts_with("api-"))),
+        top_picks.iter().all(|pick| pick["id"]
+            .as_str()
+            .is_some_and(|id| !id.starts_with("api-"))),
         "discovery should not create a second synthetic repo alias: {top_picks:?}"
     );
 }

@@ -788,33 +788,79 @@ mod tests {
     #[test]
     fn check_metric_drift_empty_baseline_no_alert() {
         let mut alerts = Vec::new();
-        check_metric_drift("test", &[], &[BaselineMetricItem { id: "A".to_string(), value: 1.0 }], &mut alerts);
+        check_metric_drift(
+            "test",
+            &[],
+            &[BaselineMetricItem {
+                id: "A".to_string(),
+                value: 1.0,
+            }],
+            &mut alerts,
+        );
         assert!(alerts.is_empty());
     }
 
     #[test]
     fn check_metric_drift_empty_current_no_alert() {
         let mut alerts = Vec::new();
-        check_metric_drift("test", &[BaselineMetricItem { id: "A".to_string(), value: 1.0 }], &[], &mut alerts);
+        check_metric_drift(
+            "test",
+            &[BaselineMetricItem {
+                id: "A".to_string(),
+                value: 1.0,
+            }],
+            &[],
+            &mut alerts,
+        );
         assert!(alerts.is_empty());
     }
 
     #[test]
     fn check_metric_drift_fewer_than_3_changes_no_alert() {
         let baseline = vec![
-            BaselineMetricItem { id: "A".to_string(), value: 5.0 },
-            BaselineMetricItem { id: "B".to_string(), value: 4.0 },
-            BaselineMetricItem { id: "C".to_string(), value: 3.0 },
-            BaselineMetricItem { id: "D".to_string(), value: 2.0 },
-            BaselineMetricItem { id: "E".to_string(), value: 1.0 },
+            BaselineMetricItem {
+                id: "A".to_string(),
+                value: 5.0,
+            },
+            BaselineMetricItem {
+                id: "B".to_string(),
+                value: 4.0,
+            },
+            BaselineMetricItem {
+                id: "C".to_string(),
+                value: 3.0,
+            },
+            BaselineMetricItem {
+                id: "D".to_string(),
+                value: 2.0,
+            },
+            BaselineMetricItem {
+                id: "E".to_string(),
+                value: 1.0,
+            },
         ];
         // Only change 2 of top-5
         let current = vec![
-            BaselineMetricItem { id: "A".to_string(), value: 5.0 },
-            BaselineMetricItem { id: "B".to_string(), value: 4.0 },
-            BaselineMetricItem { id: "C".to_string(), value: 3.0 },
-            BaselineMetricItem { id: "X".to_string(), value: 2.0 },
-            BaselineMetricItem { id: "Y".to_string(), value: 1.0 },
+            BaselineMetricItem {
+                id: "A".to_string(),
+                value: 5.0,
+            },
+            BaselineMetricItem {
+                id: "B".to_string(),
+                value: 4.0,
+            },
+            BaselineMetricItem {
+                id: "C".to_string(),
+                value: 3.0,
+            },
+            BaselineMetricItem {
+                id: "X".to_string(),
+                value: 2.0,
+            },
+            BaselineMetricItem {
+                id: "Y".to_string(),
+                value: 1.0,
+            },
         ];
         let mut alerts = Vec::new();
         check_metric_drift("pr", &baseline, &current, &mut alerts);
@@ -824,19 +870,49 @@ mod tests {
     #[test]
     fn check_metric_drift_3_or_more_changes_triggers_alert() {
         let baseline = vec![
-            BaselineMetricItem { id: "A".to_string(), value: 5.0 },
-            BaselineMetricItem { id: "B".to_string(), value: 4.0 },
-            BaselineMetricItem { id: "C".to_string(), value: 3.0 },
-            BaselineMetricItem { id: "D".to_string(), value: 2.0 },
-            BaselineMetricItem { id: "E".to_string(), value: 1.0 },
+            BaselineMetricItem {
+                id: "A".to_string(),
+                value: 5.0,
+            },
+            BaselineMetricItem {
+                id: "B".to_string(),
+                value: 4.0,
+            },
+            BaselineMetricItem {
+                id: "C".to_string(),
+                value: 3.0,
+            },
+            BaselineMetricItem {
+                id: "D".to_string(),
+                value: 2.0,
+            },
+            BaselineMetricItem {
+                id: "E".to_string(),
+                value: 1.0,
+            },
         ];
         // Change 3 of top-5
         let current = vec![
-            BaselineMetricItem { id: "A".to_string(), value: 5.0 },
-            BaselineMetricItem { id: "B".to_string(), value: 4.0 },
-            BaselineMetricItem { id: "X".to_string(), value: 3.0 },
-            BaselineMetricItem { id: "Y".to_string(), value: 2.0 },
-            BaselineMetricItem { id: "Z".to_string(), value: 1.0 },
+            BaselineMetricItem {
+                id: "A".to_string(),
+                value: 5.0,
+            },
+            BaselineMetricItem {
+                id: "B".to_string(),
+                value: 4.0,
+            },
+            BaselineMetricItem {
+                id: "X".to_string(),
+                value: 3.0,
+            },
+            BaselineMetricItem {
+                id: "Y".to_string(),
+                value: 2.0,
+            },
+            BaselineMetricItem {
+                id: "Z".to_string(),
+                value: 1.0,
+            },
         ];
         let mut alerts = Vec::new();
         check_metric_drift("pr", &baseline, &current, &mut alerts);

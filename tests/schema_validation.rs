@@ -154,7 +154,13 @@ fn robot_orphans_has_valid_envelope() {
 #[test]
 fn robot_search_has_valid_envelope() {
     let output = run_bvr_json(
-        &["--robot-search", "--search", "parity", "--search-limit", "5"],
+        &[
+            "--robot-search",
+            "--search",
+            "parity",
+            "--search-limit",
+            "5",
+        ],
         "tests/testdata/synthetic_complex.jsonl",
     );
     assert_valid_version_envelope(&output);

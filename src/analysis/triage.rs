@@ -670,7 +670,13 @@ pub fn compute_triage(
         blockers_to_clear,
         recommendations_by_track,
         recommendations_by_label,
-        project_health: compute_project_health(issues, graph, metrics, total_open, actionable.len()),
+        project_health: compute_project_health(
+            issues,
+            graph,
+            metrics,
+            total_open,
+            actionable.len(),
+        ),
     };
 
     TriageComputation {
@@ -807,10 +813,12 @@ fn recent_week_starts(now: chrono::DateTime<Utc>, count: usize) -> Vec<chrono::D
         - Duration::days(i64::from(weekday_offset));
 
     (0..count)
-        .map(|index| chrono::DateTime::<Utc>::from_naive_utc_and_offset(
-            start_of_week - Duration::days((index * 7) as i64),
-            Utc,
-        ))
+        .map(|index| {
+            chrono::DateTime::<Utc>::from_naive_utc_and_offset(
+                start_of_week - Duration::days((index * 7) as i64),
+                Utc,
+            )
+        })
         .collect()
 }
 

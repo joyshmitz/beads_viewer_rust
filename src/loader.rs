@@ -364,10 +364,10 @@ fn inferred_repo_name(repo_path: &Path, workspace_root: &Path) -> String {
     };
     let normalized =
         std::fs::canonicalize(&resolved).unwrap_or_else(|_| normalize_path_for_identity(&resolved));
-    normalized
-        .file_name()
-        .and_then(OsStr::to_str)
-        .map_or_else(|| workspace_root_repo_name(workspace_root), ToString::to_string)
+    normalized.file_name().and_then(OsStr::to_str).map_or_else(
+        || workspace_root_repo_name(workspace_root),
+        ToString::to_string,
+    )
 }
 
 fn discover_workspace_repos(
@@ -389,8 +389,8 @@ fn discover_workspace_repos(
         .any(|pattern| relative_path_matches_pattern(Path::new(""), pattern))
     {
         let identity = repo_identity_key(Path::new("."), workspace_root);
-        let beads_dir =
-            workspace_root.join(WorkspaceRepoConfig::default().effective_beads_path(Some(defaults)));
+        let beads_dir = workspace_root
+            .join(WorkspaceRepoConfig::default().effective_beads_path(Some(defaults)));
         if seen_repo_paths.insert(identity) && beads_dir.is_dir() {
             discovered.push(WorkspaceRepoConfig {
                 name: workspace_root_repo_name(workspace_root),

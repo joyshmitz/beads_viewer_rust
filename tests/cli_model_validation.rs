@@ -522,7 +522,10 @@ fn robot_orphans_uses_workspace_root_history_when_repo_path_discovers_workspace(
 
     run_git(&workspace_root, &["init"]);
     run_git(&workspace_root, &["add", "."]);
-    run_git(&workspace_root, &["commit", "-m", "initial workspace snapshot"]);
+    run_git(
+        &workspace_root,
+        &["commit", "-m", "initial workspace snapshot"],
+    );
 
     fs::write(
         workspace_root.join("apps/web/src/orphan.js"),
@@ -558,9 +561,9 @@ fn robot_orphans_uses_workspace_root_history_when_repo_path_discovers_workspace(
         json["candidates"]
             .as_array()
             .is_some_and(|rows| rows.iter().any(|row| {
-                row["files"].as_array().is_some_and(|files| {
-                    files.iter().any(|file| file == "apps/web/src/orphan.js")
-                })
+                row["files"]
+                    .as_array()
+                    .is_some_and(|files| files.iter().any(|file| file == "apps/web/src/orphan.js"))
             })),
         "robot-orphans should include the workspace-root orphan file when --repo-path discovers a workspace"
     );
@@ -825,7 +828,11 @@ fn as_of_uses_historical_jsonl_filename_when_current_filename_changed() {
     let recommendations = json["triage"]["recommendations"]
         .as_array()
         .expect("recommendations array");
-    assert_eq!(recommendations.len(), 1, "historical triage should load one issue");
+    assert_eq!(
+        recommendations.len(),
+        1,
+        "historical triage should load one issue"
+    );
     assert_eq!(recommendations[0]["id"], "OLD-1");
 }
 
@@ -1153,7 +1160,10 @@ fn robot_diff_git_ref_uses_workspace_history_when_repo_path_discovers_workspace(
 
     run_git(&workspace_root, &["init"]);
     run_git(&workspace_root, &["add", "."]);
-    run_git(&workspace_root, &["commit", "-m", "initial workspace snapshot"]);
+    run_git(
+        &workspace_root,
+        &["commit", "-m", "initial workspace snapshot"],
+    );
 
     fs::write(
         web_dir.join(".beads/beads.jsonl"),
@@ -1185,7 +1195,11 @@ fn robot_diff_git_ref_uses_workspace_history_when_repo_path_discovers_workspace(
     let added = json["diff"]["new_issues"]
         .as_array()
         .expect("new_issues array");
-    assert_eq!(added.len(), 1, "workspace diff should only add the new web issue");
+    assert_eq!(
+        added.len(),
+        1,
+        "workspace diff should only add the new web issue"
+    );
     assert_eq!(added[0]["title"], "Web issue two");
 }
 

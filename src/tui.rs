@@ -1623,22 +1623,20 @@ impl Model for BvrApp {
                     detail_hint,
                 )))
             }
-            ViewMode::Insights => {
-                Some(RichText::raw(format!(
-                    "Insights [{}] | s/S panel | e explanations={} | x proof={}",
-                    self.insights_panel.short_label(),
-                    if self.insights_show_explanations {
-                        "on"
-                    } else {
-                        "off"
-                    },
-                    if self.insights_show_calc_proof {
-                        "on"
-                    } else {
-                        "off"
-                    }
-                )))
-            }
+            ViewMode::Insights => Some(RichText::raw(format!(
+                "Insights [{}] | s/S panel | e explanations={} | x proof={}",
+                self.insights_panel.short_label(),
+                if self.insights_show_explanations {
+                    "on"
+                } else {
+                    "off"
+                },
+                if self.insights_show_calc_proof {
+                    "on"
+                } else {
+                    "off"
+                }
+            ))),
             ViewMode::Graph => Some(RichText::raw(
                 "Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back",
             )),
@@ -1692,7 +1690,7 @@ impl Model for BvrApp {
             ViewMode::TimeTravelDiff => {
                 if self.time_travel_input_active {
                     Some(RichText::raw(
-                        "Time-travel: enter git ref or file path | Enter confirm | Esc cancel"
+                        "Time-travel: enter git ref or file path | Enter confirm | Esc cancel",
                     ))
                 } else if self.time_travel_diff.is_some() {
                     Some(RichText::raw(
@@ -1717,7 +1715,10 @@ impl Model for BvrApp {
                 wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
             ViewMode::History => {
-                let confidence = format!("confidence >= {:.0}%", self.history_min_confidence() * 100.0);
+                let confidence = format!(
+                    "confidence >= {:.0}%",
+                    self.history_min_confidence() * 100.0
+                );
                 wrap_command_hints(
                     &[
                         CommandHint {
@@ -4988,7 +4989,9 @@ impl BvrApp {
                 desc: "edit",
             },
         ];
-        if self.selected_issue_external_ref_url().is_some() && matches!(self.focus, FocusPane::Detail) {
+        if self.selected_issue_external_ref_url().is_some()
+            && matches!(self.focus, FocusPane::Detail)
+        {
             hints.push(CommandHint {
                 key: "o",
                 desc: "open link",
@@ -8039,9 +8042,14 @@ impl BvrApp {
     }
 
     fn issue_detail_render_text(&self) -> RichText {
-        let issue_header = self
-            .selected_issue()
-            .map(|issue| format!("{} {}  {}", type_icon(&issue.issue_type), issue.id, issue.title));
+        let issue_header = self.selected_issue().map(|issue| {
+            format!(
+                "{} {}  {}",
+                type_icon(&issue.issue_type),
+                issue.id,
+                issue.title
+            )
+        });
         let repo_line = self.selected_issue().map(|issue| {
             format!(
                 "Assignee: {} | Repo: {} | Estimate: {}",
@@ -8088,20 +8096,30 @@ impl BvrApp {
                     RichSpan::styled("  ", tokens::dim()),
                     RichSpan::styled("(C copy id)", tokens::dim()),
                 ]));
-            } else if show_repo_hint && repo_line.as_deref().is_some_and(|repo_line| line == repo_line) {
+            } else if show_repo_hint
+                && repo_line
+                    .as_deref()
+                    .is_some_and(|repo_line| line == repo_line)
+            {
                 lines.push(RichLine::from_spans([
                     RichSpan::raw(line),
                     RichSpan::styled("  ", tokens::dim()),
                     RichSpan::styled("(w repo filter)", tokens::dim()),
                 ]));
-            } else if show_label_hint && labels_line.as_deref().is_some_and(|labels_line| line == labels_line) {
+            } else if show_label_hint
+                && labels_line
+                    .as_deref()
+                    .is_some_and(|labels_line| line == labels_line)
+            {
                 lines.push(RichLine::from_spans([
                     RichSpan::raw(line),
                     RichSpan::styled("  ", tokens::dim()),
                     RichSpan::styled("(L label filter)", tokens::dim()),
                 ]));
             } else if show_timeline_hint
-                && timeline_line.as_deref().is_some_and(|timeline_line| line == timeline_line)
+                && timeline_line
+                    .as_deref()
+                    .is_some_and(|timeline_line| line == timeline_line)
             {
                 lines.push(RichLine::from_spans([
                     RichSpan::raw(line),
@@ -10609,15 +10627,14 @@ fn buffer_to_text(buf: &ftui::Buffer, pool: &ftui::GraphemePool) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        BackgroundTickDecision, BoardGrouping, BvrApp, CommandHint, EmptyLaneVisibility,
-        FocusPane, GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache,
-        HistoryLayout, HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode,
-        InsightsPanel, ListFilter, ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode,
-        background_warning_message, buffer_to_text, compact_history_duration_label,
-        decide_background_tick, display_width, fit_display, history_legacy_lifecycle_lines,
-        legacy_history_author_initials, record_view_size, render_debug_view,
-        should_apply_background_reload, sprint_reference_now, truncate_display,
-        wrap_command_hints,
+        BackgroundTickDecision, BoardGrouping, BvrApp, CommandHint, EmptyLaneVisibility, FocusPane,
+        GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
+        HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
+        ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
+        buffer_to_text, compact_history_duration_label, decide_background_tick, display_width,
+        fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
+        record_view_size, render_debug_view, should_apply_background_reload, sprint_reference_now,
+        truncate_display, wrap_command_hints,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -15080,15 +15097,27 @@ mod tests {
         app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
 
         let rendered = render_app(&app, 120, 40);
-        assert!(rendered.contains("o open link"), "expected open-link hint, got:\n{rendered}");
-        assert!(rendered.contains("y copy link"), "expected copy-link hint, got:\n{rendered}");
+        assert!(
+            rendered.contains("o open link"),
+            "expected open-link hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("y copy link"),
+            "expected copy-link hint, got:\n{rendered}"
+        );
     }
 
     #[test]
     fn main_footer_hides_external_ref_commands_without_detail_link() {
         let rendered = render_frame(ViewMode::Main, 120, 40);
-        assert!(!rendered.contains("o open link"), "unexpected open-link hint in:\n{rendered}");
-        assert!(!rendered.contains("y copy link"), "unexpected copy-link hint in:\n{rendered}");
+        assert!(
+            !rendered.contains("o open link"),
+            "unexpected open-link hint in:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("y copy link"),
+            "unexpected copy-link hint in:\n{rendered}"
+        );
     }
 
     #[test]

@@ -1419,10 +1419,7 @@ mod tests {
             "bd-1".to_string(),
             make_history("bd-1", "open", &["a.rs", "b.rs", "c.rs", "d.rs"]),
         );
-        histories.insert(
-            "bd-2".to_string(),
-            make_history("bd-2", "open", &["a.rs"]),
-        );
+        histories.insert("bd-2".to_string(), make_history("bd-2", "open", &["a.rs"]));
         histories.insert(
             "bd-3".to_string(),
             make_history("bd-3", "open", &["a.rs", "b.rs"]),
@@ -1432,7 +1429,11 @@ mod tests {
         assert_eq!(result.related.len(), 2, "20% should keep both overlaps");
 
         let result = find_related_work_with_options("bd-1", &histories, 30, 10, true);
-        assert_eq!(result.related.len(), 1, "30% should keep only the 50% overlap");
+        assert_eq!(
+            result.related.len(),
+            1,
+            "30% should keep only the 50% overlap"
+        );
         assert_eq!(result.related[0].bead_id, "bd-3");
     }
 

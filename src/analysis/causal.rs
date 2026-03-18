@@ -1649,11 +1649,19 @@ mod tests {
         // Only 1 shared file — should NOT create a shared_file edge
         histories.insert(
             "A".to_string(),
-            make_history("A", vec![], vec![("s1", "2025-01-01T00:00:00Z", vec!["shared.rs"])]),
+            make_history(
+                "A",
+                vec![],
+                vec![("s1", "2025-01-01T00:00:00Z", vec!["shared.rs"])],
+            ),
         );
         histories.insert(
             "B".to_string(),
-            make_history("B", vec![], vec![("s2", "2025-01-02T00:00:00Z", vec!["shared.rs"])]),
+            make_history(
+                "B",
+                vec![],
+                vec![("s2", "2025-01-02T00:00:00Z", vec!["shared.rs"])],
+            ),
         );
 
         let network = build_impact_network(&graph, &histories);

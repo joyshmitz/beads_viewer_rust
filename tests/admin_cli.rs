@@ -96,12 +96,17 @@ fn agents_force_uses_workspace_root_discovered_from_repo_path() {
     .expect("write agents file");
 
     let mut cmd = bvr_command();
-    cmd.current_dir(&nested_repo)
-        .args(["--agents-force", "--repo-path", nested_repo.to_str().unwrap()]);
+    cmd.current_dir(&nested_repo).args([
+        "--agents-force",
+        "--repo-path",
+        nested_repo.to_str().unwrap(),
+    ]);
 
     cmd.assert().success().stdout(
         predicate::str::contains("Found AGENTS.md")
-            .and(predicate::str::contains(workspace_root.join("AGENTS.md").to_string_lossy()))
+            .and(predicate::str::contains(
+                workspace_root.join("AGENTS.md").to_string_lossy(),
+            ))
             .and(predicate::str::contains("up to date")),
     );
 }

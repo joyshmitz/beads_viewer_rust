@@ -5905,7 +5905,7 @@ mod tests {
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
         resolve_background_mode, resolve_cli_path_from_project_dir,
         resolve_cli_reference_file_path, resolve_git_toplevel, resolve_issue_load_target,
-        resolve_reference_file_path, resolve_workspace_config_path,
+        resolve_reference_file_path, resolve_watch_export_paths, resolve_workspace_config_path,
     };
 
     struct CurrentDirGuard(PathBuf);
@@ -6345,11 +6345,23 @@ mod tests {
         )
         .expect("write api issues");
 
-        let cli = Cli::parse_from(["bvr", "--export-pages", "pages-out", "--watch-export", "--workspace", "."]);
+        let cli = Cli::parse_from([
+            "bvr",
+            "--export-pages",
+            "pages-out",
+            "--watch-export",
+            "--workspace",
+            ".",
+        ]);
         let _guard = CurrentDirGuard::set(root);
         let watched_paths = resolve_watch_export_paths(&cli).expect("resolve watch paths");
 
-        assert!(watched_paths.contains(&config_path));
+        assert!(
+            watched_paths
+                .iter()
+                .any(|path| path.ends_with(".bv/workspace.yaml")),
+            "expected workspace config path in watch set, got {watched_paths:?}"
+        );
         assert!(watched_paths.contains(&issues_path));
     }
 

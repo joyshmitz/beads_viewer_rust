@@ -1637,9 +1637,13 @@ impl Model for BvrApp {
                     "off"
                 }
             ))),
-            ViewMode::Graph => Some(RichText::raw(
-                "Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back",
-            )),
+            ViewMode::Graph => {
+                if self.status_msg.is_empty() {
+                    None
+                } else {
+                    Some(RichText::raw(self.status_msg.clone()))
+                }
+            }
             ViewMode::History => {
                 if self.history_search_active {
                     Some(RichText::raw(format!(
@@ -1714,6 +1718,10 @@ impl Model for BvrApp {
                 let hints = self.main_footer_command_hints();
                 wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
+            ViewMode::Graph => {
+                let hints = self.graph_footer_command_hints();
+                wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
+            }
             ViewMode::History => {
                 let confidence = format!(
                     "confidence >= {:.0}%",
@@ -1757,7 +1765,7 @@ impl Model for BvrApp {
                 });
                 wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
-            _ => unreachable!("footer rich hints only apply to main/history"),
+            _ => unreachable!("footer rich hints only apply to main/graph/history"),
         });
         Paragraph::new(footer_text)
             .style(tokens::footer())
@@ -5009,6 +5017,52 @@ impl BvrApp {
                 desc: "copy link",
             });
         }
+        hints
+    }
+
+    fn graph_footer_command_hints(&self) -> Vec<CommandHint<'static>> {
+        let mut hints = vec![
+            CommandHint {
+                key: "h/l",
+                desc: "nodes",
+            },
+            CommandHint {
+                key: "j/k",
+                desc: "nodes/edges",
+            },
+            CommandHint {
+                key: "H/L",
+                desc: "jump",
+            },
+            CommandHint {
+                key: "Tab",
+                desc: "node/edge",
+            },
+            CommandHint {
+                key: "/",
+                desc: "search",
+            },
+            CommandHint {
+                key: "Enter",
+                desc: "open details",
+            },
+        ];
+        if self.selected_issue_external_ref_url().is_some()
+            && matches!(self.focus, FocusPane::Detail)
+        {
+            hints.push(CommandHint {
+                key: "o",
+                desc: "open link",
+            });
+            hints.push(CommandHint {
+                key: "y",
+                desc: "copy link",
+            });
+        }
+        hints.push(CommandHint {
+            key: "g/Esc",
+            desc: "back",
+        });
         hints
     }
 
@@ -15196,6 +15250,59 @@ mod tests {
         assert!(
             !rendered.contains("y copy link"),
             "unexpected copy-link hint in:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn graph_footer_shows_external_ref_commands_when_detail_link_is_available() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("o open link"),
+            "expected graph footer to advertise open-link hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("y copy link"),
+            "expected graph footer to advertise copy-link hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn graph_footer_hides_external_ref_commands_without_detail_link() {
+        let rendered = render_frame(ViewMode::Graph, 120, 40);
+        assert!(
+            !rendered.contains("o open link"),
+            "unexpected graph open-link hint in:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("y copy link"),
+            "unexpected graph copy-link hint in:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn graph_footer_shows_status_message_when_present() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.status_msg = "Copied external issue reference to clipboard".into();
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("Copied external issue reference to clipboard"),
+            "expected graph footer to surface status message, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn graph_footer_keeps_open_details_wording() {
+        let rendered = render_frame(ViewMode::Graph, 120, 40);
+        assert!(
+            rendered.contains("Enter open details"),
+            "expected graph footer to describe Enter accurately, got:\n{rendered}"
         );
     }
 

@@ -2813,17 +2813,24 @@ fn load_issues_for_diff(cli: &Cli, diff_since: &str) -> bvr::Result<Vec<bvr::mod
         // issues the same way the live workspace pipeline does, so diff IDs match.
         if let Ok(IssueLoadTarget::WorkspaceConfig(config_path)) = resolve_issue_load_target(cli) {
             if let Ok(config) = loader::load_workspace_config(&config_path) {
-                let prefixes = config
+                let enabled_repos: Vec<_> = config
                     .repos
                     .iter()
-                    .map(loader::WorkspaceRepoConfig::effective_prefix)
-                    .collect::<Vec<_>>();
+                    .filter(|r| r.enabled.unwrap_or(true))
+                    .collect();
                 // For single-repo workspaces, safely namespace the baseline.
                 // Multi-repo baselines would require per-repo snapshots.
-                if prefixes.len() == 1 {
-                    let prefix = &prefixes[0];
-                    let repo_name = config.repos[0].effective_name();
-                    loader::namespace_workspace_issues(&mut issues, prefix, &repo_name, &prefixes);
+                if enabled_repos.len() == 1 {
+                    let repo = enabled_repos[0];
+                    let prefix = repo.effective_prefix();
+                    let repo_name = repo.effective_name();
+                    let known_prefixes = vec![prefix.clone()];
+                    loader::namespace_workspace_issues(
+                        &mut issues,
+                        &prefix,
+                        &repo_name,
+                        &known_prefixes,
+                    );
                 }
             }
         }

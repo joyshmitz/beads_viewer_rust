@@ -9423,10 +9423,15 @@ impl BvrApp {
                 lines.push(self.file_tree_panel_text());
             }
 
+            let action_line = if self.history_selected_commit_url().is_some() {
+                "y: copy SHA | o: open in browser | f: file tree"
+            } else {
+                "y: copy SHA | f: file tree"
+            };
             lines.push(String::new());
             lines.push("Enter: jump to related bead | J/K: cycle related beads".to_string());
             lines.push("v: switch to bead timeline | c: cycle confidence".to_string());
-            lines.push("y: copy SHA | o: open in browser | f: file tree".to_string());
+            lines.push(action_line.to_string());
             if !self.history_status_msg.is_empty() {
                 lines.push(String::new());
                 lines.push(self.history_status_msg.clone());
@@ -9621,9 +9626,14 @@ impl BvrApp {
             }
         }
 
+        let action_line = if self.history_selected_commit_url().is_some() {
+            "y: copy bead ID | o: open commit | f: file tree"
+        } else {
+            "y: copy bead ID | f: file tree"
+        };
         lines.push(String::new());
         lines.push("v: switch to git timeline | J/K: cycle commits".to_string());
-        lines.push("y: copy bead ID | o: open commit | f: file tree".to_string());
+        lines.push(action_line.to_string());
         if !self.history_status_msg.is_empty() {
             lines.push(String::new());
             lines.push(self.history_status_msg.clone());
@@ -14990,6 +15000,25 @@ mod tests {
         assert!(
             !rendered.contains("o open commit"),
             "expected history footer to hide open action without a commit URL, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn history_detail_hides_open_hint_without_selected_commit_url() {
+        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+
+        let rendered = app.history_detail_render_text().to_plain_text();
+        assert!(
+            rendered.contains("y: copy SHA | f: file tree"),
+            "expected history detail to keep only actionable shortcuts, got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("o: open in browser"),
+            "expected history detail to hide open shortcut without a commit URL, got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("open selected commit (o open)"),
+            "expected history detail to omit the browser link affordance without a commit URL, got:\n{rendered}"
         );
     }
 

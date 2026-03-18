@@ -81,7 +81,7 @@ bvr --preview-pages ./bv-pages
 - Static pages export, preview, watch mode, and a pages deployment wizard.
 - Workspace-aware loading and git-history-aware analysis.
 
-The current direction is parity-first-then-beyond:
+The current direction is to lock down parity first, then extend from there:
 
 - Keep the machine-facing behavior compatible and evidence-driven.
 - Recover operator confidence in the interactive workflows.
@@ -101,7 +101,7 @@ Sometimes the most important work is a root blocker, a bridge between clusters, 
 
 ### 3. A team is drowning in stale work and cannot tell what is safely ignorable
 
-Staleness by itself is not enough. A stale leaf item and a stale central blocker are very different problems. `bvr` combines freshness, dependency structure, and blocker counts so the stale-work story is not just "oldest first."
+Staleness alone is not enough. A stale leaf item and a stale central blocker are very different problems. `bvr` combines freshness, dependency structure, and blocker counts, so stale-work review does not collapse into "oldest first."
 
 ### 4. Multiple repos act like one delivery system
 
@@ -113,7 +113,7 @@ Agents want structured output. Humans want TUI workflows. Stakeholders may want 
 
 ### 6. "What changed?" matters as much as "What exists?"
 
-Baselines, diffs, history correlation, and export/watch flows exist because triage is usually about movement over time, not just a snapshot of open issues.
+Baselines, diffs, history correlation, and export/watch flows exist because triage is usually about movement over time, not a single snapshot of open issues.
 
 ## Design Philosophy
 
@@ -123,7 +123,7 @@ The loader and analyzer feed everything else. Robot output, TUI screens, markdow
 
 ### 2. Graph structure matters more than raw counts
 
-Priority is not just a field on an issue. `bvr` looks at blockers, centrality, flow, and path structure so it can distinguish a noisy task from a true bottleneck.
+Priority is only one field on an issue. `bvr` also looks at blockers, centrality, flow, and path structure so it can distinguish a noisy task from a true bottleneck.
 
 ### 3. Automation should not scrape terminal output
 
@@ -155,7 +155,7 @@ That works until dependencies matter. Once issues block each other, connect team
 - what gets value moving fastest if finished now?
 - what work is risky because it is in cycles or behind blockers?
 
-That is why `--robot-next` and `--robot-triage` are not just fancy sort orders. They are graph-aware ranking outputs.
+That is why `--robot-next` and `--robot-triage` are graph-aware ranking outputs, not dressed-up sort orders.
 
 ## How Scoring Works
 
@@ -379,7 +379,7 @@ JSON is the safest default for downstream tooling. TOON exists because agent wor
 
 ### Why the schema/docs commands matter
 
-The repo does not just emit payloads; it also emits machine-readable descriptions of the payload contracts. That matters for:
+The repo emits payloads and machine-readable descriptions of their contracts. That matters for:
 
 - agent integration
 - regression detection
@@ -400,7 +400,7 @@ Path handling is one of the subtle but critical parts of `bvr`.
 
 ### Why this gets its own section
 
-In this project, path resolution is not just plumbing. It affects:
+In this project, path resolution affects:
 
 - which issues are loaded
 - whether workspace aggregation happens
@@ -682,12 +682,12 @@ experimental:
 │  - triage / plan / alerts / search / history / drift / file intel │
 └────────────────────────────────────────────────────────────────────┘
                                 │
-         ┌──────────────────────┼──────────────────────┬─────────────┐
-         ▼                      ▼                      ▼             ▼
-┌─────────────────┐   ┌─────────────────┐   ┌────────────────┐   ┌──────────────────┐
-│ Robot / TOON    │   │ FrankenTUI      │   │ Reports / MD   │   │ Pages / SQLite   │
-│ --robot-*       │   │ bare bvr        │   │ briefs/export  │   │ export/preview   │
-└─────────────────┘   └─────────────────┘   └────────────────┘   └──────────────────┘
+        ┌───────────────────────┼────────────────────────┐
+        ▼                       ▼                        ▼
+┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐
+│ Robot surfaces     │  │ Operator surfaces  │  │ Export surfaces    │
+│ JSON / TOON        │  │ FrankenTUI         │  │ MD / pages / SQLite│
+└────────────────────┘  └────────────────────┘  └────────────────────┘
 ```
 
 ## Performance Model
@@ -709,7 +709,7 @@ For larger graphs, some computations change strategy instead of doing the most e
 
 ### Why background mode exists
 
-Background mode is about operator responsiveness in the TUI. The point is not to maximize theoretical purity; it is to keep the interface usable while the deeper analysis catches up.
+Background mode exists to keep the TUI usable while deeper analysis catches up.
 
 ## Data and Artifact Layout
 
@@ -792,7 +792,7 @@ bvr
 # then use Main, Actionable, Sprint, and History modes
 ```
 
-This is the best path when you need to move between ranking, dependency structure, and recent changes interactively.
+Use this when you need to move between ranking, dependency structure, and recent changes interactively.
 
 ### I need to understand dependency bottlenecks
 
@@ -823,7 +823,7 @@ bvr --export-pages ./bv-pages --pages-title "Review Dashboard"
 bvr --preview-pages ./bv-pages
 ```
 
-This is the path for sharing triage output with someone who is not going to run the CLI locally.
+Use this when you want to share triage output with someone who is not going to run the CLI locally.
 
 ## Testing Philosophy
 
@@ -910,7 +910,7 @@ Those boundaries help keep the project focused on triage, analysis, automation, 
 
 ## Roadmap and Current Priorities
 
-The current high-level priorities are straightforward:
+The current high-level priorities are:
 
 ### 1. Keep robot and CLI semantics tight
 
@@ -928,6 +928,421 @@ Export, preview, watch mode, wizard flows, and workspace path semantics all matt
 
 Search, label intelligence, drift, correlation review, and file-intel surfaces are valuable, but they need to feel like one product rather than a bag of commands.
 
+## Why This Exists
+
+Issue data is easy to store. The harder problem is turning it into trustworthy action.
+
+Flat issue lists fail in predictable ways:
+
+- they hide structural blockers behind cosmetic metadata
+- they over-trust stale priority fields
+- they fragment multi-repo work into separate local truths
+- they make humans and agents consume different, often contradictory, surfaces
+
+`bvr` exists because the underlying problem is bigger than printing a list of issues. The real question is how to reason about dependency-shaped work across multiple consumers without duplicating logic everywhere.
+
+For that reason, the project is built around a shared analyzer and projected into multiple surfaces, instead of building one-off ranking logic for each output mode.
+
+## System Tour
+
+One straightforward way to understand `bvr` is to follow one issue through the system.
+
+### Step 1. The issue is discovered and loaded
+
+The loader finds `.beads` data, compatibility JSONL sources, or workspace repo inputs, then parses and validates issues into the in-memory model.
+
+### Step 2. The issue enters the graph
+
+Its dependencies become edges in `IssueGraph`, which means the issue is no longer treated as an isolated row. It now has predecessors, successors, graph depth, blocker relationships, and possible cycle membership.
+
+### Step 3. Metrics are computed around it
+
+The analyzer computes centrality, blocker counts, critical depth, slack, cycle membership, and other structural signals. At this point, the issue stops being "just title + priority + status."
+
+### Step 4. Triage synthesizes a recommendation
+
+The triage layer combines graph signals with declared metadata such as priority, status, freshness, and risk signals. This is where the issue may become a top pick, a blocker to clear, a quick win, or a lower-confidence candidate.
+
+### Step 5. The same truth is projected outward
+
+That result can then appear as:
+
+- a `--robot-next` top recommendation
+- one row inside `--robot-triage`
+- a node in the graph view
+- a detail pane entry in the TUI
+- a track item in Actionable mode
+- a row in exported pages JSON / SQLite payloads
+
+These are not separate systems with separate logic. They are projections of the same analyzed issue state.
+
+## From Data to Recommendation
+
+Here is the end-to-end pipeline in slightly more explicit form:
+
+1. **Discover inputs**
+   - locate `.beads` data, compatibility JSONL files, or `.bv/workspace.yaml`
+2. **Parse and validate**
+   - read JSONL
+   - normalize issue fields
+   - validate timestamps, statuses, and dependency references
+3. **Build the graph**
+   - construct `IssueGraph` with IDs, edges, successors, and predecessors
+4. **Compute metrics**
+   - run fast structural analysis first
+   - run deeper graph metrics when appropriate
+5. **Synthesize analysis products**
+   - triage
+   - planning
+   - forecasting
+   - alerts
+   - search
+   - label/file/history/drift/correlation outputs
+6. **Project into surfaces**
+   - robot JSON / TOON
+   - TUI
+   - markdown reports and briefs
+   - graph export
+   - pages bundle and preview flows
+
+That pipeline is the real architecture of the project. The flags are just ways of selecting which projection you want.
+
+## Metric Glossary
+
+### PageRank
+
+**Mathematically:** a recursive influence score over the dependency graph.
+
+**Operationally:** "if I care about globally important work, how central is this issue?"
+
+**Can mislead when:** a graph is tiny or nearly flat, where everything is structurally similar.
+
+### Betweenness
+
+**Mathematically:** how often a node lies on shortest paths between other nodes.
+
+**Operationally:** "is this issue a bridge or chokepoint between clusters?"
+
+**Can mislead when:** there are many equivalent alternate routes or the graph is too small to make bridging meaningful.
+
+### Eigenvector Centrality
+
+**Mathematically:** influence weighted by the influence of neighbors.
+
+**Operationally:** "is this issue connected to other important issues?"
+
+### HITS
+
+**Mathematically:** separates hub-like and authority-like roles in a graph.
+
+**Operationally:** useful for distinguishing issues that point to many important dependencies from issues that are important dependency targets themselves.
+
+### K-Core
+
+**Mathematically:** the deepest dense subgraph layer a node belongs to.
+
+**Operationally:** "how embedded is this issue in the core of the dependency structure?"
+
+### Articulation Point
+
+**Mathematically:** a node whose removal disconnects part of the graph.
+
+**Operationally:** "is this a single point of structural failure?"
+
+### Critical Depth
+
+**Mathematically:** a depth-like measure over dependency structure.
+
+**Operationally:** "if this moves, how far does value propagate down the chain?"
+
+### Slack
+
+**Mathematically:** scheduling flexibility relative to critical structure.
+
+**Operationally:** "how little room for delay does this issue have?"
+
+### Cycle Membership
+
+**Mathematically:** membership in a strongly connected component with a cycle.
+
+**Operationally:** "is this issue trapped in a circular dependency?"
+
+## Scoring Breakdown Example
+
+Imagine an issue with this profile:
+
+- blocks several open items
+- sits near the root of a dependency chain
+- has decent declared priority
+- is not currently blocked itself
+- is part of an important bridge between two graph regions
+
+Its score might look conceptually like this:
+
+| Component | Interpretation |
+|---|---|
+| **PageRank: high** | globally central work |
+| **Betweenness: high** | connects otherwise separate work streams |
+| **BlockerRatio: medium-high** | unblocks real downstream work |
+| **PriorityBoost: medium** | operator intent supports it but is not the only reason |
+| **TimeToImpact: high** | finishing it moves value quickly |
+| **Urgency: medium** | status says it is live work, not deferred noise |
+| **Risk discount: low penalty** | no blockers or cycles holding it back |
+
+The final recommendation is strong not because one number said so, but because several independent signals agree.
+
+## Design Tradeoffs
+
+Several design choices shape the project:
+
+### Explainable ranking over black-box ranking
+
+It would be easier to make the ranking opaque than to make it transparent. This project chooses transparency and defensibility.
+
+### Deterministic outputs over clever nondeterminism
+
+For agent workflows, stable output shape and ordering are more valuable than vaguely smarter but unstable behavior.
+
+### Shared analyzer over per-surface duplication
+
+Robot mode, TUI, and export all use the same core analysis instead of each surface inventing its own rules.
+
+### Single binary over service sprawl
+
+`bvr` is intentionally a CLI/TUI/export tool, not a distributed backend with several moving processes.
+
+### Cargo-first distribution over premature packaging sprawl
+
+Right now, the project supports Cargo and source installation cleanly. It does not claim a broader packaging story than it actually has.
+
+## Why TOON Exists
+
+TOON exists because machine-facing output has two competing goals:
+
+- strict machine readability
+- compactness and lower token cost
+
+JSON wins the first goal. TOON helps with the second.
+
+### Prefer TOON when:
+
+- an agent is repeatedly consuming large robot payloads
+- you want a more compact representation for iterative loops
+- strict JSON parsing is not required by the caller
+
+### Prefer JSON when:
+
+- another tool expects JSON directly
+- you want maximal interoperability
+- the payload will be fed into standard JSON tooling
+
+TOON exists because agent ergonomics are part of the product surface.
+
+## Failure Modes and Defensive Behavior
+
+Many failure cases are treated as part of the real contract.
+
+### Malformed JSONL lines
+
+The loader does not assume pristine input forever. Robot mode also treats warning behavior differently because leaking noisy warnings into machine-facing stderr can break automation expectations.
+
+### Empty datasets
+
+An empty issue set is handled as a real scenario, not as a crash-worthy anomaly.
+
+### Missing or ambiguous workspace configs
+
+When discovery becomes ambiguous, the tool prefers explicit guidance over silently loading the wrong project shape.
+
+### Changed path / filename conventions across history
+
+Historical and workspace-aware loading are real concerns in this repo because path semantics affect correctness, not convenience alone.
+
+### Large graphs
+
+The engine does not pretend every metric is equally cheap. It uses staged computation and alternate strategies where appropriate.
+
+### Preview server conflicts
+
+The preview workflow explicitly handles port conflicts and exposes overrides, because export-preview loops are meant to be operational, not toy demos.
+
+## Historical and Temporal Analysis
+
+`bvr` is not only about ranking the current graph snapshot.
+
+The temporal surfaces include:
+
+- `--robot-history`
+- `--robot-diff`
+- saved baselines
+- `--robot-drift`
+- human-readable `--check-drift`
+- correlation explanation / confirmation / rejection
+
+Together, those features answer a broader class of questions:
+
+- what changed?
+- what drifted?
+- what newly matters?
+- what used to be true but is no longer true?
+- which commit history seems to explain this issue movement?
+
+Together, those features make `bvr` more of a backlog-analysis engine than a static ranking script.
+
+## Why Static Pages Matter
+
+Static pages solve a product problem that robot mode and the TUI do not.
+
+Robot mode is ideal for automation. The TUI is ideal for operators. Static pages matter because sometimes you need:
+
+- a shareable artifact
+- a dashboard for someone who will not run the CLI
+- a reproducible snapshot of analysis
+- something previewable locally and publishable to a static host
+
+That is also why export includes the real viewer assets and SQLite/data payloads instead of dumping one JSON file and calling it done.
+
+## Operator Personas
+
+### Agent / automation consumer
+
+Wants deterministic machine-readable outputs, schema truthfulness, and low-friction command surfaces.
+
+### Solo engineer
+
+Wants a fast answer to "what should I do next?" and "what is actually blocked?"
+
+### Tech lead / sprint planner
+
+Wants prioritization, parallelization, bottleneck detection, label flow, and planning visibility across a broader surface area.
+
+### Stakeholder consuming pages export
+
+Wants a shareable view of the analyzed state without learning the CLI or gaining repo access.
+
+## Real Query and Workflow Examples
+
+### Find high-signal next work
+
+```bash
+bvr --robot-next
+bvr --robot-triage
+```
+
+### Inspect structural bottlenecks
+
+```bash
+bvr --robot-insights
+bvr --robot-graph --graph-format mermaid
+```
+
+### Audit one label area
+
+```bash
+bvr --robot-triage --label backend
+bvr --robot-label-health
+bvr --robot-label-flow
+```
+
+### Search with graph-aware ranking
+
+```bash
+bvr --robot-search --search "auth"
+bvr --robot-search --search "auth" --search-mode hybrid
+bvr --robot-search --search "auth" --search-preset impact-first
+```
+
+### Review temporal change
+
+```bash
+bvr --robot-diff --diff-since HEAD~5
+bvr --robot-history --history-limit 25
+bvr --robot-drift
+```
+
+### Produce a stakeholder-facing snapshot
+
+```bash
+bvr --export-pages ./bv-pages --pages-title "Weekly Review"
+bvr --preview-pages ./bv-pages
+```
+
+## Module-by-Module Architecture Map
+
+| Module / File | Responsibility |
+|---|---|
+| `src/loader.rs` | issue discovery, workspace loading, path semantics, JSONL parsing |
+| `src/model.rs` | core issue data model and validation rules |
+| `src/analysis/graph.rs` | graph construction and centrality / structural metrics |
+| `src/analysis/triage.rs` | ranking, impact score, recommendations, project health |
+| `src/analysis/plan.rs` | parallel execution-track grouping |
+| `src/analysis/history.rs` / `git_history.rs` | history and git correlation support |
+| `src/analysis/label_intel.rs` | label health, flow, and attention analysis |
+| `src/analysis/file_intel.rs` | file-bead mapping, hotspots, related work, orphans |
+| `src/analysis/search.rs` | text and hybrid search logic, presets, weights |
+| `src/analysis/drift.rs` | baseline comparison and drift reporting |
+| `src/robot.rs` | envelopes, docs, schemas, TOON rendering, payload contracts |
+| `src/tui.rs` | interactive multi-mode terminal UI |
+| `src/export_pages.rs` | static bundle export, preview, and watch flows |
+| `src/pages_wizard.rs` | interactive pages deployment-oriented wizard |
+| `src/export_md.rs` / `src/export_sqlite.rs` | report and export artifact generation |
+| `src/main.rs` | CLI dispatch and surface orchestration |
+
+## What Makes This Hard
+
+Several parts of this project are harder than they first look:
+
+### Behavioral parity is not a cosmetic problem
+
+If robot output, warning behavior, path semantics, or workspace resolution drift, users and agents can make wrong decisions even when the binary "works."
+
+### Path semantics are a product feature
+
+This repo has repeatedly surfaced subtle bugs around workspace roots, repo paths, historical loads, preview behavior, and related state resolution. Those are correctness problems, not housekeeping.
+
+### Graph metrics must become action, not ornament
+
+It is easy to compute centrality and still fail to tell the user what to do. Turning metrics into usable recommendations is the harder job.
+
+### Multiple surfaces must agree
+
+Robot mode, TUI, markdown export, graph export, and pages export all need to present coherent projections of the same analysis.
+
+### Responsiveness and depth are in tension
+
+The richer the graph analysis gets, the easier it is to make the operator experience laggy. The staged computation model exists because this tension is real.
+
+## Determinism and Trust
+
+The project leans hard on determinism because trust is the whole game in a triage tool.
+
+### Deterministic ordering matters
+
+Agents, tests, and humans all benefit when repeated runs over the same input produce stable ordering and payload shape.
+
+### Data hashing matters
+
+The shared envelope includes a data hash because "what exact source state generated this?" is a legitimate operational question.
+
+### Docs and schemas matter
+
+`--robot-docs` and `--robot-schema` are not decorative. They help make the machine-facing surface inspectable and regression-resistant.
+
+### Test layers matter
+
+Conformance, schema tests, e2e coverage, and snapshots are all part of building trust that the tool means what it says.
+
+## Future Research and Expansion Ideas
+
+These are not promises; they are plausible directions that fit the design of the system:
+
+- richer search ranking and explainability
+- deeper causal / impact-path reasoning
+- stronger recommendation feedback loops
+- broader workspace-scale planning and aggregation views
+- more operator workflows in the TUI
+- more analysis surfaces that stay coherent with the shared analyzer model
+
 ## Limitations
 
 ### What `bvr` does not do perfectly yet
@@ -941,11 +1356,11 @@ Search, label intelligence, drift, correlation review, and file-intel surfaces a
 
 ### Is `bvr` just a Rust rewrite of `bv`?
 
-It started there, but the current repo also includes newer Rust-native surfaces such as richer pages export workflows, drift/baseline tooling, correlation review commands, file intelligence, and a broader TUI.
+It started there, but the current repo now includes Rust-native surfaces such as richer pages export workflows, drift and baseline tooling, correlation review commands, file intelligence, and a broader TUI.
 
 ### Should agents use the TUI?
 
-Usually no. Agents and scripts should prefer `--robot-*` with `json` or `toon`. The TUI is for humans.
+Usually not. Agents and scripts should prefer `--robot-*` with `json` or `toon`; the TUI is for humans.
 
 ### What should I run first?
 
@@ -959,11 +1374,11 @@ bvr --robot-plan
 
 ### Can it work across multiple repos?
 
-Yes. Use `.bv/workspace.yaml` and either let `bvr` discover it or pass `--workspace` explicitly.
+Yes. Use `.bv/workspace.yaml`, then either let `bvr` discover it or pass `--workspace` explicitly.
 
 ### Does it only read `.beads/beads.jsonl`?
 
-No. It also supports compatibility filenames such as `issues.jsonl` and `beads.base.jsonl`, plus workspace aggregation.
+No. It also supports compatibility filenames such as `issues.jsonl` and `beads.base.jsonl`, along with workspace aggregation.
 
 ### Can I share results without giving people the repo?
 

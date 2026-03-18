@@ -1271,7 +1271,8 @@ fn robot_diff_snapshot_prefers_workspace_relative_file_over_caller_cwd_shadow() 
         1,
         "workspace-relative snapshot should beat caller cwd shadow"
     );
-    assert_eq!(added[0]["id"], "BD-2");
+    // In workspace mode, issues are namespace-prefixed with the repo name
+    assert_eq!(added[0]["id"], "api-BD-2");
     assert_eq!(added[0]["title"], "Ship beta");
 }
 

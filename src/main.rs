@@ -2808,7 +2808,26 @@ fn resolve_forecast_sprint_beads(cli: &Cli, sprint_id: &str) -> bvr::Result<BTre
 
 fn load_issues_for_diff(cli: &Cli, diff_since: &str) -> bvr::Result<Vec<bvr::model::Issue>> {
     if let Some(path) = resolve_cli_reference_file_path(diff_since, cli) {
-        return loader::load_issues_from_file(&path);
+        let mut issues = loader::load_issues_from_file(&path)?;
+        // When the current load target is a workspace, namespace the baseline
+        // issues the same way the live workspace pipeline does, so diff IDs match.
+        if let Ok(IssueLoadTarget::WorkspaceConfig(config_path)) = resolve_issue_load_target(cli) {
+            if let Ok(config) = loader::load_workspace_config(&config_path) {
+                let prefixes = config
+                    .repos
+                    .iter()
+                    .map(loader::WorkspaceRepoConfig::effective_prefix)
+                    .collect::<Vec<_>>();
+                // For single-repo workspaces, safely namespace the baseline.
+                // Multi-repo baselines would require per-repo snapshots.
+                if prefixes.len() == 1 {
+                    let prefix = &prefixes[0];
+                    let repo_name = config.repos[0].effective_name();
+                    loader::namespace_workspace_issues(&mut issues, prefix, &repo_name, &prefixes);
+                }
+            }
+        }
+        return Ok(issues);
     }
 
     load_issues_from_git_ref(cli, diff_since)

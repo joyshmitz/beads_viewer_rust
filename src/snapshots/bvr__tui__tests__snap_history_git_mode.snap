@@ -1,6 +1,5 @@
 ---
 source: src/tui.rs
-assertion_line: 14095
 expression: text
 ---
 bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus
@@ -8,7 +7,7 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                            ││                                 ││                                 │
 │ No git commits correlated  ││ Select a commit to view related ││ No correlated git commits avail │
 │ (ensure repo has commits r ││                                 ││                                 │
-│                            ││                                 ││                                 │
+│                            ││                                 ││ Browser Link: open selected com │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
@@ -32,4 +31,4 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 └────────────────────────────┘└─────────────────────────────────┘└─────────────────────────────────┘
-History (git): c confidence (>= 0%) | v bead/git | / search (Tab mode) | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | o open commit

@@ -8,11 +8,11 @@ expression: artifact
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ > A              open        p0 Root       ││ T A  Root                                                              │
+│ > A              open        p0 Root       ││ T A  Root  (C copy id)                                                 │
 │   B              open        p0 Dependent  ││ Status: open | Priority: p0 | Type: task | State: ready                │
-│   C              closed      p0 Closed     ││ Assignee: alice | Repo: viewer | Estimate: 90m                         │
-│                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a                   │
-│                                            ││ Closed: n/a | Labels: core, parity                                     │
+│   C              closed      p0 Closed     ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)  │
+│                                            ││ Closed: n/a | Labels: core, parity  (L label filter)                   │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
 │                                            ││   open blockers: 0 (none)                                              │
@@ -39,16 +39,16 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││ Notes:                                                                 │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
 
 --- Step 2: main_detail_focus ---
 bvr | mode=Main | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues──────────────────────────────────────┐┌Details [focus]─────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│   A              open        p0 Root       ││ T B  Dependent                                                         │
+│   A              open        p0 Root       ││ T B  Dependent  (C copy id)                                            │
 │ > B              open        p0 Dependent  ││ Status: open | Priority: p0 | Type: task | State: blocked              │
 │   C              closed      p0 Closed     ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
-│                                            ││ Created: 2026-01-03 | Updated: 2026-01-04 | Due: n/a                   │
+│                                            ││ Created: 2026-01-03 | Updated: 2026-01-04 | Due: n/a  (t time-travel)  │
 │                                            ││ Closed: n/a | Labels: none                                             │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
@@ -76,7 +76,7 @@ bvr | mode=Main | focus=detail | issues=3/3 | filter=all | sort=default | ? help
 │                                            ││   + 2026-01-03 Issue B created                                         │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
 
 --- Step 3: board_entry ---
 bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
@@ -88,7 +88,7 @@ bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                            ││ ├────────────────────────────────────────┤                             │
 │ > open         [  2] ██                    ││ │ Lane: open                             │                             │
 │       o A          p0 Root                 ││ │ Assignee:                              │                             │
-│     ▶ o B          p0 Dependent            ││ │ Depends on A and should report blo...  │                             │
+│     ▶ o B          p0 Dependent            ││ │ Depends on A and should report block…  │                             │
 │                                            ││ └────────────────────────────────────────┘                             │
 │   in_progress  [  0]                       ││                                                                        │
 │     (empty)                                ││ Depends on (1)                                                         │
@@ -187,7 +187,7 @@ bvr | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                            ││   C            0.2597                                                  │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back
+h/l nodes | j/k nodes | H/L jump | Tab detail | / search | Enter open details | g/Esc back
 
 --- Step 6: graph_detail_focus ---
 bvr | mode=Graph | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
@@ -224,19 +224,27 @@ bvr | mode=Graph | focus=detail | issues=3/3 | filter=all | sort=default | ? hel
 │                                            ││   C            0.2597                                                  │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back
+h/Tab list | Enter open details | g/Esc back
 
 --- Step 7: insights_entry ---
 bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Insight Queue [focus]───────────────────────┐┌Insight Detail──────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ [Bottlenecks] s/S cycles panel | e explana ││ Insights Summary: bottlenecks=2 crit-path=3 cycles=0 cut-pts=0 k-core- │
+│ [Bottlenecks] s/S cycles panel | e explana ││ Analytics Cockpit                                                      │
+│                                            ││ System Radar | bottlenecks=2 crit-path=3 cycles=0 cut-pts=0 k-core-max │
+│ Signal Tiles                               ││                                                                        │
+│ [Flow ] open=2 blocked=1 crit-path=3 cycle ││ Focus: C (Closed)                                                      │
+│ [Risk ] bottlenecks=2 cut-points=0 zero-sl ││ Status: closed | Priority: p0                                          │
 │                                            ││                                                                        │
-│  1. A            score=0.481 blocks=1      ││ Focus: C (Closed)                                                      │
-│  2. B            score=0.260 blocks=0      ││ Status: closed | Priority: p0                                          │
+│ Outlier Radar                              ││ Metric Strip                                                           │
+│ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.2597 betweenness=0.0000 eigenvector=0.0000          │
+│ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=0.0000 k-core=0                           │
+│ [Act  ] next-priority=A score=0.696 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
+│                                            ││ [Flow ] blockers=0 dependents=0 crit-path=yes cycle=no                 │
+│ Panel Focus | Bottlenecks | blocking press ││ [Lead ] top-bottleneck=no                                              │
 │                                            ││                                                                        │
-│                                            ││ All Metrics:                                                           │
-│                                            ││   PageRank:     0.2597                                                 │
+│  1. A            score=0.481 blocks=1      ││ All Metrics:                                                           │
+│  2. B            score=0.260 blocks=0      ││   PageRank:     0.2597                                                 │
 │                                            ││   Betweenness:  0.0000                                                 │
 │                                            ││   Eigenvector:  0.0000                                                 │
 │                                            ││   Hub (HITS):   0.0000                                                 │
@@ -250,14 +258,6 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │                                            ││   - A                                                                  │
 │                                            ││   - B                                                                  │
 │                                            ││   - C                                                                  │
-│                                            ││                                                                        │
-│                                            ││ Cycle Hotspots:                                                        │
-│                                            ││   none                                                                 │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
@@ -267,13 +267,21 @@ Insights [bottlenecks] | s/S panel | e explanations=on | x proof=off
 bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Insight Queue [focus]───────────────────────┐┌Insight Detail──────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ [Keystones] s/S cycles panel | e explanati ││ Insights Summary: bottlenecks=2 crit-path=3 cycles=0 cut-pts=0 k-core- │
+│ [Keystones] s/S cycles panel | e explanati ││ Analytics Cockpit                                                      │
+│                                            ││ System Radar | bottlenecks=2 crit-path=3 cycles=0 cut-pts=0 k-core-max │
+│ Signal Tiles                               ││                                                                        │
+│ [Flow ] open=2 blocked=1 crit-path=3 cycle ││ Focus: C (Closed)                                                      │
+│ [Risk ] bottlenecks=2 cut-points=0 zero-sl ││ Status: closed | Priority: p0                                          │
 │                                            ││                                                                        │
-│  1. A            depth=2 unblocks=1        ││ Focus: C (Closed)                                                      │
-│  2. B            depth=1 unblocks=0        ││ Status: closed | Priority: p0                                          │
+│ Outlier Radar                              ││ Metric Strip                                                           │
+│ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.2597 betweenness=0.0000 eigenvector=0.0000          │
+│ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=0.0000 k-core=0                           │
+│ [Act  ] next-priority=A score=0.696 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
+│                                            ││ [Flow ] blockers=0 dependents=0 crit-path=yes cycle=no                 │
+│ Panel Focus | Keystones | foundational cha ││ [Lead ] top-bottleneck=no                                              │
 │                                            ││                                                                        │
-│                                            ││ All Metrics:                                                           │
-│                                            ││   PageRank:     0.2597                                                 │
+│  1. A            depth=2 unblocks=1        ││ All Metrics:                                                           │
+│  2. B            depth=1 unblocks=0        ││   PageRank:     0.2597                                                 │
 │                                            ││   Betweenness:  0.0000                                                 │
 │                                            ││   Eigenvector:  0.0000                                                 │
 │                                            ││   Hub (HITS):   0.0000                                                 │
@@ -288,14 +296,6 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │                                            ││   - B                                                                  │
 │                                            ││   - C                                                                  │
 │                                            ││                                                                        │
-│                                            ││ Cycle Hotspots:                                                        │
-│                                            ││   none                                                                 │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
-│                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 Insights [keystones] | s/S panel | e explanations=on | x proof=off
@@ -304,10 +304,10 @@ Insights [keystones] | s/S panel | e explanations=on | x proof=off
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│   A              open        p0 Root       ││ T C  Closed                                                            │
+│   A              open        p0 Root       ││ T C  Closed  (C copy id)                                               │
 │   B              open        p0 Dependent  ││ Status: closed | Priority: p0 | Type: task | State: closed             │
 │ > C              closed      p0 Closed     ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
-│                                            ││ Created: 2026-01-01 | Updated: 2026-01-06 | Due: n/a                   │
+│                                            ││ Created: 2026-01-01 | Updated: 2026-01-06 | Due: n/a  (t time-travel)  │
 │                                            ││ Closed: 2026-01-06 | Labels: none                                      │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
@@ -335,4 +335,4 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit

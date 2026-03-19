@@ -5,11 +5,11 @@ expression: text
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]─────────────────────────────────────┐┌Details──────────────────────────────────────────────────────────────────────────────┐
 │                                                   ││                                                                                     │
-│ > A              open        p0 Root              ││ T A  Root                                                                           │
+│ > A              open        p0 Root              ││ T A  Root  (C copy id)                                                              │
 │   B              open        p0 Dependent         ││ Status: open | Priority: p0 | Type: task | State: ready                             │
-│   C              closed      p0 Closed            ││ Assignee: alice | Repo: viewer | Estimate: 90m                                      │
-│                                                   ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a                                │
-│                                                   ││ Closed: n/a | Labels: core, parity                                                  │
+│   C              closed      p0 Closed            ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)                     │
+│                                                   ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)               │
+│                                                   ││ Closed: n/a | Labels: core, parity  (L label filter)                                │
 │                                                   ││                                                                                     │
 │                                                   ││ Triage Snapshot:                                                                    │
 │                                                   ││   open blockers: 0 (none)                                                           │
@@ -31,4 +31,4 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                                   ││                                                                                     │
 │                                                   ││                                                                                     │
 └───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit

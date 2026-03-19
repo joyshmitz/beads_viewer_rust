@@ -9,8 +9,8 @@ bvr | mode=Flow | focus=detail | issues=3/3 | filter=all | sort=default | ? help
 │                                        ││                                                        │
 │          vcore    parity               ││ Issues with this label: 1                              │
 │ ------------------------               ││   A - Root                                             │
-│ > core        .      -                 ││                                                        │
-│   parity      -      .                 ││                                                        │
+│ > core   .      -                      ││                                                        │
+│   parity -      .                      ││                                                        │
 │                                        ││                                                        │
 │ j/k rows | h/l cols | Tab focus | ] or ││                                                        │
 │                                        ││                                                        │

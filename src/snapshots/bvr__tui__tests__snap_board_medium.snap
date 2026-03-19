@@ -11,7 +11,7 @@ bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                        ││ ├────────────────────────────────────────┤             │
 │ > open         [  2] ██                ││ │ Lane: open                             │             │
 │     ▶ o A          p0 Root             ││ │ Assignee: alice                        │             │
-│       o B          p0 Dependent        ││ │ Top-level issue that unblocks down...  │             │
+│       o B          p0 Dependent        ││ │ Top-level issue that unblocks downst…  │             │
 │                                        ││ └────────────────────────────────────────┘             │
 │   in_progress  [  0]                   ││                                                        │
 │     (empty)                            ││ Unblocks (1)                                           │

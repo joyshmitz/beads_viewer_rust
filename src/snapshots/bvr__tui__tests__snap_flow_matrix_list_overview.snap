@@ -9,9 +9,9 @@ bvr | mode=Flow | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                        ││                                                        │
 │            vbackend   frontend  urgent ││ Issues with this label: 2                              │
 │ -------------------------------------- ││   A - Feature work                                     │
-│ > backend         .        -        -  ││   B - Bug fix                                          │
-│   frontend        -        .        -  ││                                                        │
-│   urgent          -        -        .  ││                                                        │
+│ > backend  .        -        -         ││   B - Bug fix                                          │
+│   frontend -        .        -         ││                                                        │
+│   urgent   -        -        .         ││                                                        │
 │                                        ││                                                        │
 │ j/k rows | h/l cols | Tab focus | ] or ││                                                        │
 │                                        ││                                                        │

@@ -8,7 +8,7 @@ expression: artifact
 bvr Main | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
-│ > A        ││ T A  Root              │
+│ > A        ││ T A  Root  (C copy id) │
 │   B        ││ Status: open | Priorit │
 │   C        ││ Assignee: alice | Repo │
 │            ││ Created: 2026-01-01 |  │
@@ -19,7 +19,7 @@ bvr Main | 3/3 | all
 │            ││   unblocks: 1 (B)      │
 │            ││                        │
 └────────────┘└────────────────────────┘
-b/i/g/h modes | / search | s sort (defau
+b/i/g/h modes | / search | s default
 
 --- Step 2: narrow_board ---
 bvr Board | 3/3 | all
@@ -70,21 +70,21 @@ bvr Graph | 3/3 | all
 │                   ╚═════════════════ │
 │                                      │
 └──────────────────────────────────────┘
-Graph mode: h/l nodes | j/k nodes or edg
+h/l nodes | j/k nodes | H/L jump
 
 --- Step 5: narrow_insights ---
 bvr Insights | 3/3 | all
 ┌Insight Queu┐┌Insight Detail──────────┐
 │            ││                        │
-│ [Bottlenec ││ Insights Summary: bott │
+│ [Bottlenec ││ Analytics Cockpit      │
+│            ││ System Radar | bottlen │
+│ Signal Til ││                        │
+│ [Flow ] op ││ Focus: C (Closed)      │
+│ [Risk ] bo ││ Status: closed | Prior │
 │            ││                        │
-│  1. A      ││ Focus: C (Closed)      │
-│  2. B      ││ Status: closed | Prior │
-│            ││                        │
-│            ││ All Metrics:           │
-│            ││   PageRank:     0.2597 │
-│            ││   Betweenness:  0.0000 │
-│            ││   Eigenvector:  0.0000 │
+│ Outlier Ra ││ Metric Strip           │
+│ [Lead ] bo ││ [Rank ] pagerank=0.259 │
+│ [Rank ] in ││ [HITS ] hub=0.0000 aut │
 │            ││                        │
 └────────────┘└────────────────────────┘
 Insights [bottlenecks] | s/S panel | e e
@@ -93,15 +93,15 @@ Insights [bottlenecks] | s/S panel | e e
 bvr Insights | 3/3 | all
 ┌Insight Queu┐┌Insight Detail──────────┐
 │            ││                        │
-│ [Keystones ││ Insights Summary: bott │
+│ [Keystones ││ Analytics Cockpit      │
+│            ││ System Radar | bottlen │
+│ Signal Til ││                        │
+│ [Flow ] op ││ Focus: C (Closed)      │
+│ [Risk ] bo ││ Status: closed | Prior │
 │            ││                        │
-│  1. A      ││ Focus: C (Closed)      │
-│  2. B      ││ Status: closed | Prior │
-│            ││                        │
-│            ││ All Metrics:           │
-│            ││   PageRank:     0.2597 │
-│            ││   Betweenness:  0.0000 │
-│            ││   Eigenvector:  0.0000 │
+│ Outlier Ra ││ Metric Strip           │
+│ [Lead ] bo ││ [Rank ] pagerank=0.259 │
+│ [Rank ] in ││ [HITS ] hub=0.0000 aut │
 │            ││                        │
 └────────────┘└────────────────────────┘
 Insights [keystones] | s/S panel | e exp
@@ -114,7 +114,7 @@ bvr Actionable | 3/3 | all
 │ RECOMMENDE ││ completing A unblocks  │
 │            ││ 1 actionable item      │
 │ ▸ TRACK 1  ││                        │
-│   1 item   ││ ▸ A  score 0.699       │
+│   1 item   ││ ▸ A  score 0.696       │
 │    └─ A    ││   Root                 │
 │            ││   Unblocks: B          │
 │            ││   Claim: br update A - │
@@ -144,7 +144,7 @@ Tree: 3 nodes | j/k navigate | Enter exp
 bvr Main | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
-│   A        ││ T C  Closed            │
+│   A        ││ T C  Closed  (C copy i │
 │   B        ││ Status: closed | Prior │
 │ > C        ││ Assignee: unassigned | │
 │            ││ Created: 2026-01-01 |  │
@@ -155,4 +155,4 @@ bvr Main | 3/3 | all
 │            ││   unblocks: 0 (none)   │
 │            ││                        │
 └────────────┘└────────────────────────┘
-b/i/g/h modes | / search | s sort (defau
+b/i/g/h modes | / search | s default

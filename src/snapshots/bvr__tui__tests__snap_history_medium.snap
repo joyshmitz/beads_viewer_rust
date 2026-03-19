@@ -1,6 +1,5 @@
 ---
 source: src/tui.rs
-assertion_line: 13660
 expression: text
 ---
 bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focu
@@ -18,7 +17,7 @@ bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=defau
 │                            ││                                 ││   └ . updated    2026-01-02T00: │
 │                            ││                                 ││                                 │
 │                            ││                                 ││ v: switch to git timeline | J/K │
-│                            ││                                 ││ y: copy bead ID | o: open commi │
+│                            ││                                 ││ y: copy bead ID | f: file tree  │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
@@ -32,4 +31,4 @@ bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=defau
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 └────────────────────────────┘└─────────────────────────────────┘└─────────────────────────────────┘
-History (bead): c confidence (>= 0%) | v bead/git | / search (Tab mode) | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back

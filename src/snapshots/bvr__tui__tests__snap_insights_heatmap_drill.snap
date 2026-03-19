@@ -8,10 +8,18 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │ Priority heatmap drill | m toggle | j/ ││ Heatmap: D1-2 x .6-.8 (1 issue(s))                     │
 │ Cell: D1-2 x .6-.8 (1 issue(s))        ││ Drill selection: 1/1                                   │
 │                                        ││                                                        │
-│ > A            p0 Root                 ││ Insights Summary: bottlenecks=2 crit-path=3 cycles=0 c │
+│ > A            p0 Root                 ││ Analytics Cockpit                                      │
+│                                        ││ System Radar | bottlenecks=2 crit-path=3 cycles=0 cut- │
 │                                        ││                                                        │
 │                                        ││ Focus: A (Root)                                        │
 │                                        ││ Status: open | Priority: p0                            │
+│                                        ││                                                        │
+│                                        ││ Metric Strip                                           │
+│                                        ││ [Rank ] pagerank=0.4805 betweenness=0.0000 eigenvector │
+│                                        ││ [HITS ] hub=0.0000 authority=1.0000 k-core=1           │
+│                                        ││ [Risk ] crit-depth=2 slack=0.0000 cut-point=no         │
+│                                        ││ [Flow ] blockers=0 dependents=1 crit-path=yes cycle=no │
+│                                        ││ [Lead ] top-bottleneck=yes                             │
 │                                        ││                                                        │
 │                                        ││ All Metrics:                                           │
 │                                        ││   PageRank:     0.4805                                 │
@@ -21,14 +29,6 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │                                        ││   Auth (HITS):  1.0000                                 │
 │                                        ││   K-core:       1                                      │
 │                                        ││   Crit depth:   2                                      │
-│                                        ││   Slack:        0.0000                                 │
-│                                        ││   Cut point:    no                                     │
-│                                        ││                                                        │
-│                                        ││ Critical Path Head:                                    │
-│                                        ││   - A                                                  │
-│                                        ││   - B                                                  │
-│                                        ││   - C                                                  │
-│                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
 Insights [bottlenecks] | s/S panel | e explanations=on | x proof=off

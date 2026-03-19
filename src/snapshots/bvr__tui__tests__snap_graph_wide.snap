@@ -31,4 +31,4 @@ bvr | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                                   ││ Flow & Connectivity:                                                                │
 │                                                   ││                                                                                     │
 └───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
-Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open details | g/Esc back
+h/l nodes | j/k nodes | H/L jump | Tab detail | / search | Enter open details | g/Esc back

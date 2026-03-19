@@ -34,7 +34,7 @@ bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help |
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
 
 --- Step 2: empty_board ---
 bvr | mode=Board | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
@@ -98,7 +98,7 @@ bvr | mode=Graph | focus=list | issues=0/0 | filter=all | sort=default | ? help 
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Graph mode: h/l nodes | j/k nodes or edges | H/L jump | Tab node/edge focus | / search | Enter open
+h/l nodes | j/k nodes | H/L jump | Tab detail | / search | Enter open details | g/Esc back
 
 --- Step 4: empty_insights ---
 bvr | mode=Insights | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
@@ -226,4 +226,4 @@ bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help |
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit

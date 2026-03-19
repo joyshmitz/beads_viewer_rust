@@ -5,13 +5,21 @@ expression: text
 bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Insight Queue [focus]───────────────────┐┌Insight Detail──────────────────────────────────────────┐
 │                                        ││                                                        │
-│ [Bottlenecks] s/S cycles panel | e exp ││ Insights Summary: bottlenecks=2 crit-path=3 cycles=0 c │
+│ [Bottlenecks] s/S cycles panel | e exp ││ Analytics Cockpit                                      │
+│                                        ││ System Radar | bottlenecks=2 crit-path=3 cycles=0 cut- │
+│ Signal Tiles                           ││                                                        │
+│ [Flow ] open=2 blocked=1 crit-path=3 c ││ Focus: A (Root)                                        │
+│ [Risk ] bottlenecks=2 cut-points=0 zer ││ Status: open | Priority: p0                            │
 │                                        ││                                                        │
-│  1. A            score=0.481 blocks=1  ││ Focus: A (Root)                                        │
-│  2. B            score=0.260 blocks=0  ││ Status: open | Priority: p0                            │
+│ Outlier Radar                          ││ Metric Strip                                           │
+│ [Lead ] bottleneck=A score=0.481 block ││ [Rank ] pagerank=0.4805 betweenness=0.0000 eigenvector │
+│ [Rank ] influencer=A pr=0.4805         ││ [HITS ] hub=0.0000 authority=1.0000 k-core=1           │
+│ [Act  ] next-priority=A score=0.696 p0 ││ [Risk ] crit-depth=2 slack=0.0000 cut-point=no         │
+│                                        ││ [Flow ] blockers=0 dependents=1 crit-path=yes cycle=no │
+│ Panel Focus | Bottlenecks | blocking p ││ [Lead ] top-bottleneck=yes                             │
 │                                        ││                                                        │
-│                                        ││ All Metrics:                                           │
-│                                        ││   PageRank:     0.4805                                 │
+│  1. A            score=0.481 blocks=1  ││ All Metrics:                                           │
+│  2. B            score=0.260 blocks=0  ││   PageRank:     0.4805                                 │
 │                                        ││   Betweenness:  0.0000                                 │
 │                                        ││   Eigenvector:  1.0000                                 │
 │                                        ││   Hub (HITS):   0.0000                                 │
@@ -20,14 +28,6 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │                                        ││   Crit depth:   2                                      │
 │                                        ││   Slack:        0.0000                                 │
 │                                        ││   Cut point:    no                                     │
-│                                        ││                                                        │
-│                                        ││ Critical Path Head:                                    │
-│                                        ││   - A                                                  │
-│                                        ││   - B                                                  │
-│                                        ││   - C                                                  │
-│                                        ││                                                        │
-│                                        ││ Cycle Hotspots:                                        │
-│                                        ││   none                                                 │
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘

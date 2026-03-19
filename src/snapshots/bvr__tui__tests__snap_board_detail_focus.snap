@@ -11,7 +11,7 @@ bvr | mode=Board | focus=detail | issues=3/3 | filter=all | sort=default | ? hel
 │                                        ││ ├────────────────────────────────────────┤             │
 │ > open         [  2] ██                ││ │ Lane: open                             │             │
 │       o A          p0 Root             ││ │ Assignee:                              │             │
-│     ▶ o B          p0 Dependent        ││ │ Depends on A and should report blo...  │             │
+│     ▶ o B          p0 Dependent        ││ │ Depends on A and should report block…  │             │
 │                                        ││ └────────────────────────────────────────┘             │
 │   in_progress  [  0]                   ││                                                        │
 │     (empty)                            ││ Depends on (1)                                         │

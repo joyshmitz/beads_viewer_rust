@@ -11,7 +11,7 @@ bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                        ││ ├────────────────────────────────────────┤             │
 │ Lanes (5) | 3 issues total             ││ │ Lane: open                             │             │
 │                                        ││ │ Assignee:                              │             │
-│ > open         [  2] ██                ││ │ Depends on A and should report blo...  │             │
+│ > open         [  2] ██                ││ │ Depends on A and should report block…  │             │
 │       o A          p0 Root             ││ └────────────────────────────────────────┘             │
 │     ▶ o B          p0 Dependent        ││                                                        │
 │                                        ││ Depends on (1)                                         │

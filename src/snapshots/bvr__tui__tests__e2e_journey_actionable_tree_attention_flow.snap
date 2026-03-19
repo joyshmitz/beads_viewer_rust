@@ -8,11 +8,11 @@ expression: artifact
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ > A              open        p1 Feature wo ││ F A  Feature work                                                      │
+│ > A              open        p1 Feature wo ││ F A  Feature work  (C copy id)                                         │
 │   B              open        p2 Bug fix    ││ Status: open | Priority: p1 | Type: feature | State: ready             │
 │   C              open        p3 UI polish  ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
-│                                            ││ Created: n/a | Updated: n/a | Due: n/a                                 │
-│                                            ││ Closed: n/a | Labels: backend, urgent                                  │
+│                                            ││ Created: n/a | Updated: n/a | Due: n/a  (t time-travel)                │
+│                                            ││ Closed: n/a | Labels: backend, urgent  (L label filter)                │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
 │                                            ││   open blockers: 0 (none)                                              │
@@ -39,7 +39,7 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
 
 --- Step 2: actionable_entry ---
 bvr | mode=Actionable | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
@@ -49,16 +49,16 @@ bvr | mode=Actionable | focus=list | issues=3/3 | filter=all | sort=default | ? 
 │ RECOMMENDED: Start with A -> highest impac ││ independent issue — can execute in parallel                            │
 │                                            ││ 1 actionable item                                                      │
 │ ▸ TRACK 1 | independent issue — can execut ││                                                                        │
-│   1 item                                   ││ ▸ A  score 0.605                                                       │
-│    └─ A             0.60  Feature work     ││   Feature work                                                         │
+│   1 item                                   ││ ▸ A  score 0.591                                                       │
+│    └─ A             0.59  Feature work     ││   Feature work                                                         │
 │                                            ││   Claim: br update A --status=in_progress                              │
 │   TRACK 2 | independent issue — can execut ││                                                                        │
 │   1 item                                   ││ Highest impact: A                                                      │
-│    └─ B             0.59  Bug fix          ││ Impact detail: highest impact: A (score 0.60)                          │
+│    └─ B             0.58  Bug fix          ││ Impact detail: highest impact: A (score 0.59)                          │
 │                                            ││                                                                        │
 │   TRACK 3 | independent issue — can execut ││                                                                        │
 │   1 item                                   ││                                                                        │
-│    └─ C             0.43  UI polish        ││                                                                        │
+│    └─ C             0.41  UI polish        ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
@@ -86,16 +86,16 @@ bvr | mode=Actionable | focus=detail | issues=3/3 | filter=all | sort=default | 
 │ RECOMMENDED: Start with A -> highest impac ││ independent issue — can execute in parallel                            │
 │                                            ││ 1 actionable item                                                      │
 │   TRACK 1 | independent issue — can execut ││                                                                        │
-│   1 item                                   ││ ▸ A  score 0.605                                                       │
-│   ▸└─ A             0.60  Feature work     ││   Feature work                                                         │
+│   1 item                                   ││ ▸ A  score 0.591                                                       │
+│   ▸└─ A             0.59  Feature work     ││   Feature work                                                         │
 │                                            ││   Claim: br update A --status=in_progress                              │
 │   TRACK 2 | independent issue — can execut ││                                                                        │
 │   1 item                                   ││ Highest impact: A                                                      │
-│    └─ B             0.59  Bug fix          ││ Impact detail: highest impact: A (score 0.60)                          │
+│    └─ B             0.58  Bug fix          ││ Impact detail: highest impact: A (score 0.59)                          │
 │                                            ││                                                                        │
 │   TRACK 3 | independent issue — can execut ││                                                                        │
 │   1 item                                   ││                                                                        │
-│    └─ C             0.43  UI polish        ││                                                                        │
+│    └─ C             0.41  UI polish        ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
@@ -267,11 +267,11 @@ Attention: 3 labels ranked | j/k navigate | Tab focus | !/Esc back
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ > A              open        p1 Feature wo ││ F A  Feature work                                                      │
+│ > A              open        p1 Feature wo ││ F A  Feature work  (C copy id)                                         │
 │   B              open        p2 Bug fix    ││ Status: open | Priority: p1 | Type: feature | State: ready             │
 │   C              open        p3 UI polish  ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
-│                                            ││ Created: n/a | Updated: n/a | Due: n/a                                 │
-│                                            ││ Closed: n/a | Labels: backend, urgent                                  │
+│                                            ││ Created: n/a | Updated: n/a | Due: n/a  (t time-travel)                │
+│                                            ││ Closed: n/a | Labels: backend, urgent  (L label filter)                │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
 │                                            ││   open blockers: 0 (none)                                              │
@@ -298,4 +298,4 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s sort (default) | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit

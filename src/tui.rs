@@ -19,7 +19,7 @@ use crate::robot::compute_data_hash;
 use crate::{BvrError, Result};
 use chrono::{DateTime, Utc};
 use ftui::core::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
@@ -248,11 +248,36 @@ impl Breakpoint {
 thread_local! {
     static LAST_VIEW_WIDTH: Cell<u16> = const { Cell::new(80) };
     static LAST_VIEW_HEIGHT: Cell<u16> = const { Cell::new(24) };
+    static LAST_DETAIL_CONTENT_AREA: Cell<Rect> = const { Cell::new(Rect::new(0, 0, 0, 0)) };
 }
 
 fn record_view_size(width: u16, height: u16) {
     LAST_VIEW_WIDTH.with(|cell| cell.set(width));
     LAST_VIEW_HEIGHT.with(|cell| cell.set(height));
+}
+
+fn record_detail_content_area(area: Rect) {
+    LAST_DETAIL_CONTENT_AREA.with(|cell| cell.set(area));
+}
+
+fn cached_detail_content_area() -> Rect {
+    LAST_DETAIL_CONTENT_AREA.with(Cell::get)
+}
+
+const fn block_inner_rect(area: Rect) -> Rect {
+    Rect::new(
+        area.x.saturating_add(1),
+        area.y.saturating_add(1),
+        area.width.saturating_sub(2),
+        area.height.saturating_sub(2),
+    )
+}
+
+const fn rect_contains(area: Rect, x: u16, y: u16) -> bool {
+    x >= area.x
+        && y >= area.y
+        && x < area.x.saturating_add(area.width)
+        && y < area.y.saturating_add(area.height)
 }
 
 fn cached_view_width() -> u16 {
@@ -889,7 +914,7 @@ struct TreeFlatNode {
 #[derive(Debug)]
 enum Msg {
     KeyPress(KeyCode, Modifiers),
-    Mouse(MouseEventKind),
+    Mouse(MouseEvent),
     #[cfg(not(test))]
     Tick,
     #[cfg(not(test))]
@@ -906,7 +931,7 @@ impl From<Event> for Msg {
                 kind: KeyEventKind::Press,
                 ..
             }) => Self::KeyPress(code, modifiers),
-            Event::Mouse(MouseEvent { kind, .. }) => Self::Mouse(kind),
+            Event::Mouse(event) => Self::Mouse(event),
             #[cfg(not(test))]
             Event::Tick => Self::Tick,
             _ => Self::Noop,
@@ -951,6 +976,7 @@ struct BvrApp {
     board_search_query: String,
     board_search_match_cursor: usize,
     board_detail_scroll_offset: usize,
+    main_detail_scroll_offset: usize,
     main_search_active: bool,
     main_search_query: String,
     main_search_match_cursor: usize,
@@ -1055,7 +1081,7 @@ impl Model for BvrApp {
                     return cmd;
                 }
             }
-            Msg::Mouse(kind) => return self.handle_mouse(kind),
+            Msg::Mouse(event) => return self.handle_mouse(event),
             #[cfg(not(test))]
             Msg::Tick => return self.handle_background_tick(),
             #[cfg(not(test))]
@@ -1072,6 +1098,7 @@ impl Model for BvrApp {
     fn view(&self, frame: &mut Frame) {
         let full = Rect::from_size(frame.buffer.width(), frame.buffer.height());
         record_view_size(full.width, full.height);
+        record_detail_content_area(Rect::default());
         let visible_count = self.visible_issue_indices().len();
         let bp = Breakpoint::from_width(full.width);
 
@@ -1372,6 +1399,7 @@ impl Model for BvrApp {
         };
 
         if graph_single_pane {
+            record_detail_content_area(block_inner_rect(body));
             Paragraph::new(self.graph_detail_render_text())
                 .block(
                     Block::bordered()
@@ -1452,6 +1480,7 @@ impl Model for BvrApp {
                     detail_focused,
                     self.detail_panel_render_text(),
                 );
+                record_detail_content_area(block_inner_rect(panes[3]));
             } else {
                 let pane_widths = if matches!(history_layout, HistoryLayout::Wide)
                     && matches!(self.history_view_mode, HistoryViewMode::Git)
@@ -1498,6 +1527,7 @@ impl Model for BvrApp {
                     detail_focused,
                     self.detail_panel_render_text(),
                 );
+                record_detail_content_area(block_inner_rect(panes[2]));
             }
         } else {
             let panes = Flex::horizontal()
@@ -1589,7 +1619,16 @@ impl Model for BvrApp {
                         .border_style(detail_border)
                         .style(detail_title_style),
                 )
+                .scroll((
+                    if matches!(self.mode, ViewMode::Main) {
+                        self.main_detail_scroll_offset as u16
+                    } else {
+                        0
+                    },
+                    0,
+                ))
                 .render(panes[1], frame);
+            record_detail_content_area(block_inner_rect(panes[1]));
         }
 
         // -- Footer ----------------------------------------------------------
@@ -1965,6 +2004,7 @@ impl BvrApp {
         self.history_git_cache = None;
         self.detail_dep_cursor = 0;
         self.board_detail_scroll_offset = 0;
+        self.main_detail_scroll_offset = 0;
         self.selected = 0;
 
         if let Some(id) = selected_id.as_deref() {
@@ -2242,10 +2282,20 @@ impl BvrApp {
         self.sync_insights_heatmap_selection();
     }
 
-    fn handle_mouse(&mut self, kind: MouseEventKind) -> Cmd<Msg> {
-        match kind {
+    fn handle_mouse(&mut self, event: MouseEvent) -> Cmd<Msg> {
+        match event.kind {
             MouseEventKind::ScrollUp => self.handle_key(KeyCode::Up, Modifiers::NONE),
             MouseEventKind::ScrollDown => self.handle_key(KeyCode::Down, Modifiers::NONE),
+            MouseEventKind::Down(MouseButton::Left)
+                if self.mouse_open_detail_link(event.x, event.y) =>
+            {
+                Cmd::None
+            }
+            MouseEventKind::Down(MouseButton::Right)
+                if self.mouse_copy_detail_link(event.x, event.y) =>
+            {
+                Cmd::None
+            }
             _ => Cmd::None,
         }
     }
@@ -2700,6 +2750,20 @@ impl BvrApp {
             {
                 self.scroll_board_detail(-3);
             }
+            KeyCode::Char('j')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Main)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_main_detail(3);
+            }
+            KeyCode::Char('k')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Main)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_main_detail(-3);
+            }
             KeyCode::Char('h') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(-1);
             }
@@ -2907,6 +2971,20 @@ impl BvrApp {
                     && self.focus == FocusPane::Detail =>
             {
                 self.scroll_board_detail(-10);
+            }
+            KeyCode::Char('d')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Main)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_main_detail(10);
+            }
+            KeyCode::Char('u')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Main)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_main_detail(-10);
             }
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
@@ -4407,6 +4485,22 @@ impl BvrApp {
         }
     }
 
+    fn scroll_main_detail(&mut self, delta: isize) {
+        if delta == 0 || !matches!(self.mode, ViewMode::Main) || self.focus != FocusPane::Detail {
+            return;
+        }
+
+        if delta > 0 {
+            self.main_detail_scroll_offset = self
+                .main_detail_scroll_offset
+                .saturating_add(delta.unsigned_abs());
+        } else {
+            self.main_detail_scroll_offset = self
+                .main_detail_scroll_offset
+                .saturating_sub(delta.unsigned_abs());
+        }
+    }
+
     fn set_selected_index(&mut self, index: usize) {
         let changed = self.selected != index;
         self.selected = index;
@@ -4414,6 +4508,9 @@ impl BvrApp {
             self.detail_dep_cursor = 0;
             if matches!(self.mode, ViewMode::Board) {
                 self.board_detail_scroll_offset = 0;
+            }
+            if matches!(self.mode, ViewMode::Main) {
+                self.main_detail_scroll_offset = 0;
             }
         }
     }
@@ -5005,16 +5102,20 @@ impl BvrApp {
                 desc: "edit",
             },
         ];
-        if self.selected_issue_external_ref_url().is_some()
-            && matches!(self.focus, FocusPane::Detail)
-        {
+        if matches!(self.focus, FocusPane::Detail) {
+            if self.selected_issue_external_ref_url().is_some() {
+                hints.push(CommandHint {
+                    key: "o",
+                    desc: "open link",
+                });
+                hints.push(CommandHint {
+                    key: "y",
+                    desc: "copy link",
+                });
+            }
             hints.push(CommandHint {
-                key: "o",
-                desc: "open link",
-            });
-            hints.push(CommandHint {
-                key: "y",
-                desc: "copy link",
+                key: "^j/k",
+                desc: "scroll",
             });
         }
         hints
@@ -5122,6 +5223,51 @@ impl BvrApp {
             self.status_msg = "Copied external issue reference to clipboard".into();
         } else {
             self.status_msg = "Clipboard not available".into();
+        }
+    }
+
+    fn detail_link_hit(&self, x: u16, y: u16) -> bool {
+        if !matches!(self.focus, FocusPane::Detail) {
+            return false;
+        }
+
+        let area = cached_detail_content_area();
+        if area.width == 0 || area.height == 0 || !rect_contains(area, x, y) {
+            return false;
+        }
+
+        match self.mode {
+            ViewMode::Main | ViewMode::Graph => self.selected_issue_external_ref_url().is_some(),
+            ViewMode::History => self.history_selected_commit_url().is_some(),
+            _ => false,
+        }
+    }
+
+    fn mouse_open_detail_link(&mut self, x: u16, y: u16) -> bool {
+        if !self.detail_link_hit(x, y) {
+            return false;
+        }
+
+        match self.mode {
+            ViewMode::Main | ViewMode::Graph => self.open_selected_issue_external_ref(),
+            ViewMode::History => self.history_open_in_browser(),
+            _ => return false,
+        }
+
+        true
+    }
+
+    fn mouse_copy_detail_link(&mut self, x: u16, y: u16) -> bool {
+        if !self.detail_link_hit(x, y) {
+            return false;
+        }
+
+        match self.mode {
+            ViewMode::Main | ViewMode::Graph => {
+                self.copy_selected_issue_external_ref();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -5256,6 +5402,7 @@ impl BvrApp {
                     ("arrows", "Move selection up/down"),
                     ("h/l", "Lateral nav (lanes, peers)"),
                     ("Ctrl+d/u", "Jump down/up by 10"),
+                    ("Ctrl+j/k", "Scroll detail pane"),
                     ("PgUp/PgDn", "Jump by 10"),
                     ("Home/End", "Jump to top/bottom"),
                     ("G", "Jump to bottom"),
@@ -10588,6 +10735,7 @@ fn new_app_with_background(
         board_search_query: String::new(),
         board_search_match_cursor: 0,
         board_detail_scroll_offset: 0,
+        main_detail_scroll_offset: 0,
         main_search_active: false,
         main_search_query: String::new(),
         main_search_match_cursor: 0,
@@ -10727,11 +10875,12 @@ mod tests {
         BackgroundTickDecision, BoardGrouping, BvrApp, CommandHint, EmptyLaneVisibility, FocusPane,
         GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
-        ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
-        buffer_to_text, center_display, command_hint_width, compact_history_duration_label,
-        decide_background_tick, display_width, fit_display, history_legacy_lifecycle_lines,
-        legacy_history_author_initials, record_view_size, render_debug_view,
-        should_apply_background_reload, sprint_reference_now, truncate_display, wrap_command_hints,
+        ListSort, ModalOverlay, MouseButton, MouseEvent, MouseEventKind, Msg, ViewMode,
+        background_warning_message, buffer_to_text, cached_detail_content_area, center_display,
+        command_hint_width, compact_history_duration_label, decide_background_tick, display_width,
+        fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
+        record_view_size, render_debug_view, should_apply_background_reload, sprint_reference_now,
+        truncate_display, wrap_command_hints,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -11036,6 +11185,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -11205,6 +11355,10 @@ mod tests {
 
     fn key_ctrl(code: KeyCode) -> Msg {
         Msg::KeyPress(code, Modifiers::CTRL)
+    }
+
+    fn mouse(kind: MouseEventKind, x: u16, y: u16) -> Msg {
+        Msg::Mouse(MouseEvent::new(kind, x, y))
     }
 
     fn selected_issue_id(app: &BvrApp) -> String {
@@ -12358,6 +12512,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -12460,6 +12615,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -12556,6 +12712,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -12670,6 +12827,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -12768,6 +12926,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -12867,6 +13026,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -12967,6 +13127,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -13062,6 +13223,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -13172,6 +13334,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -13306,6 +13469,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -13428,6 +13592,68 @@ mod tests {
     }
 
     #[test]
+    fn main_detail_scroll_shortcuts_move_offset() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+
+        app.update(key_ctrl(KeyCode::Char('j')));
+        assert_eq!(app.main_detail_scroll_offset, 3);
+
+        app.update(key_ctrl(KeyCode::Char('d')));
+        assert_eq!(app.main_detail_scroll_offset, 13);
+
+        app.update(key_ctrl(KeyCode::Char('k')));
+        assert_eq!(app.main_detail_scroll_offset, 10);
+
+        app.update(key_ctrl(KeyCode::Char('u')));
+        assert_eq!(app.main_detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn main_detail_scroll_resets_when_selection_changes() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+
+        app.update(key_ctrl(KeyCode::Char('j')));
+        assert_eq!(app.main_detail_scroll_offset, 3);
+
+        app.focus = FocusPane::List;
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(selected_issue_id(&app), "B");
+        assert_eq!(app.main_detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn main_detail_scroll_ignored_without_detail_focus() {
+        let mut app = new_app(ViewMode::Main, 0);
+        assert_eq!(app.focus, FocusPane::List);
+
+        app.update(key_ctrl(KeyCode::Char('j')));
+        assert_eq!(app.main_detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn main_detail_scroll_ignored_in_board_mode() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+
+        app.scroll_main_detail(5);
+        assert_eq!(app.main_detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn main_footer_shows_scroll_hint_when_detail_focused() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("^j/k"),
+            "expected scroll hint in footer, got:\n{rendered}"
+        );
+    }
+
+    #[test]
     fn board_mode_g_switches_to_graph_view() {
         let mut app = new_app(ViewMode::Board, 0);
         app.update(key(KeyCode::Char('g')));
@@ -13473,6 +13699,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -13575,6 +13802,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -15569,9 +15797,9 @@ mod tests {
     fn mouse_scroll_down_moves_selection() {
         let mut app = new_app(ViewMode::Main, 0);
         assert_eq!(app.selected, 0);
-        app.handle_mouse(MouseEventKind::ScrollDown);
+        app.handle_mouse(MouseEvent::new(MouseEventKind::ScrollDown, 0, 0));
         assert_eq!(app.selected, 1);
-        app.handle_mouse(MouseEventKind::ScrollDown);
+        app.handle_mouse(MouseEvent::new(MouseEventKind::ScrollDown, 0, 0));
         assert_eq!(app.selected, 2);
     }
 
@@ -15579,16 +15807,16 @@ mod tests {
     fn mouse_scroll_up_moves_selection() {
         let mut app = new_app(ViewMode::Main, 2);
         assert_eq!(app.selected, 2);
-        app.handle_mouse(MouseEventKind::ScrollUp);
+        app.handle_mouse(MouseEvent::new(MouseEventKind::ScrollUp, 0, 0));
         assert_eq!(app.selected, 1);
-        app.handle_mouse(MouseEventKind::ScrollUp);
+        app.handle_mouse(MouseEvent::new(MouseEventKind::ScrollUp, 0, 0));
         assert_eq!(app.selected, 0);
     }
 
     #[test]
     fn mouse_scroll_works_in_board_mode() {
         let mut app = new_app(ViewMode::Board, 0);
-        app.handle_mouse(MouseEventKind::ScrollDown);
+        app.handle_mouse(MouseEvent::new(MouseEventKind::ScrollDown, 0, 0));
         // Should not panic, and should move selection
         assert!(app.selected <= 1);
     }
@@ -15596,8 +15824,70 @@ mod tests {
     #[test]
     fn mouse_other_events_are_noop() {
         let mut app = new_app(ViewMode::Main, 0);
-        app.handle_mouse(MouseEventKind::Moved);
+        app.handle_mouse(MouseEvent::new(MouseEventKind::Moved, 0, 0));
         assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn mouse_left_click_opens_main_detail_external_link() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        let (x, y) = detail_link_click_point(&app, 120, 40).expect("detail link point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert!(
+            !app.status_msg.is_empty(),
+            "expected click to trigger open-link status"
+        );
+        assert_ne!(app.status_msg, "No external issue reference");
+    }
+
+    #[test]
+    fn mouse_right_click_copies_graph_detail_external_link() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+        let (x, y) = detail_link_click_point(&app, 120, 40).expect("detail link point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Right), x, y));
+
+        assert!(
+            !app.status_msg.is_empty(),
+            "expected click to trigger copy-link status"
+        );
+        assert_ne!(app.status_msg, "No external issue reference");
+    }
+
+    #[test]
+    fn mouse_left_click_opens_history_commit_link() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        app.focus = FocusPane::Detail;
+        let temp = tempfile::tempdir().expect("temp git dir");
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp.path())
+            .output()
+            .expect("init git repo");
+        std::process::Command::new("git")
+            .args(["remote", "add", "origin", "https://github.com/org/repo.git"])
+            .current_dir(temp.path())
+            .output()
+            .expect("add git remote");
+        app.repo_root = Some(temp.path().to_path_buf());
+        let (x, y) = detail_link_click_point(&app, 120, 40).expect("history link point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert!(
+            !app.history_status_msg.is_empty(),
+            "expected click to trigger history open status"
+        );
+        assert_ne!(app.history_status_msg, "No commit selected");
     }
 
     #[test]
@@ -16075,6 +16365,18 @@ mod tests {
         let mut frame = ftui::render::frame::Frame::new(width, height, &mut pool);
         app.view(&mut frame);
         super::buffer_to_text(&frame.buffer, &pool)
+    }
+
+    fn detail_link_click_point(app: &BvrApp, width: u16, height: u16) -> Option<(u16, u16)> {
+        let _ = render_app(app, width, height);
+        let area = cached_detail_content_area();
+        let has_link = matches!(app.mode, ViewMode::Main | ViewMode::Graph)
+            && app.selected_issue_external_ref_url().is_some()
+            || matches!(app.mode, ViewMode::History) && app.history_selected_commit_url().is_some();
+        if area.width == 0 || area.height == 0 || !has_link {
+            return None;
+        }
+        Some((area.x, area.y))
     }
 
     fn rendered_link_urls(app: &BvrApp, width: u16, height: u16) -> Vec<String> {

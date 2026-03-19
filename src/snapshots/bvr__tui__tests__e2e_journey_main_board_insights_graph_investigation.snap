@@ -76,7 +76,7 @@ bvr | mode=Main | focus=detail | issues=3/3 | filter=all | sort=default | ? help
 │                                            ││   + 2026-01-03 Issue B created                                         │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^j/k scroll
 
 --- Step 3: board_entry ---
 bvr | mode=Board | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |

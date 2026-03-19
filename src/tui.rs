@@ -5226,13 +5226,63 @@ impl BvrApp {
         }
     }
 
+    fn current_detail_link_row_area(&self) -> Option<Rect> {
+        let area = cached_detail_content_area();
+        if area.width == 0 || area.height == 0 {
+            return None;
+        }
+
+        let (detail_text, line_index) = match self.mode {
+            ViewMode::Main => {
+                let url = self.selected_issue_external_ref_url()?;
+                let detail_text = self.issue_detail_render_text();
+                let line_index = self
+                    .issue_detail_text()
+                    .lines()
+                    .position(|line| line == format!("External: {url}"))?;
+                (detail_text, line_index)
+            }
+            ViewMode::Graph => {
+                let detail_text = self.graph_detail_render_text();
+                let line_index = 4usize.min(detail_text.lines().len().saturating_sub(2));
+                (detail_text, line_index)
+            }
+            ViewMode::History => {
+                self.history_selected_commit_url()?;
+                let detail_text = self.history_detail_render_text();
+                let line_index = self.history_detail_text().lines().count().saturating_add(1);
+                (detail_text, line_index)
+            }
+            _ => return None,
+        };
+        let line = detail_text.lines().get(line_index)?;
+        let line_width = display_width(&line.to_plain_text());
+        if line_width == 0 {
+            return None;
+        }
+
+        let width = u16::try_from(line_width)
+            .unwrap_or(u16::MAX)
+            .min(area.width);
+        let y = area
+            .y
+            .saturating_add(u16::try_from(line_index).unwrap_or(u16::MAX));
+        if width == 0 || y >= area.y.saturating_add(area.height) {
+            return None;
+        }
+
+        Some(Rect::new(area.x, y, width, 1))
+    }
+
     fn detail_link_hit(&self, x: u16, y: u16) -> bool {
         if !matches!(self.focus, FocusPane::Detail) {
             return false;
         }
 
-        let area = cached_detail_content_area();
-        if area.width == 0 || area.height == 0 || !rect_contains(area, x, y) {
+        let Some(link_area) = self.current_detail_link_row_area() else {
+            return false;
+        };
+        if !rect_contains(link_area, x, y) {
             return false;
         }
 
@@ -8374,27 +8424,33 @@ impl BvrApp {
 
     fn graph_detail_render_text(&self) -> RichText {
         let external_ref = self.selected_issue_external_ref_url();
+        let graph_link_insert_after = 4usize;
         let mut lines = Vec::new();
-        let mut rendered_external_link = false;
-        for line in self.graph_detail_text().lines() {
+        for (index, line) in self.graph_detail_text().lines().enumerate() {
+            if let Some(url) = external_ref
+                && index == graph_link_insert_after
+            {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw("External Link: "),
+                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(o open, y copy)", tokens::dim()),
+                ]));
+                lines.push(RichLine::raw(""));
+            }
+
             if let Some(url) = external_ref
                 && line
                     .strip_prefix("External: ")
                     .is_some_and(|rendered| rendered == url || rendered.ends_with('…'))
             {
-                lines.push(RichLine::from_spans([
-                    RichSpan::raw("External: "),
-                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
-                    RichSpan::styled("  ", tokens::dim()),
-                    RichSpan::styled("(o open, y copy)", tokens::dim()),
-                ]));
-                rendered_external_link = true;
-            } else {
-                lines.push(RichLine::raw(line));
+                continue;
             }
+
+            lines.push(RichLine::raw(line));
         }
         if let Some(url) = external_ref
-            && !rendered_external_link
+            && self.graph_detail_text().lines().count() <= graph_link_insert_after
         {
             lines.push(RichLine::raw(""));
             lines.push(RichLine::from_spans([
@@ -15845,6 +15901,22 @@ mod tests {
     }
 
     #[test]
+    fn mouse_click_outside_main_detail_link_row_is_noop() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        let (x, y) = detail_non_link_click_point(&app, 120, 40).expect("non-link detail point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert!(
+            app.status_msg.is_empty(),
+            "expected non-link click to stay inert, got {:?}",
+            app.status_msg
+        );
+    }
+
+    #[test]
     fn mouse_right_click_copies_graph_detail_external_link() {
         let mut app = new_app(ViewMode::Graph, 0);
         app.focus = FocusPane::Detail;
@@ -15888,6 +15960,34 @@ mod tests {
             "expected click to trigger history open status"
         );
         assert_ne!(app.history_status_msg, "No commit selected");
+    }
+
+    #[test]
+    fn mouse_click_outside_history_detail_link_row_is_noop() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        app.focus = FocusPane::Detail;
+        let temp = tempfile::tempdir().expect("temp git dir");
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp.path())
+            .output()
+            .expect("init git repo");
+        std::process::Command::new("git")
+            .args(["remote", "add", "origin", "https://github.com/org/repo.git"])
+            .current_dir(temp.path())
+            .output()
+            .expect("add git remote");
+        app.repo_root = Some(temp.path().to_path_buf());
+        let (x, y) = detail_non_link_click_point(&app, 120, 40).expect("non-link history point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert!(
+            app.history_status_msg.is_empty(),
+            "expected non-link click to stay inert, got {:?}",
+            app.history_status_msg
+        );
     }
 
     #[test]
@@ -16369,14 +16469,31 @@ mod tests {
 
     fn detail_link_click_point(app: &BvrApp, width: u16, height: u16) -> Option<(u16, u16)> {
         let _ = render_app(app, width, height);
-        let area = cached_detail_content_area();
-        let has_link = matches!(app.mode, ViewMode::Main | ViewMode::Graph)
-            && app.selected_issue_external_ref_url().is_some()
-            || matches!(app.mode, ViewMode::History) && app.history_selected_commit_url().is_some();
-        if area.width == 0 || area.height == 0 || !has_link {
+        let area = app.current_detail_link_row_area()?;
+        if area.width == 0 || area.height == 0 {
             return None;
         }
         Some((area.x, area.y))
+    }
+
+    fn detail_non_link_click_point(app: &BvrApp, width: u16, height: u16) -> Option<(u16, u16)> {
+        let _ = render_app(app, width, height);
+        let detail_area = cached_detail_content_area();
+        let link_area = app.current_detail_link_row_area()?;
+        if detail_area.width == 0 || detail_area.height == 0 {
+            return None;
+        }
+
+        if link_area.y > detail_area.y {
+            return Some((detail_area.x, detail_area.y));
+        }
+
+        let next_y = link_area.y.saturating_add(1);
+        if next_y < detail_area.y.saturating_add(detail_area.height) {
+            return Some((detail_area.x, next_y));
+        }
+
+        None
     }
 
     fn rendered_link_urls(app: &BvrApp, width: u16, height: u16) -> Vec<String> {

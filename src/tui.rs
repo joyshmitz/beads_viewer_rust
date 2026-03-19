@@ -3755,6 +3755,27 @@ impl BvrApp {
         }
     }
 
+    fn history_copy_commit_url(&mut self) {
+        let sha = self.history_selected_commit_sha();
+
+        let Some(sha) = sha else {
+            self.history_status_msg = "No commit selected".into();
+            return;
+        };
+
+        let Some(url) = self.history_commit_url_for_sha(&sha) else {
+            self.history_status_msg = "Cannot build commit URL from remote".into();
+            return;
+        };
+
+        if copy_text_to_clipboard(&url) {
+            let short = if sha.len() > 7 { &sha[..7] } else { &sha };
+            self.history_status_msg = format!("Copied {short} commit URL");
+        } else {
+            self.history_status_msg = "Clipboard not available".into();
+        }
+    }
+
     fn refresh_history_search_selection(&mut self) {
         if self.history_search_query.trim().is_empty() {
             return;
@@ -5315,6 +5336,10 @@ impl BvrApp {
         match self.mode {
             ViewMode::Main | ViewMode::Graph => {
                 self.copy_selected_issue_external_ref();
+                true
+            }
+            ViewMode::History => {
+                self.history_copy_commit_url();
                 true
             }
             _ => false,
@@ -9927,7 +9952,7 @@ impl BvrApp {
             text.push_line(RichLine::from_spans([
                 RichSpan::raw("Browser Link: "),
                 RichSpan::styled(
-                    "open selected commit (o open)",
+                    "open selected commit (o open, right-click copy link)",
                     tokens::panel_title_focused(),
                 )
                 .link(url),
@@ -15400,7 +15425,7 @@ mod tests {
 
         let rendered = app.history_detail_render_text().to_plain_text();
         assert!(
-            rendered.contains("open selected commit (o open)"),
+            rendered.contains("open selected commit (o open, right-click copy link)"),
             "expected inline open hint for commit hyperlink, got:\n{rendered}"
         );
     }
@@ -15452,7 +15477,7 @@ mod tests {
         // When there is no commit URL, the detail should NOT contain the browser
         // link affordance (which is only added when a URL is available).
         assert!(
-            !rendered.contains("open selected commit (o open)"),
+            !rendered.contains("open selected commit (o open, right-click copy link)"),
             "expected history detail to omit the browser link affordance without a commit URL, got:\n{rendered}"
         );
         assert!(
@@ -15958,6 +15983,34 @@ mod tests {
         assert!(
             !app.history_status_msg.is_empty(),
             "expected click to trigger history open status"
+        );
+        assert_ne!(app.history_status_msg, "No commit selected");
+    }
+
+    #[test]
+    fn mouse_right_click_copies_history_commit_link() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        app.focus = FocusPane::Detail;
+        let temp = tempfile::tempdir().expect("temp git dir");
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp.path())
+            .output()
+            .expect("init git repo");
+        std::process::Command::new("git")
+            .args(["remote", "add", "origin", "https://github.com/org/repo.git"])
+            .current_dir(temp.path())
+            .output()
+            .expect("add git remote");
+        app.repo_root = Some(temp.path().to_path_buf());
+        let (x, y) = detail_link_click_point(&app, 120, 40).expect("history link point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Right), x, y));
+
+        assert!(
+            !app.history_status_msg.is_empty(),
+            "expected right-click to trigger history copy status"
         );
         assert_ne!(app.history_status_msg, "No commit selected");
     }

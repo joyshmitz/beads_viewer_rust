@@ -554,7 +554,7 @@ fn robot_orphans_uses_workspace_root_history_when_repo_path_discovers_workspace(
 
     let json: Value = serde_json::from_slice(&output).expect("valid JSON");
     assert!(
-        json["total_commits"].as_u64().unwrap_or(0) >= 1,
+        json["stats"]["total_commits"].as_u64().unwrap_or(0) >= 1,
         "workspace-root git history should be visible to robot-orphans"
     );
     assert!(

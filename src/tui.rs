@@ -10728,10 +10728,10 @@ mod tests {
         GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
         ListSort, ModalOverlay, MouseEventKind, Msg, ViewMode, background_warning_message,
-        buffer_to_text, compact_history_duration_label, decide_background_tick, display_width,
-        fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
-        record_view_size, render_debug_view, should_apply_background_reload, sprint_reference_now,
-        truncate_display, wrap_command_hints,
+        buffer_to_text, center_display, command_hint_width, compact_history_duration_label,
+        decide_background_tick, display_width, fit_display, history_legacy_lifecycle_lines,
+        legacy_history_author_initials, record_view_size, render_debug_view,
+        should_apply_background_reload, sprint_reference_now, truncate_display, wrap_command_hints,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -14944,6 +14944,81 @@ mod tests {
         let fitted = fit_display("界", 4);
         assert_eq!(display_width(&fitted), 4);
         assert_eq!(fitted, "界  ");
+    }
+
+    #[test]
+    fn truncate_display_handles_cjk_double_width() {
+        // CJK characters are 2 cells wide
+        let text = "日本語テスト";
+        assert_eq!(display_width(text), 12);
+
+        let truncated = truncate_display(text, 7);
+        // Should truncate to fit within 7 cells (3 CJK chars = 6 + ellipsis = 7)
+        assert!(display_width(&truncated) <= 7);
+        assert!(truncated.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_display_handles_emoji_sequences() {
+        // Family emoji (ZWJ sequence) should be treated as single grapheme
+        let text = "👨‍👩‍👧‍👦 family";
+        let truncated = truncate_display(text, 5);
+        assert!(display_width(&truncated) <= 5);
+    }
+
+    #[test]
+    fn truncate_display_ascii_within_limit_is_unchanged() {
+        let text = "hello";
+        assert_eq!(truncate_display(text, 10), "hello");
+        assert_eq!(truncate_display(text, 5), "hello");
+    }
+
+    #[test]
+    fn truncate_display_empty_string() {
+        assert_eq!(truncate_display("", 10), "");
+        assert_eq!(truncate_display("", 0), "");
+    }
+
+    #[test]
+    fn truncate_display_zero_width() {
+        assert_eq!(truncate_display("hello", 0), "");
+    }
+
+    #[test]
+    fn truncate_display_width_one() {
+        let truncated = truncate_display("hello", 1);
+        assert_eq!(display_width(&truncated), 1);
+    }
+
+    #[test]
+    fn fit_display_cjk_truncation_and_padding() {
+        // "世界" is 4 cells wide; fitting to 6 should pad 2 spaces
+        let fitted = fit_display("世界", 6);
+        assert_eq!(display_width(&fitted), 6);
+        assert!(fitted.starts_with("世界"));
+
+        // Fitting to 3 should truncate (can't fit 2-wide char + ellipsis in 3)
+        let fitted_narrow = fit_display("世界你好", 5);
+        assert_eq!(display_width(&fitted_narrow), 5);
+    }
+
+    #[test]
+    fn center_display_with_cjk() {
+        let centered = center_display("界", 6);
+        assert_eq!(display_width(&centered), 6);
+        // "界" is 2 cells, so 4 cells of padding: 2 left + 2 right
+        assert!(centered.contains("界"));
+    }
+
+    #[test]
+    fn command_hint_width_with_unicode_keys() {
+        let hint = CommandHint {
+            key: "⌘",
+            desc: "cmd",
+        };
+        let width = command_hint_width(hint);
+        // ⌘ is 1 cell wide in most terminals
+        assert_eq!(width, display_width("⌘") + 1 + display_width("cmd"));
     }
 
     #[test]

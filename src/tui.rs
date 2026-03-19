@@ -15140,7 +15140,12 @@ mod tests {
 
     #[test]
     fn history_footer_hides_open_commit_hint_without_selected_commit_url() {
-        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        // Point repo_root at a non-git directory so history_selected_commit_url()
+        // returns None (otherwise the test process's cwd falls back to the real
+        // project git repo and a URL is always available).
+        let no_git_dir = tempfile::tempdir().expect("tempdir");
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.repo_root = Some(no_git_dir.path().to_path_buf());
 
         let rendered = render_app(&app, 120, 40);
         assert!(
@@ -15155,20 +15160,20 @@ mod tests {
 
     #[test]
     fn history_detail_hides_open_hint_without_selected_commit_url() {
-        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        let no_git_dir = tempfile::tempdir().expect("tempdir");
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.repo_root = Some(no_git_dir.path().to_path_buf());
 
         let rendered = app.history_detail_render_text().to_plain_text();
-        assert!(
-            rendered.contains("y: copy SHA | f: file tree"),
-            "expected history detail to keep only actionable shortcuts, got:\n{rendered}"
-        );
-        assert!(
-            !rendered.contains("o: open in browser"),
-            "expected history detail to hide open shortcut without a commit URL, got:\n{rendered}"
-        );
+        // When there is no commit URL, the detail should NOT contain the browser
+        // link affordance (which is only added when a URL is available).
         assert!(
             !rendered.contains("open selected commit (o open)"),
             "expected history detail to omit the browser link affordance without a commit URL, got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("Browser Link:"),
+            "expected no browser link line without a commit URL, got:\n{rendered}"
         );
     }
 

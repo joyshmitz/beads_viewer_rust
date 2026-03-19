@@ -5021,32 +5021,53 @@ impl BvrApp {
     }
 
     fn graph_footer_command_hints(&self) -> Vec<CommandHint<'static>> {
-        let mut hints = vec![
-            CommandHint {
-                key: "h/l",
-                desc: "nodes",
-            },
-            CommandHint {
-                key: "j/k",
-                desc: "nodes/edges",
-            },
-            CommandHint {
-                key: "H/L",
-                desc: "jump",
-            },
-            CommandHint {
-                key: "Tab",
-                desc: "node/edge",
-            },
-            CommandHint {
-                key: "/",
-                desc: "search",
-            },
-            CommandHint {
-                key: "Enter",
-                desc: "open details",
-            },
-        ];
+        let mut hints = match self.focus {
+            FocusPane::List => vec![
+                CommandHint {
+                    key: "h/l",
+                    desc: "nodes",
+                },
+                CommandHint {
+                    key: "j/k",
+                    desc: "nodes",
+                },
+                CommandHint {
+                    key: "H/L",
+                    desc: "jump",
+                },
+                CommandHint {
+                    key: "Tab",
+                    desc: "detail",
+                },
+                CommandHint {
+                    key: "/",
+                    desc: "search",
+                },
+                CommandHint {
+                    key: "Enter",
+                    desc: "open details",
+                },
+            ],
+            FocusPane::Detail | FocusPane::Middle => {
+                let mut hints = vec![
+                    CommandHint {
+                        key: "h/Tab",
+                        desc: "list",
+                    },
+                    CommandHint {
+                        key: "Enter",
+                        desc: "open details",
+                    },
+                ];
+                if !self.detail_dep_list().is_empty() {
+                    hints.push(CommandHint {
+                        key: "j/k",
+                        desc: "deps",
+                    });
+                }
+                hints
+            }
+        };
         if self.selected_issue_external_ref_url().is_some()
             && matches!(self.focus, FocusPane::Detail)
         {
@@ -15303,6 +15324,25 @@ mod tests {
         assert!(
             rendered.contains("Enter open details"),
             "expected graph footer to describe Enter accurately, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn graph_footer_keeps_link_actions_visible_on_narrow_detail_layout() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let rendered = render_app(&app, 80, 40);
+        assert!(
+            rendered.contains("o open link"),
+            "expected narrow graph footer to keep open-link hint visible, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("y copy link"),
+            "expected narrow graph footer to keep copy-link hint visible, got:\n{rendered}"
         );
     }
 

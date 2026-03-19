@@ -633,11 +633,30 @@ pub fn get_beads_dir(repo_path: Option<&Path>) -> Result<PathBuf> {
 }
 
 pub fn find_jsonl_path(beads_dir: &Path) -> Result<PathBuf> {
+    let mut found_preferred: Option<PathBuf> = None;
+    let mut other_preferred = Vec::<&str>::new();
+
     for preferred in PREFERRED_JSONL_NAMES {
         let path = beads_dir.join(preferred);
-        if path.is_file() && std::fs::metadata(&path)?.len() > 0 {
-            return Ok(path);
+        if path.is_file() && std::fs::metadata(&path).is_ok_and(|meta| meta.len() > 0) {
+            if found_preferred.is_none() {
+                found_preferred = Some(path);
+            } else {
+                other_preferred.push(preferred);
+            }
         }
+    }
+
+    if let Some(ref chosen) = found_preferred {
+        if !other_preferred.is_empty() {
+            tracing::warn!(
+                "multiple issue files found in {}: using {}, ignoring {}",
+                beads_dir.display(),
+                chosen.file_name().unwrap_or_default().to_string_lossy(),
+                other_preferred.join(", ")
+            );
+        }
+        return Ok(chosen.clone());
     }
 
     let mut fallback_candidates = Vec::<PathBuf>::new();
@@ -1045,6 +1064,22 @@ mod tests {
 
         let path = find_jsonl_path(beads_dir).expect("find path");
         assert!(path.ends_with("beads.jsonl"));
+    }
+
+    #[test]
+    fn finds_preferred_file_with_multiple_candidates() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let beads_dir = dir.path();
+        std::fs::write(beads_dir.join("beads.jsonl"), "{}\n").expect("write beads");
+        std::fs::write(beads_dir.join("issues.jsonl"), "{}\n").expect("write issues");
+        std::fs::write(beads_dir.join("beads.base.jsonl"), "{}\n").expect("write base");
+
+        let path = find_jsonl_path(beads_dir).expect("find path");
+        assert!(
+            path.ends_with("beads.jsonl"),
+            "expected beads.jsonl to win, got: {}",
+            path.display()
+        );
     }
 
     #[test]

@@ -273,6 +273,10 @@ const fn block_inner_rect(area: Rect) -> Rect {
     )
 }
 
+fn saturating_scroll_offset(offset: usize) -> u16 {
+    u16::try_from(offset).unwrap_or(u16::MAX)
+}
+
 const fn rect_contains(area: Rect, x: u16, y: u16) -> bool {
     x >= area.x
         && y >= area.y
@@ -1598,7 +1602,7 @@ impl Model for BvrApp {
                         .border_style(list_border)
                         .style(list_title_style),
                 )
-                .scroll((self.list_scroll_offset.get() as u16, 0))
+                .scroll((saturating_scroll_offset(self.list_scroll_offset.get()), 0))
                 .render(panes[0], frame);
 
             detail_viewport_height = panes[1].height.saturating_sub(2) as usize;
@@ -1621,7 +1625,7 @@ impl Model for BvrApp {
                 )
                 .scroll((
                     if matches!(self.mode, ViewMode::Main) {
-                        self.main_detail_scroll_offset as u16
+                        saturating_scroll_offset(self.main_detail_scroll_offset)
                     } else {
                         0
                     },
@@ -3696,14 +3700,7 @@ impl BvrApp {
         if matches!(self.history_view_mode, HistoryViewMode::Git) {
             self.selected_history_git_commit_sha()
         } else {
-            let issue = self.selected_issue()?;
-            self.history_git_cache.as_ref().and_then(|cache| {
-                cache
-                    .commit_bead_confidence
-                    .iter()
-                    .find(|(_, pairs)| pairs.iter().any(|(id, _)| id == &issue.id))
-                    .map(|(sha, _)| sha.clone())
-            })
+            self.selected_history_bead_commit().map(|commit| commit.sha)
         }
     }
 
@@ -5253,7 +5250,7 @@ impl BvrApp {
             return None;
         }
 
-        let (detail_text, line_index) = match self.mode {
+        let (detail_text, line_index, scroll_offset) = match self.mode {
             ViewMode::Main => {
                 let url = self.selected_issue_external_ref_url()?;
                 let detail_text = self.issue_detail_render_text();
@@ -5261,18 +5258,22 @@ impl BvrApp {
                     .issue_detail_text()
                     .lines()
                     .position(|line| line == format!("External: {url}"))?;
-                (detail_text, line_index)
+                (
+                    detail_text,
+                    line_index,
+                    usize::from(saturating_scroll_offset(self.main_detail_scroll_offset)),
+                )
             }
             ViewMode::Graph => {
                 let detail_text = self.graph_detail_render_text();
                 let line_index = 4usize.min(detail_text.lines().len().saturating_sub(2));
-                (detail_text, line_index)
+                (detail_text, line_index, 0)
             }
             ViewMode::History => {
                 self.history_selected_commit_url()?;
                 let detail_text = self.history_detail_render_text();
                 let line_index = self.history_detail_text().lines().count().saturating_add(1);
-                (detail_text, line_index)
+                (detail_text, line_index, 0)
             }
             _ => return None,
         };
@@ -5281,13 +5282,17 @@ impl BvrApp {
         if line_width == 0 {
             return None;
         }
+        if line_index < scroll_offset {
+            return None;
+        }
 
         let width = u16::try_from(line_width)
             .unwrap_or(u16::MAX)
             .min(area.width);
+        let visible_line_index = line_index.saturating_sub(scroll_offset);
         let y = area
             .y
-            .saturating_add(u16::try_from(line_index).unwrap_or(u16::MAX));
+            .saturating_add(saturating_scroll_offset(visible_line_index));
         if width == 0 || y >= area.y.saturating_add(area.height) {
             return None;
         }
@@ -10960,8 +10965,8 @@ mod tests {
         background_warning_message, buffer_to_text, cached_detail_content_area, center_display,
         command_hint_width, compact_history_duration_label, decide_background_tick, display_width,
         fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
-        record_view_size, render_debug_view, should_apply_background_reload, sprint_reference_now,
-        truncate_display, wrap_command_hints,
+        record_view_size, render_debug_view, saturating_scroll_offset,
+        should_apply_background_reload, sprint_reference_now, truncate_display, wrap_command_hints,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -15487,6 +15492,22 @@ mod tests {
     }
 
     #[test]
+    fn history_selected_commit_url_tracks_selected_bead_commit_cursor() {
+        let repo = init_temp_repo_with_remote("git@github.com:owner/repo.git");
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.repo_root = Some(repo.path().to_path_buf());
+        app.history_bead_commit_cursor = 1;
+
+        let url = app
+            .history_selected_commit_url()
+            .expect("selected bead commit URL");
+        assert!(
+            url.ends_with("/bbbb2222"),
+            "expected selected cursor to drive bead commit URL, got {url}"
+        );
+    }
+
+    #[test]
     fn main_detail_renders_hyperlink_for_external_issue_reference() {
         let mut app = new_app(ViewMode::Main, 0);
         app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
@@ -15939,6 +15960,28 @@ mod tests {
             "expected non-link click to stay inert, got {:?}",
             app.status_msg
         );
+    }
+
+    #[test]
+    fn current_detail_link_row_area_tracks_main_detail_scroll_offset() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let _ = render_app(&app, 120, 40);
+        let initial = app
+            .current_detail_link_row_area()
+            .expect("initial main detail link row area");
+
+        app.main_detail_scroll_offset = 1;
+        let _ = render_app(&app, 120, 40);
+        let scrolled = app
+            .current_detail_link_row_area()
+            .expect("scrolled main detail link row area");
+
+        assert_eq!(scrolled.y, initial.y.saturating_sub(1));
+        assert_eq!(scrolled.x, initial.x);
+        assert_eq!(scrolled.width, initial.width);
     }
 
     #[test]
@@ -16547,6 +16590,16 @@ mod tests {
         }
 
         None
+    }
+
+    #[test]
+    fn saturating_scroll_offset_clamps_large_values() {
+        assert_eq!(saturating_scroll_offset(0), 0);
+        assert_eq!(saturating_scroll_offset(42), 42);
+        assert_eq!(
+            saturating_scroll_offset(usize::from(u16::MAX) + 1),
+            u16::MAX
+        );
     }
 
     fn rendered_link_urls(app: &BvrApp, width: u16, height: u16) -> Vec<String> {

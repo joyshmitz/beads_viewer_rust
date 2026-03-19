@@ -221,7 +221,23 @@ pub fn export_pages_bundle(
         .cloned()
         .collect::<Vec<_>>();
 
-    fs::create_dir_all(output_dir.join("data"))?;
+    // Pre-flight validation: ensure output directory is accessible.
+    if let Some(parent) = output_dir.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(|error| {
+                BvrError::InvalidArgument(format!(
+                    "cannot create export directory {}: {error}",
+                    output_dir.display()
+                ))
+            })?;
+        }
+    }
+    fs::create_dir_all(output_dir.join("data")).map_err(|error| {
+        BvrError::InvalidArgument(format!(
+            "cannot prepare export directory {}: {error}",
+            output_dir.display()
+        ))
+    })?;
 
     let analyzer = Analyzer::new(filtered.clone());
     let triage = analyzer.triage(TriageOptions {
@@ -354,13 +370,15 @@ fn generate_deploy_readme(title: &str, meta: &PagesMeta) -> String {
 pub fn run_preview_server(bundle_dir: &Path, live_reload: bool) -> Result<()> {
     if !bundle_dir.is_dir() {
         return Err(BvrError::InvalidArgument(format!(
-            "preview bundle directory not found: {}",
+            "preview bundle directory not found: {} (run --export-pages {} first)",
+            bundle_dir.display(),
             bundle_dir.display()
         )));
     }
     if !bundle_dir.join("index.html").is_file() {
         return Err(BvrError::InvalidArgument(format!(
-            "missing index.html in preview bundle: {}",
+            "missing index.html in preview bundle: {} (run --export-pages {} to regenerate)",
+            bundle_dir.display(),
             bundle_dir.display()
         )));
     }
@@ -454,6 +472,8 @@ fn handle_preview_request(
     live_reload: bool,
     port: u16,
 ) -> Result<bool> {
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     let mut buffer = [0_u8; 8192];
     let bytes = stream.read(&mut buffer)?;
     if bytes == 0 {

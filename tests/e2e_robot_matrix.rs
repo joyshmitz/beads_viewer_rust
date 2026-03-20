@@ -92,16 +92,33 @@ fn write_artifact_bundle(
         .map(|arg| shell_quote(arg))
         .collect::<Vec<String>>()
         .join(" ");
-    let replay = format!(
-        "#!/usr/bin/env bash\nset -euo pipefail\ncargo run -- {args_rendered} --beads-file {}\n",
+    let binary_path =
+        std::env::var("CARGO_BIN_EXE_bvr").unwrap_or_else(|_| "target/debug/bvr".into());
+    let fixture_snapshot_name = Path::new(fixture)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map_or_else(|| "fixture.jsonl".to_string(), ToString::to_string);
+    let fixture_snapshot_path = bundle_dir.join(&fixture_snapshot_name);
+    let replay_fixture = if fs::copy(fixture, &fixture_snapshot_path).is_ok() {
+        format!("$(dirname \"$0\")/{fixture_snapshot_name}")
+    } else {
         shell_quote(fixture)
+    };
+    let replay = format!(
+        "#!/usr/bin/env bash\nset -euo pipefail\nBVR_BIN=\"${{BVR_BIN:-{}}}\"\n\"$BVR_BIN\" {args_rendered} --beads-file {replay_fixture}\n",
+        shell_quote(&binary_path),
     );
     let meta = json!({
         "scenario": scenario,
         "fixture": fixture,
         "args": args,
+        "args_rendered": args_rendered,
+        "cwd": std::env::current_dir().ok().map(|path| path.display().to_string()),
+        "binary_path": binary_path,
         "exit_code": output.status.code(),
         "success": output.status.success(),
+        "stdout_bytes": output.stdout.len(),
+        "stderr_bytes": output.stderr.len(),
     });
 
     if let Err(error) = fs::write(bundle_dir.join("command.sh"), replay) {
@@ -216,8 +233,9 @@ fn artifact_bundle_writes_replay_stdout_stderr_and_meta() {
         assert!(path.join("meta.json").exists());
 
         let replay = fs::read_to_string(path.join("command.sh")).expect("command script");
-        assert!(replay.contains("cargo run --"));
+        assert!(replay.contains("BVR_BIN="));
         assert!(replay.contains("--robot-triage"));
+        assert!(path.join("minimal.jsonl").exists());
 
         let stdout = fs::read_to_string(path.join("stdout.txt")).expect("stdout file");
         let stderr = fs::read_to_string(path.join("stderr.txt")).expect("stderr file");
@@ -228,6 +246,9 @@ fn artifact_bundle_writes_replay_stdout_stderr_and_meta() {
         let value: Value = serde_json::from_str(&meta).expect("meta json");
         assert_eq!(value["fixture"], fixture);
         assert_eq!(value["success"], true);
+        assert!(value["binary_path"].is_string());
+        assert!(value["stdout_bytes"].is_number());
+        assert!(value["stderr_bytes"].is_number());
         command_file_count += 1;
     }
 

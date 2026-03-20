@@ -4,7 +4,7 @@
 //! - Exit codes for drift checking (--robot-drift without baseline)
 //! - Flag parsing for --related-min-relevance / --related-max-results
 //! - Status semantics via --robot-triage output filtering
-//! - content_hash / external_ref model serialization
+//! - `content_hash` / `external_ref` model serialization
 //! - Edge cases: empty input, Unicode titles, conflicting flags
 
 mod test_utils;
@@ -68,17 +68,17 @@ fn run_bvr_json_with_path(flags: &[&str], beads_path: &std::path::Path) -> Value
 #[test]
 fn drift_without_baseline_exits_nonzero() {
     let root = repo_root();
-    let beads_path = root.join("tests/testdata/minimal.jsonl");
+    let source_beads_path = root.join("tests/testdata/minimal.jsonl");
     let tmp = tempfile::tempdir().expect("temp dir");
+    let beads_path = tmp.path().join("minimal.jsonl");
+    fs::copy(&source_beads_path, &beads_path).expect("copy fixture into isolated project dir");
 
-    // Point --repo-path at an empty temp dir (no baseline)
+    // Use an isolated project dir so no saved baseline can be discovered.
     bvr()
         .args([
             "--robot-drift",
             "--beads-file",
             beads_path.to_str().unwrap(),
-            "--repo-path",
-            tmp.path().to_str().unwrap(),
         ])
         .assert()
         .failure()
@@ -894,6 +894,93 @@ fn robot_schema_command_accepts_flag_style_command_name() {
     let json: Value = serde_json::from_slice(&output).expect("valid JSON output");
     assert_eq!(json["command"], "robot-search");
     assert!(json["schema"].is_object(), "schema payload must be present");
+}
+
+#[test]
+fn robot_schema_without_beads_file_succeeds() {
+    let output = bvr()
+        .args(["--robot-schema"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON output");
+    assert!(
+        json["commands"].is_object(),
+        "schema commands map must be present"
+    );
+    assert_eq!(json["schema_version"], "1.0.0");
+}
+
+#[test]
+fn robot_schema_unknown_command_exits_with_listed_choices() {
+    bvr()
+        .args(["--robot-schema", "--schema-command", "definitely-not-real"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "Unknown command: definitely-not-real",
+        ))
+        .stderr(predicates::str::contains("robot-search"))
+        .stderr(predicates::str::contains("robot-triage"));
+}
+
+#[test]
+fn robot_docs_without_beads_file_succeeds() {
+    let output = bvr()
+        .args(["--robot-docs", "guide"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON output");
+    assert_eq!(json["topic"], "guide");
+    assert!(json["guide"].is_object(), "guide payload must be present");
+}
+
+#[test]
+fn robot_docs_invalid_topic_returns_error_payload_and_exit_code_two() {
+    let output = bvr()
+        .args(["--robot-docs", "definitely-not-real"])
+        .assert()
+        .code(2)
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).expect("valid JSON output");
+    assert_eq!(json["topic"], "definitely-not-real");
+    assert!(
+        json["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("Unknown topic")),
+        "invalid topic should explain the failure"
+    );
+    assert!(
+        json["available_topics"]
+            .as_array()
+            .is_some_and(|topics| !topics.is_empty()),
+        "invalid topic response should list the supported topics"
+    );
+}
+
+#[test]
+fn robot_help_with_beads_file_succeeds() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--robot-help", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("--robot-triage"))
+        .stdout(predicates::str::contains("--robot-schema"))
+        .stdout(predicates::str::contains("--robot-docs"));
 }
 
 #[test]

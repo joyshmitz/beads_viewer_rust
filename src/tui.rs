@@ -5266,7 +5266,11 @@ impl BvrApp {
             }
             ViewMode::Graph => {
                 let detail_text = self.graph_detail_render_text();
-                let line_index = 4usize.min(detail_text.lines().len().saturating_sub(2));
+                let line_index = detail_text.lines().iter().position(|line| {
+                    ftui::text::Line::spans(line)
+                        .iter()
+                        .any(|span| span.link.is_some())
+                })?;
                 (detail_text, line_index, 0)
             }
             ViewMode::History => {
@@ -15982,6 +15986,38 @@ mod tests {
         assert_eq!(scrolled.y, initial.y.saturating_sub(1));
         assert_eq!(scrolled.x, initial.x);
         assert_eq!(scrolled.width, initial.width);
+    }
+
+    #[test]
+    fn current_detail_link_row_area_matches_graph_hyperlink_row() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let _ = render_app(&app, 120, 40);
+        let link_area = app
+            .current_detail_link_row_area()
+            .expect("graph detail link row area");
+        let detail_area = cached_detail_content_area();
+        let detail = app.graph_detail_render_text();
+        let expected_row = detail
+            .lines()
+            .iter()
+            .position(|line| {
+                ftui::text::Line::spans(line)
+                    .iter()
+                    .any(|span| span.link.is_some())
+            })
+            .expect("graph detail hyperlink row");
+
+        assert_eq!(
+            link_area.y,
+            detail_area
+                .y
+                .saturating_add(saturating_scroll_offset(expected_row)),
+        );
     }
 
     #[test]

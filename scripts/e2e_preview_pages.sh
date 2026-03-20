@@ -43,6 +43,30 @@ pass()   { log "PASS: $1"; PASS=$((PASS + 1)); SCENARIOS+=("PASS: $1"); }
 fail()   { log "FAIL: $1 — $2"; FAIL=$((FAIL + 1)); SCENARIOS+=("FAIL: $1 — $2"); }
 banner() { echo ""; echo "═══ $1 ═══"; }
 
+extract_preview_port() {
+    local log_file="$1"
+    local port=""
+    port=$(grep -oP '(?:localhost|127\.0\.0\.1):\K[0-9]+' "$log_file" 2>/dev/null | head -1 || true)
+    if [ -z "$port" ]; then
+        port=$(grep -oP ':\K[0-9]+' "$log_file" 2>/dev/null | head -1 || true)
+    fi
+    printf '%s' "$port"
+}
+
+wait_for_process_exit() {
+    local pid="$1"
+    local timeout_secs="$2"
+    local elapsed=0
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$elapsed" -ge "$timeout_secs" ]; then
+            return 1
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    return 0
+}
+
 cleanup() {
     if [ "$FAIL" -gt 0 ] || [ "${E2E_KEEP_TMPDIR:-}" != "" ]; then
         log "Workspace preserved: $TMPDIR_ROOT"
@@ -89,45 +113,55 @@ fi
 
 # Preview with max-requests=2 (status + index)
 if [ -d "$S1_BUNDLE" ]; then
-    BVR_PREVIEW_MAX_REQUESTS=2 "$BVR" --preview-pages "$S1_BUNDLE" --no-live-reload \
+    BVR_NO_BROWSER=1 BVR_PREVIEW_MAX_REQUESTS=2 "$BVR" --preview-pages "$S1_BUNDLE" --no-live-reload \
         > "$S1_DIR/preview_stdout.log" 2> "$S1_DIR/preview_stderr.log" &
     PREVIEW_PID=$!
 
     # Wait for server to start
     sleep 1
 
-    # Extract port from stdout (server may use localhost or 127.0.0.1)
-    PORT=$(grep -oP '(?:localhost|127\.0\.0\.1):\K[0-9]+' "$S1_DIR/preview_stdout.log" 2>/dev/null | head -1 || echo "")
-    if [ -z "$PORT" ]; then
-        # Try a broader pattern
-        PORT=$(grep -oP ':\K[0-9]+' "$S1_DIR/preview_stdout.log" 2>/dev/null | head -1 || echo "")
-    fi
+    PORT=$(extract_preview_port "$S1_DIR/preview_stdout.log")
 
     if [ -n "$PORT" ]; then
         log "Preview server on port $PORT"
 
         # Check status endpoint
         STATUS_RESPONSE=$(curl -sf "http://localhost:$PORT/__preview__/status" 2>/dev/null || echo "")
-        if echo "$STATUS_RESPONSE" | grep -q "bundle_dir"; then
+        if printf '%s' "$STATUS_RESPONSE" | python3 -c '
+import json
+import pathlib
+import sys
+
+payload = json.load(sys.stdin)
+expected = pathlib.Path(sys.argv[1]).resolve()
+bundle_path = pathlib.Path(payload["bundle_path"]).resolve()
+assert payload["status"] == "running"
+assert payload["has_index"] is True
+assert bundle_path == expected
+print(json.dumps(payload, indent=2))
+' "$S1_BUNDLE" > "$S1_DIR/status_response.json" 2>/dev/null
+        then
             log "Status endpoint returned valid JSON"
-            echo "$STATUS_RESPONSE" | python3 -m json.tool > "$S1_DIR/status_response.json" 2>/dev/null || true
         else
-            # Make a request to consume the limit and let the server stop
-            curl -sf "http://localhost:$PORT/" > /dev/null 2>&1 || true
+            fail "s1-preview-status" "status endpoint payload invalid"
         fi
 
         # Fetch index page
-        INDEX_RESPONSE=$(curl -sf "http://localhost:$PORT/" 2>/dev/null || echo "")
-        if echo "$INDEX_RESPONSE" | grep -qi "html"; then
+        if curl -sf "http://localhost:$PORT/" > "$S1_DIR/index_response.html" 2>/dev/null \
+            && grep -qi "html" "$S1_DIR/index_response.html"; then
             log "Index page served HTML content"
+        else
+            fail "s1-preview-index" "index response did not look like HTML"
         fi
     else
-        log "Could not determine preview port"
+        fail "s1-preview-port" "could not determine preview port"
     fi
 
     # Wait for server to exit (max-requests should stop it)
     wait "$PREVIEW_PID" 2>/dev/null || true
-    pass "s1-export-preview"
+    if ! printf '%s\n' "${SCENARIOS[@]}" | grep -q '^FAIL: s1-preview'; then
+        pass "s1-export-preview"
+    fi
 else
     fail "s1-preview" "no bundle directory to preview"
 fi
@@ -154,9 +188,12 @@ BVR_WATCH_MAX_LOOPS=5 BVR_WATCH_INTERVAL_MS=200 BVR_WATCH_DEBOUNCE_MS=100 \
     > "$S2_DIR/watch_stdout.log" 2> "$S2_DIR/watch_stderr.log" &
 WATCH_PID=$!
 
-# Let the watch run for a few cycles (timeout prevents indefinite hang)
-timeout 15 wait "$WATCH_PID" 2>/dev/null || true
 wait "$MODIFIER_PID" 2>/dev/null || true
+
+# Let the watch run until it exits naturally or time out and stop it ourselves.
+if ! wait_for_process_exit "$WATCH_PID" 15; then
+    log "Watch process did not exit within 15s; terminating"
+fi
 
 # Kill watch if still running
 kill "$WATCH_PID" 2>/dev/null || true
@@ -169,8 +206,7 @@ if echo "$WATCH_STDERR" | grep -q "Exported pages bundle"; then
     if echo "$WATCH_STDERR" | grep -q "watch: regenerated\|Watching.*source file"; then
         pass "s2-watch-rebuild"
     else
-        # Watch may not have detected the change in time — still pass if initial export worked
-        pass "s2-watch-initial-only"
+        fail "s2-watch-rebuild" "watch log never showed a regeneration after the file change"
     fi
 else
     fail "s2-watch" "initial export not found in stderr"
@@ -305,7 +341,7 @@ mkdir -p "$S7_DIR"
     > /dev/null 2>&1 || true
 
 if [ -d "$S7_BUNDLE" ]; then
-    BVR_PREVIEW_MAX_REQUESTS=3 "$BVR" --preview-pages "$S7_BUNDLE" \
+    BVR_NO_BROWSER=1 BVR_PREVIEW_MAX_REQUESTS=3 "$BVR" --preview-pages "$S7_BUNDLE" \
         > "$S7_DIR/preview_stdout.log" 2> "$S7_DIR/preview_stderr.log" &
     LR_PID=$!
     sleep 1

@@ -148,14 +148,14 @@ cp "$FIXTURE" "$S2_BEADS"
 ) &
 MODIFIER_PID=$!
 
-"$BVR" --export-pages "$S2_BUNDLE" --watch-export \
+BVR_WATCH_MAX_LOOPS=5 BVR_WATCH_INTERVAL_MS=200 BVR_WATCH_DEBOUNCE_MS=100 \
+    "$BVR" --export-pages "$S2_BUNDLE" --watch-export \
     --beads-file "$S2_BEADS" \
     > "$S2_DIR/watch_stdout.log" 2> "$S2_DIR/watch_stderr.log" &
 WATCH_PID=$!
 
-# Let the watch run for a few cycles
-BVR_WATCH_MAX_LOOPS=5 BVR_WATCH_INTERVAL_MS=200 BVR_WATCH_DEBOUNCE_MS=100 \
-    timeout 15 wait "$WATCH_PID" 2>/dev/null || true
+# Let the watch run for a few cycles (timeout prevents indefinite hang)
+timeout 15 wait "$WATCH_PID" 2>/dev/null || true
 wait "$MODIFIER_PID" 2>/dev/null || true
 
 # Kill watch if still running

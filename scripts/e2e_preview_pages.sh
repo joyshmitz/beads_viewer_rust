@@ -2,11 +2,14 @@
 # e2e_preview_pages.sh — End-to-end parity runner for preview, watch, and pages.
 #
 # Exercises the full lifecycle:
-#   1. Export a pages bundle
-#   2. Start preview server, verify status endpoint
-#   3. Watch-export with file modification and debounce
-#   4. Wizard non-TTY help output
-#   5. Failure path: preview with missing bundle
+#   1. Export a pages bundle then preview with status check
+#   2. Watch-export with file modification and debounce
+#   3. Wizard non-TTY help output
+#   4. Failure path: preview with missing bundle
+#   5. Failure path: watch-export without --export-pages
+#   6. Bundle artifact completeness and JSON validity
+#   7. Preview live-reload endpoint stability
+#   8. Export with include-closed filtering
 #
 # Usage:
 #   scripts/e2e_preview_pages.sh [path-to-bvr-binary]
@@ -93,10 +96,10 @@ if [ -d "$S1_BUNDLE" ]; then
     # Wait for server to start
     sleep 1
 
-    # Extract port from stdout
-    PORT=$(grep -oP 'localhost:\K[0-9]+' "$S1_DIR/preview_stdout.log" 2>/dev/null || echo "")
+    # Extract port from stdout (server may use localhost or 127.0.0.1)
+    PORT=$(grep -oP '(?:localhost|127\.0\.0\.1):\K[0-9]+' "$S1_DIR/preview_stdout.log" 2>/dev/null | head -1 || echo "")
     if [ -z "$PORT" ]; then
-        # Try a different pattern
+        # Try a broader pattern
         PORT=$(grep -oP ':\K[0-9]+' "$S1_DIR/preview_stdout.log" 2>/dev/null | head -1 || echo "")
     fi
 
@@ -222,6 +225,140 @@ if [ "$S5_EXIT" -eq 2 ]; then
     pass "s5-watch-requires-export"
 else
     fail "s5-watch-requires-export" "expected exit 2, got $S5_EXIT"
+fi
+
+# ── Scenario 6: Export bundle artifact completeness ───────────────────
+
+banner "Scenario 6: Export bundle contains all expected artifacts"
+S6_DIR="$TMPDIR_ROOT/s6_artifacts"
+S6_BUNDLE="$S6_DIR/pages"
+mkdir -p "$S6_DIR"
+
+"$BVR" --export-pages "$S6_BUNDLE" --beads-file "$FIXTURE" \
+    > "$S6_DIR/export_stdout.log" 2> "$S6_DIR/export_stderr.log" || true
+
+S6_MISSING=""
+for artifact in index.html styles.css viewer.js beads.sqlite3 \
+    beads.sqlite3.config.json _headers coi-serviceworker.js \
+    data/issues.json data/meta.json data/triage.json data/insights.json \
+    data/export_summary.json; do
+    if [ ! -f "$S6_BUNDLE/$artifact" ]; then
+        S6_MISSING="$S6_MISSING $artifact"
+    fi
+done
+
+if [ -z "$S6_MISSING" ]; then
+    pass "s6-bundle-completeness"
+else
+    fail "s6-bundle-completeness" "missing:$S6_MISSING"
+fi
+
+# Verify data files are valid JSON
+S6_BAD_JSON=""
+for jfile in data/issues.json data/meta.json data/triage.json data/insights.json \
+    data/export_summary.json beads.sqlite3.config.json; do
+    if [ -f "$S6_BUNDLE/$jfile" ]; then
+        if ! python3 -m json.tool "$S6_BUNDLE/$jfile" > /dev/null 2>&1; then
+            S6_BAD_JSON="$S6_BAD_JSON $jfile"
+        fi
+    fi
+done
+
+if [ -z "$S6_BAD_JSON" ]; then
+    pass "s6-json-validity"
+else
+    fail "s6-json-validity" "invalid JSON:$S6_BAD_JSON"
+fi
+
+# Verify meta.json has expected fields
+if [ -f "$S6_BUNDLE/data/meta.json" ]; then
+    META=$(cat "$S6_BUNDLE/data/meta.json")
+    META_OK=true
+    for field in title generated_at issue_count generator version; do
+        if ! echo "$META" | python3 -c "import sys,json; d=json.load(sys.stdin); assert '$field' in d" 2>/dev/null; then
+            META_OK=false
+        fi
+    done
+    if $META_OK; then
+        pass "s6-meta-fields"
+    else
+        fail "s6-meta-fields" "meta.json missing required fields"
+    fi
+fi
+
+# Log artifact sizes for diagnostics
+log "Artifact inventory:"
+find "$S6_BUNDLE" -type f -printf "  %8s  %P\n" 2>/dev/null | sort -k2 > "$S6_DIR/artifact_inventory.txt"
+cat "$S6_DIR/artifact_inventory.txt" | head -20
+TOTAL_FILES=$(find "$S6_BUNDLE" -type f | wc -l)
+TOTAL_SIZE=$(du -sh "$S6_BUNDLE" 2>/dev/null | cut -f1)
+log "Total: $TOTAL_FILES files, $TOTAL_SIZE"
+
+# ── Scenario 7: Preview live-reload endpoint ─────────────────────────
+
+banner "Scenario 7: Preview live-reload endpoint responds correctly"
+S7_DIR="$TMPDIR_ROOT/s7_livereload"
+S7_BUNDLE="$S7_DIR/pages"
+mkdir -p "$S7_DIR"
+
+"$BVR" --export-pages "$S7_BUNDLE" --beads-file "$FIXTURE" \
+    > /dev/null 2>&1 || true
+
+if [ -d "$S7_BUNDLE" ]; then
+    BVR_PREVIEW_MAX_REQUESTS=3 "$BVR" --preview-pages "$S7_BUNDLE" \
+        > "$S7_DIR/preview_stdout.log" 2> "$S7_DIR/preview_stderr.log" &
+    LR_PID=$!
+    sleep 1
+
+    PORT=$(grep -oP '(?:localhost|127\.0\.0\.1):\K[0-9]+' "$S7_DIR/preview_stdout.log" 2>/dev/null | head -1 || echo "")
+    if [ -n "$PORT" ]; then
+        # Test live-reload endpoint returns a token
+        LR_RESPONSE=$(curl -sf "http://localhost:$PORT/.bvr/livereload" 2>/dev/null || echo "")
+        if [ -n "$LR_RESPONSE" ]; then
+            log "Live-reload token: $LR_RESPONSE"
+
+            # Second request should return same token (no changes)
+            LR_RESPONSE2=$(curl -sf "http://localhost:$PORT/.bvr/livereload" 2>/dev/null || echo "")
+            if [ "$LR_RESPONSE" = "$LR_RESPONSE2" ]; then
+                pass "s7-livereload-stable-token"
+            else
+                fail "s7-livereload-stable-token" "token changed without file modification"
+            fi
+        else
+            fail "s7-livereload" "empty response from reload endpoint"
+        fi
+
+        # Consume remaining request to let server exit
+        curl -sf "http://localhost:$PORT/" > /dev/null 2>&1 || true
+    else
+        fail "s7-livereload" "could not determine preview port"
+    fi
+
+    wait "$LR_PID" 2>/dev/null || true
+else
+    fail "s7-livereload" "no bundle to preview"
+fi
+
+# ── Scenario 8: Export with include-closed=false ─────────────────────
+
+banner "Scenario 8: Export respects include-closed=false"
+S8_DIR="$TMPDIR_ROOT/s8_no_closed"
+S8_BUNDLE="$S8_DIR/pages"
+mkdir -p "$S8_DIR"
+
+"$BVR" --export-pages "$S8_BUNDLE" --beads-file "$FIXTURE" \
+    --pages-include-closed=false \
+    > "$S8_DIR/export_stdout.log" 2> "$S8_DIR/export_stderr.log" || true
+
+if [ -f "$S8_BUNDLE/data/meta.json" ]; then
+    INCLUDE_CLOSED=$(python3 -c "import json; d=json.load(open('$S8_BUNDLE/data/meta.json')); print(d.get('include_closed', 'MISSING'))" 2>/dev/null || echo "ERROR")
+    if [ "$INCLUDE_CLOSED" = "False" ]; then
+        pass "s8-exclude-closed"
+    else
+        fail "s8-exclude-closed" "include_closed=$INCLUDE_CLOSED (expected False)"
+    fi
+else
+    fail "s8-exclude-closed" "no meta.json produced"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

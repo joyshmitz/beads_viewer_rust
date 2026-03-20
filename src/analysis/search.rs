@@ -360,8 +360,8 @@ pub fn execute_search(
 
             let boosted_text = (text_score + lexical_boost).min(1.0);
 
-            let score = match mode {
-                SearchMode::Text => boosted_text,
+            let (score, text_score_field, components) = match mode {
+                SearchMode::Text => (boosted_text, None, None),
                 SearchMode::Hybrid => {
                     let pagerank = metrics.pagerank.get(&issue.id).copied().unwrap_or(0.0);
                     let status = normalize_status(&issue.status);
@@ -370,42 +370,31 @@ pub fn execute_search(
                     let priority = normalize_priority(issue.priority);
                     let recency = normalize_recency(issue.updated_at);
 
-                    effective_weights.text * boosted_text
+                    let hybrid_score = effective_weights.text * boosted_text
                         + effective_weights.pagerank * pagerank
                         + effective_weights.status * status
                         + effective_weights.impact * impact
                         + effective_weights.priority * priority
-                        + effective_weights.recency * recency
-                }
-            };
-
-            // Skip zero scores in hybrid mode too
-            if score <= 0.0 {
-                return None;
-            }
-
-            let (text_score_field, components) = match mode {
-                SearchMode::Text => (None, None),
-                SearchMode::Hybrid => {
-                    let pagerank = metrics.pagerank.get(&issue.id).copied().unwrap_or(0.0);
-                    let status = normalize_status(&issue.status);
-                    let blocks = metrics.blocks_count.get(&issue.id).copied().unwrap_or(0);
-                    let impact_val = normalize_impact(blocks, max_blocks);
-                    let priority_val = normalize_priority(issue.priority);
-                    let recency_val = normalize_recency(issue.updated_at);
+                        + effective_weights.recency * recency;
 
                     (
+                        hybrid_score,
                         Some(boosted_text),
                         Some(ComponentScores {
                             pagerank,
                             status,
-                            impact: impact_val,
-                            priority: priority_val,
-                            recency: recency_val,
+                            impact,
+                            priority,
+                            recency,
                         }),
                     )
                 }
             };
+
+            // Skip zero scores
+            if score <= 0.0 {
+                return None;
+            }
 
             Some(SearchResult {
                 issue_id: issue.id.clone(),

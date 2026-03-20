@@ -208,6 +208,15 @@ impl Issue {
             )));
         }
 
+        if let (Some(created_at), Some(closed_at)) = (self.created_at, self.closed_at)
+            && closed_at < created_at
+        {
+            return Err(BvrError::InvalidIssue(format!(
+                "issue {} closed_at cannot be earlier than created_at",
+                self.id
+            )));
+        }
+
         Ok(())
     }
 }
@@ -577,6 +586,40 @@ mod tests {
             status: "open".to_string(),
             created_at: ts("2025-01-01T00:00:00Z"),
             updated_at: ts("2025-01-01T00:00:00Z"),
+            ..Default::default()
+        };
+
+        assert!(issue.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_closed_at_before_created_at() {
+        let issue = Issue {
+            id: "X-1".to_string(),
+            title: "Test".to_string(),
+            issue_type: "task".to_string(),
+            status: "closed".to_string(),
+            created_at: ts("2025-01-02T00:00:00Z"),
+            closed_at: ts("2025-01-01T00:00:00Z"),
+            ..Default::default()
+        };
+
+        let err = issue.validate().unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("closed_at cannot be earlier than created_at")
+        );
+    }
+
+    #[test]
+    fn validate_accepts_equal_created_and_closed_timestamps() {
+        let issue = Issue {
+            id: "X-1".to_string(),
+            title: "Test".to_string(),
+            issue_type: "task".to_string(),
+            status: "closed".to_string(),
+            created_at: ts("2025-01-01T00:00:00Z"),
+            closed_at: ts("2025-01-01T00:00:00Z"),
             ..Default::default()
         };
 

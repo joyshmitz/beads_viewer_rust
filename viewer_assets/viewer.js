@@ -341,53 +341,35 @@ async function initSqlJs() {
     return DB_STATE.sql;
   }
 
-  // Load sql.js from CDN (with WASM)
+  // Load vendored sql.js runtime from the local export bundle only.
   const sqlPromise = initSqlJs.cached || (initSqlJs.cached = new Promise(async (resolve, reject) => {
     try {
-      let usedLocal = false;
-      // Try loading from local vendor first
-      let sqlJs;
-      try {
-        const script = document.createElement('script');
-        script.src = './vendor/sql-wasm.js';
-        document.head.appendChild(script);
-        await new Promise((res, rej) => {
-          script.onload = res;
-          script.onerror = rej;
-        });
-        sqlJs = window.initSqlJs;
-        usedLocal = true;
-      } catch {
-        // Fallback to CDN
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js';
-        document.head.appendChild(script);
-        await new Promise((res, rej) => {
-          script.onload = res;
-          script.onerror = rej;
-        });
-        sqlJs = window.initSqlJs;
-        usedLocal = false;
+      const script = document.createElement('script');
+      script.src = './vendor/sql-wasm.js';
+      document.head.appendChild(script);
+      await new Promise((res, rej) => {
+        script.onload = res;
+        script.onerror = () => rej(new Error('Failed to load ./vendor/sql-wasm.js'));
+      });
+
+      const sqlJs = window.initSqlJs;
+      if (typeof sqlJs !== 'function') {
+        throw new Error('window.initSqlJs was not initialized by ./vendor/sql-wasm.js');
       }
 
       const SQL = await sqlJs({
-        locateFile: file => {
-          // Prefer local vendored wasm when available for offline use
-          if (usedLocal) {
-            return `./vendor/${file}`;
-          }
-          return `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${file}`;
-        }
+        locateFile: file => `./vendor/${file}`
       });
 
       DIAGNOSTICS.wasm = true;
       resolve(SQL);
     } catch (err) {
+      initSqlJs.cached = null;
       DIAGNOSTICS.wasm = false;
       showError({
         title: 'Browser Compatibility Issue',
         message: 'This viewer requires WebAssembly support to run SQL queries.',
-        details: err.message,
+        details: err instanceof Error ? err.message : String(err),
         actions: [
           { label: 'Check Browser Support', url: 'https://caniuse.com/wasm' },
           { label: 'Reload Page', action: () => location.reload() },

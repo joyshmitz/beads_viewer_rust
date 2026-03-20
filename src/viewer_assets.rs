@@ -469,6 +469,25 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_uses_vendored_sql_wasm_only() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("./vendor/sql-wasm.js"),
+            "viewer runtime must load vendored sql-wasm.js"
+        );
+        assert!(
+            js.contains("locateFile: file => `./vendor/${file}`"),
+            "viewer runtime must resolve sql-wasm assets from the local vendor directory"
+        );
+        assert!(
+            !js.contains("cdn.jsdelivr.net") && !js.contains("unpkg.com"),
+            "viewer runtime must not fall back to external CDNs"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

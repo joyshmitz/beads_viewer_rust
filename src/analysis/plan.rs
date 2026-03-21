@@ -8,6 +8,8 @@ use crate::analysis::graph::IssueGraph;
 pub struct ExecutionItem {
     pub id: String,
     pub title: String,
+    pub status: String,
+    pub priority: i32,
     pub score: f64,
     pub unblocks: Vec<String>,
     pub claim_command: String,
@@ -16,6 +18,7 @@ pub struct ExecutionItem {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ExecutionTrack {
+    #[serde(rename = "track_id")]
     pub id: String,
     pub items: Vec<ExecutionItem>,
     pub reason: String,
@@ -25,6 +28,8 @@ pub struct ExecutionTrack {
 pub struct PlanSummary {
     pub track_count: usize,
     pub actionable_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unblocks_count: Option<usize>,
     pub highest_impact: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impact_reason: Option<String>,
@@ -32,6 +37,8 @@ pub struct PlanSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ExecutionPlan {
+    pub total_actionable: usize,
+    pub total_blocked: usize,
     pub tracks: Vec<ExecutionTrack>,
     pub summary: PlanSummary,
 }
@@ -70,6 +77,8 @@ pub fn compute_execution_plan(
             items.push(ExecutionItem {
                 id: issue.id.clone(),
                 title: issue.title.clone(),
+                status: issue.status.clone(),
+                priority: issue.priority,
                 score: score_by_id.get(issue_id).copied().unwrap_or_default(),
                 unblocks,
                 claim_command: format!("br update {} --status=in_progress", issue.id),
@@ -156,14 +165,27 @@ pub fn compute_execution_plan(
         format!("highest impact: {} ({})", item.id, parts.join(", "))
     });
 
-    let actionable_count = tracks.iter().map(|track| track.items.len()).sum();
+    let actionable_count: usize = tracks.iter().map(|track| track.items.len()).sum();
+    let total_blocked = graph
+        .issues
+        .iter()
+        .filter(|issue| issue.is_open_like() && !graph.open_blockers(&issue.id).is_empty())
+        .count();
+    let total_unblocks: usize = tracks
+        .iter()
+        .flat_map(|track| &track.items)
+        .map(|item| item.unblocks.len())
+        .sum();
     let track_count = tracks.len();
 
     ExecutionPlan {
+        total_actionable: actionable_count,
+        total_blocked,
         tracks,
         summary: PlanSummary {
             track_count,
             actionable_count,
+            unblocks_count: Some(total_unblocks),
             highest_impact,
             impact_reason,
         },

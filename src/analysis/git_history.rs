@@ -50,9 +50,7 @@ pub struct HistoryBeadCompat {
     pub status: String,
     pub events: Vec<HistoryEventCompat>,
     pub milestones: HistoryMilestonesCompat,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub commits: Option<Vec<HistoryCommitCompat>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub cycle_time: Option<HistoryCycleCompat>,
     pub last_author: String,
 }

@@ -299,8 +299,46 @@ pub fn export_pages_bundle(
 
     if options.include_history {
         let history_limit = filtered.len().max(500);
-        let history = analyzer.history(None, history_limit);
-        write_json(output_dir.join("data/history.json"), &history)?;
+        let histories = analyzer.history(None, history_limit);
+        // Convert to the richer HistoryBeadCompat format that matches
+        // --robot-history output shape (with commits/cycle_time/milestones).
+        let history_compat: std::collections::BTreeMap<String, _> = histories
+            .iter()
+            .map(|h| {
+                (
+                    h.id.clone(),
+                    crate::analysis::git_history::HistoryBeadCompat {
+                        bead_id: h.id.clone(),
+                        title: h.title.clone(),
+                        status: h.status.clone(),
+                        events: h
+                            .events
+                            .iter()
+                            .map(|e| crate::analysis::git_history::HistoryEventCompat {
+                                bead_id: h.id.clone(),
+                                event_type: e.kind.clone(),
+                                timestamp: e
+                                    .timestamp
+                                    .map(|dt| {
+                                        dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+                                    })
+                                    .unwrap_or_default(),
+                                commit_sha: String::new(),
+                                commit_message: e.details.clone(),
+                                author: String::new(),
+                                author_email: String::new(),
+                            })
+                            .collect(),
+                        milestones:
+                            crate::analysis::git_history::HistoryMilestonesCompat::default(),
+                        commits: None,
+                        cycle_time: None,
+                        last_author: String::new(),
+                    },
+                )
+            })
+            .collect();
+        write_json(output_dir.join("data/history.json"), &history_compat)?;
         files.push("data/history.json".to_string());
     }
 

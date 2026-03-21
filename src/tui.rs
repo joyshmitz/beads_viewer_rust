@@ -298,9 +298,20 @@ struct CommandHint<'a> {
     desc: &'a str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SemanticTone {
+    Neutral,
+    Accent,
+    Success,
+    Warning,
+    Danger,
+    Muted,
+}
+
 /// Semantic colour tokens (dark-background palette).
 #[allow(dead_code)]
 mod tokens {
+    use super::SemanticTone;
     use ftui::{PackedRgba, Style};
 
     // -- Palette primitives --------------------------------------------------
@@ -315,6 +326,11 @@ mod tokens {
     pub const BG_BASE: PackedRgba = PackedRgba::rgb(40, 44, 52); // #282c34
     pub const BG_SURFACE: PackedRgba = PackedRgba::rgb(50, 56, 66); // #323842
     pub const BG_HIGHLIGHT: PackedRgba = PackedRgba::rgb(62, 68, 81); // #3e4451
+    pub const BG_SURFACE_ACCENT: PackedRgba = PackedRgba::rgb(36, 68, 96);
+    pub const BG_SURFACE_SUCCESS: PackedRgba = PackedRgba::rgb(44, 74, 40);
+    pub const BG_SURFACE_WARNING: PackedRgba = PackedRgba::rgb(86, 63, 28);
+    pub const BG_SURFACE_DANGER: PackedRgba = PackedRgba::rgb(94, 47, 53);
+    pub const BG_SURFACE_MUTED: PackedRgba = PackedRgba::rgb(61, 67, 77);
 
     // -- Status colours ------------------------------------------------------
     pub const STATUS_OPEN: PackedRgba = FG_ACCENT;
@@ -360,6 +376,45 @@ mod tokens {
 
     pub fn panel_title_focused() -> Style {
         Style::new().fg(FG_ACCENT).bold()
+    }
+
+    pub fn semantic_fg(tone: SemanticTone) -> PackedRgba {
+        match tone {
+            SemanticTone::Neutral => FG_DEFAULT,
+            SemanticTone::Accent => FG_ACCENT,
+            SemanticTone::Success => FG_SUCCESS,
+            SemanticTone::Warning => FG_WARNING,
+            SemanticTone::Danger => FG_ERROR,
+            SemanticTone::Muted => FG_DIM,
+        }
+    }
+
+    pub fn semantic_bg(tone: SemanticTone) -> PackedRgba {
+        match tone {
+            SemanticTone::Neutral => BG_SURFACE,
+            SemanticTone::Accent => BG_SURFACE_ACCENT,
+            SemanticTone::Success => BG_SURFACE_SUCCESS,
+            SemanticTone::Warning => BG_SURFACE_WARNING,
+            SemanticTone::Danger => BG_SURFACE_DANGER,
+            SemanticTone::Muted => BG_SURFACE_MUTED,
+        }
+    }
+
+    pub fn chip_style(tone: SemanticTone) -> Style {
+        Style::new()
+            .fg(semantic_fg(tone))
+            .bg(semantic_bg(tone))
+            .bold()
+    }
+
+    pub fn panel_border_for(tone: SemanticTone, focused: bool) -> Style {
+        let tone = if focused { tone } else { SemanticTone::Muted };
+        Style::new().fg(semantic_fg(tone))
+    }
+
+    pub fn panel_title_for(tone: SemanticTone, focused: bool) -> Style {
+        let tone = if focused { tone } else { SemanticTone::Neutral };
+        Style::new().fg(semantic_fg(tone)).bold()
     }
 
     pub fn status_style(status: &str) -> Style {
@@ -409,6 +464,258 @@ mod tokens {
     pub fn dim() -> Style {
         Style::new().fg(FG_DIM)
     }
+}
+
+fn semantic_panel_block<'a>(title: &'a str, focused: bool, tone: SemanticTone) -> Block<'a> {
+    Block::bordered()
+        .title(title)
+        .border_style(tokens::panel_border_for(tone, focused))
+        .style(tokens::panel_title_for(tone, focused))
+}
+
+fn push_chip(line: &mut RichLine, label: &str, tone: SemanticTone) {
+    line.push_span(RichSpan::styled(
+        format!("[{}]", truncate_display(label, 32)),
+        tokens::chip_style(tone),
+    ));
+}
+
+fn push_metric_chip(line: &mut RichLine, label: &str, value: &str, tone: SemanticTone) {
+    push_chip(line, &format!("{label} {value}"), tone);
+}
+
+fn push_chip_separator(line: &mut RichLine) {
+    line.push_span(RichSpan::raw(" "));
+}
+
+fn build_header_text(app: &BvrApp, width: u16) -> RichText {
+    let bp = Breakpoint::from_width(width);
+    let visible_count = app.visible_issue_indices().len();
+    let total_count = app.analyzer.issues.len();
+
+    if matches!(bp, Breakpoint::Narrow) {
+        let mut line = RichLine::new();
+        line.push_span(RichSpan::styled("bvr", tokens::header()));
+        line.push_span(RichSpan::raw(" "));
+        push_chip(&mut line, app.mode.label(), SemanticTone::Accent);
+        push_chip_separator(&mut line);
+        push_metric_chip(
+            &mut line,
+            "issues",
+            &format!("{visible_count}/{total_count}"),
+            SemanticTone::Neutral,
+        );
+        push_chip_separator(&mut line);
+        push_chip(
+            &mut line,
+            app.list_filter.label(),
+            SemanticTone::Muted,
+        );
+        return RichText::from_lines([line]);
+    }
+
+    let mut filter_label = app.list_filter.label().to_string();
+    if let Some(ref label) = app.modal_label_filter {
+        filter_label = format!("{filter_label}+label:{label}");
+    }
+    if let Some(ref repo) = app.modal_repo_filter {
+        filter_label = format!("{filter_label}+repo:{repo}");
+    }
+    let mode_label = if matches!(app.mode, ViewMode::History) {
+        format!("{} {}", app.mode.label(), app.history_view_mode.indicator())
+    } else {
+        app.mode.label().to_string()
+    };
+
+    let mut line = RichLine::new();
+    line.push_span(RichSpan::styled("bvr", tokens::header()));
+    line.push_span(RichSpan::styled(" ", tokens::dim()));
+    push_chip(&mut line, &mode_label, SemanticTone::Accent);
+    push_chip_separator(&mut line);
+    push_chip(&mut line, app.focus.label(), SemanticTone::Warning);
+    push_chip_separator(&mut line);
+    push_metric_chip(
+        &mut line,
+        "issues",
+        &format!("{visible_count}/{total_count}"),
+        SemanticTone::Neutral,
+    );
+    push_chip_separator(&mut line);
+    push_metric_chip(&mut line, "filter", &filter_label, SemanticTone::Muted);
+    push_chip_separator(&mut line);
+    push_metric_chip(
+        &mut line,
+        "sort",
+        app.list_sort.label(),
+        SemanticTone::Neutral,
+    );
+    if app.slow_metrics_pending {
+        push_chip_separator(&mut line);
+        push_chip(&mut line, "metrics computing", SemanticTone::Warning);
+    }
+    push_chip_separator(&mut line);
+    push_chip(&mut line, "? help", SemanticTone::Muted);
+    push_chip_separator(&mut line);
+    push_chip(&mut line, "Tab focus", SemanticTone::Muted);
+    if matches!(bp, Breakpoint::Wide) {
+        push_chip_separator(&mut line);
+        push_chip(&mut line, "Esc back/quit", SemanticTone::Muted);
+    }
+    RichText::from_lines([line])
+}
+
+// ---------------------------------------------------------------------------
+// Reusable visual primitives — shared building blocks for TUI surfaces.
+// Each returns RichSpan(s) or RichLine so callers can compose them freely.
+// ---------------------------------------------------------------------------
+
+/// Status chip: coloured icon + abbreviated status text.
+/// Example output: `● open` (blue), `▶ in_progress` (yellow), `✖ closed` (green).
+fn status_chip(status: &str) -> Vec<RichSpan> {
+    let normalized = status.trim().to_ascii_lowercase();
+    let (icon, label) = match normalized.as_str() {
+        "open" => ("●", "open"),
+        "in_progress" => ("▶", "prog"),
+        "blocked" => ("■", "blkd"),
+        "closed" => ("✔", "done"),
+        "deferred" => ("◇", "defr"),
+        "review" => ("◎", "revw"),
+        "pinned" => ("⊤", "pind"),
+        "tombstone" => ("†", "tomb"),
+        "hooked" => ("⊙", "hook"),
+        _ => ("?", "unkn"),
+    };
+    vec![
+        RichSpan::styled(icon, tokens::status_style(&normalized)),
+        RichSpan::styled(format!("{label}"), tokens::status_style(&normalized)),
+    ]
+}
+
+/// Priority badge: coloured priority indicator.
+/// Example output: `P0` (red), `P2` (blue).
+fn priority_badge(priority: i32) -> RichSpan {
+    let prio = priority.clamp(0, 4) as u8;
+    RichSpan::styled(format!("P{prio}"), tokens::priority_style(prio).bold())
+}
+
+/// Type badge: single-letter issue type with dim styling.
+/// Example output: `T` (task), `B` (bug), `E` (epic).
+fn type_badge(issue_type: &str) -> RichSpan {
+    let icon = type_icon(issue_type);
+    RichSpan::styled(icon, tokens::dim())
+}
+
+/// Metric strip: compact inline metric display with label and mini bar.
+/// Example output: `PR ██░░░░ 0.42` for PageRank.
+fn metric_strip(label: &str, value: f64, max_value: f64) -> Vec<RichSpan> {
+    let bar = mini_bar(value, max_value);
+    let formatted = format!("{value:.2}");
+    vec![
+        RichSpan::styled(format!("{label} "), tokens::dim()),
+        RichSpan::raw(bar),
+        RichSpan::styled(format!(" {formatted}"), tokens::dim()),
+    ]
+}
+
+/// Blocker indicator: shows blocking state with colour coding.
+/// Returns empty vec if the issue has no blockers and blocks nothing.
+fn blocker_indicator(open_blockers: usize, blocks_count: usize) -> Vec<RichSpan> {
+    if open_blockers > 0 {
+        vec![RichSpan::styled(
+            format!("⊘{open_blockers}"),
+            tokens::status_style("blocked"),
+        )]
+    } else if blocks_count > 0 {
+        vec![RichSpan::styled(
+            format!("↓{blocks_count}"),
+            tokens::status_style("open"),
+        )]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Section separator: dim horizontal rule spanning the given width.
+fn section_separator(width: usize) -> RichLine {
+    let rule = "─".repeat(width.min(120));
+    RichLine::from_spans([RichSpan::styled(rule, tokens::dim())])
+}
+
+/// Panel header: bold title with optional subtitle.
+fn panel_header<'a>(title: &'a str, subtitle: Option<&'a str>) -> RichLine {
+    let mut spans = vec![RichSpan::styled(title, tokens::panel_title().bold())];
+    if let Some(sub) = subtitle {
+        spans.push(RichSpan::styled(format!("  {sub}"), tokens::dim()));
+    }
+    RichLine::from_spans(spans)
+}
+
+/// Label chips: coloured label tags inline.
+fn label_chips(labels: &[String]) -> Vec<RichSpan> {
+    let mut spans = Vec::new();
+    for (i, label) in labels.iter().enumerate() {
+        if i > 0 {
+            spans.push(RichSpan::styled(" ", tokens::dim()));
+        }
+        spans.push(RichSpan::styled(
+            format!("[{label}]"),
+            tokens::header(),
+        ));
+    }
+    spans
+}
+
+/// Issue scan line: dense single-line summary for list views.
+/// Format: `{marker} {type} {status_chip} {priority} {id} {title} {blocker} {labels}`
+fn issue_scan_line(
+    issue: &crate::model::Issue,
+    is_selected: bool,
+    open_blockers: usize,
+    blocks_count: usize,
+    available_width: usize,
+) -> RichLine {
+    let marker = if is_selected { "▸" } else { " " };
+    let marker_style = if is_selected {
+        tokens::selected()
+    } else {
+        tokens::dim()
+    };
+
+    let mut spans: Vec<RichSpan> = Vec::with_capacity(12);
+    spans.push(RichSpan::styled(marker, marker_style));
+    spans.push(RichSpan::raw(" "));
+    spans.push(type_badge(&issue.issue_type));
+    spans.push(RichSpan::raw(" "));
+    spans.extend(status_chip(&issue.status));
+    spans.push(RichSpan::raw(" "));
+    spans.push(priority_badge(issue.priority));
+    spans.push(RichSpan::raw(" "));
+
+    // ID — fixed width, truncated if needed
+    let id_display = truncate_display(&issue.id, 14);
+    spans.push(RichSpan::styled(id_display, tokens::dim()));
+    spans.push(RichSpan::raw(" "));
+
+    // Blocker indicator (if any)
+    let blocker = blocker_indicator(open_blockers, blocks_count);
+    let blocker_width = if blocker.is_empty() { 0 } else { 4 };
+    spans.extend(blocker);
+    if blocker_width > 0 {
+        spans.push(RichSpan::raw(" "));
+    }
+
+    // Title — fill remaining width
+    let fixed_width = 2 + 2 + 5 + 3 + 3 + 14 + 1 + blocker_width;
+    let title_width = available_width.saturating_sub(fixed_width);
+    let title = truncate_display(&issue.title, title_width.max(10));
+    let title_style = if is_selected {
+        tokens::panel_title()
+    } else {
+        tokens::help_desc()
+    };
+    spans.push(RichSpan::styled(title, title_style));
+
+    RichLine::from_spans(spans)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1103,7 +1410,6 @@ impl Model for BvrApp {
         let full = Rect::from_size(frame.buffer.width(), frame.buffer.height());
         record_view_size(full.width, full.height);
         record_detail_content_area(Rect::default());
-        let visible_count = self.visible_issue_indices().len();
         let bp = Breakpoint::from_width(full.width);
 
         let rows = Flex::vertical()
@@ -1115,48 +1421,7 @@ impl Model for BvrApp {
             .split(full);
 
         // -- Header ----------------------------------------------------------
-        let header_text = match bp {
-            Breakpoint::Narrow => format!(
-                "bvr {} | {}/{} | {}",
-                self.mode.label(),
-                visible_count,
-                self.analyzer.issues.len(),
-                self.list_filter.label(),
-            ),
-            _ => {
-                let mut filter_label = self.list_filter.label().to_string();
-                if let Some(ref label) = self.modal_label_filter {
-                    filter_label = format!("{filter_label}+label:{label}");
-                }
-                if let Some(ref repo) = self.modal_repo_filter {
-                    filter_label = format!("{filter_label}+repo:{repo}");
-                }
-                let metrics_hint = if self.slow_metrics_pending {
-                    " | metrics: computing..."
-                } else {
-                    ""
-                };
-                let mode_label = if matches!(self.mode, ViewMode::History) {
-                    format!(
-                        "{} {}",
-                        self.mode.label(),
-                        self.history_view_mode.indicator()
-                    )
-                } else {
-                    self.mode.label().to_string()
-                };
-                format!(
-                    "bvr | mode={} | focus={} | issues={}/{} | filter={} | sort={}{} | ? help | Tab focus |",
-                    mode_label,
-                    self.focus.label(),
-                    visible_count,
-                    self.analyzer.issues.len(),
-                    filter_label,
-                    self.list_sort.label(),
-                    metrics_hint,
-                )
-            }
-        };
+        let header_text = build_header_text(self, full.width);
         Paragraph::new(header_text)
             .style(tokens::header_bg())
             .render(rows[0], frame);
@@ -1177,12 +1442,7 @@ impl Model for BvrApp {
                 .collect::<Vec<&str>>()
                 .join("\n");
             Paragraph::new(visible)
-                .block(
-                    Block::bordered()
-                        .title("Help")
-                        .border_style(tokens::panel_border_focused())
-                        .style(tokens::panel_title_focused()),
-                )
+                .block(semantic_panel_block("Help", true, SemanticTone::Accent))
                 .render(rows[1], frame);
             let scroll_hint = if help_lines.len() > visible_height {
                 format!(
@@ -1202,11 +1462,11 @@ impl Model for BvrApp {
         // -- Quit confirmation -----------------------------------------------
         if self.show_quit_confirm {
             Paragraph::new("Quit bvr?\n\nPress Esc or Y to quit.\nPress any other key to cancel.")
-                .block(
-                    Block::bordered()
-                        .title("Confirm Quit")
-                        .border_style(tokens::panel_border()),
-                )
+                .block(semantic_panel_block(
+                    "Confirm Quit",
+                    false,
+                    SemanticTone::Danger,
+                ))
                 .render(rows[1], frame);
             Paragraph::new("Esc/Y confirms quit. Any other key cancels.")
                 .style(tokens::footer())
@@ -1227,12 +1487,7 @@ impl Model for BvrApp {
                         "Press any key to dismiss."
                     );
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title("Tutorial")
-                                .border_style(tokens::panel_border_focused())
-                                .style(tokens::panel_title_focused()),
-                        )
+                        .block(semantic_panel_block("Tutorial", true, SemanticTone::Accent))
                         .render(rows[1], frame);
                     Paragraph::new("Press any key to continue.")
                         .style(tokens::footer())
@@ -1242,11 +1497,11 @@ impl Model for BvrApp {
                 ModalOverlay::Confirm { title, message } => {
                     let text = format!("{message}\n\nPress Y to confirm, N or Esc to cancel.");
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title(title.as_str())
-                                .border_style(tokens::panel_border()),
-                        )
+                        .block(semantic_panel_block(
+                            title.as_str(),
+                            false,
+                            SemanticTone::Danger,
+                        ))
                         .render(rows[1], frame);
                     Paragraph::new("Y=confirm | N/Esc=cancel")
                         .style(tokens::footer())
@@ -1262,12 +1517,11 @@ impl Model for BvrApp {
                         wiz.step_label()
                     );
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title(wiz_title.as_str())
-                                .border_style(tokens::panel_border_focused())
-                                .style(tokens::panel_title_focused()),
-                        )
+                        .block(semantic_panel_block(
+                            wiz_title.as_str(),
+                            true,
+                            SemanticTone::Accent,
+                        ))
                         .render(rows[1], frame);
                     let footer = if wiz.step == PagesWizardState::step_count() - 1 {
                         "Enter=export | Esc=cancel | Backspace=prev step"
@@ -1291,12 +1545,11 @@ impl Model for BvrApp {
                         lines.join("\n")
                     };
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title("Recipe Picker")
-                                .border_style(tokens::panel_border_focused())
-                                .style(tokens::panel_title_focused()),
-                        )
+                        .block(semantic_panel_block(
+                            "Recipe Picker",
+                            true,
+                            SemanticTone::Accent,
+                        ))
                         .render(rows[1], frame);
                     Paragraph::new("j/k=navigate | Enter=apply | Esc=close")
                         .style(tokens::footer())
@@ -1315,12 +1568,11 @@ impl Model for BvrApp {
                         lines.join("\n")
                     };
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title("Label Picker")
-                                .border_style(tokens::panel_border_focused())
-                                .style(tokens::panel_title_focused()),
-                        )
+                        .block(semantic_panel_block(
+                            "Label Picker",
+                            true,
+                            SemanticTone::Accent,
+                        ))
                         .render(rows[1], frame);
                     Paragraph::new("j/k=navigate | Enter=filter by label | Esc=close")
                         .style(tokens::footer())
@@ -1339,12 +1591,11 @@ impl Model for BvrApp {
                         lines.join("\n")
                     };
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title("Repo Picker")
-                                .border_style(tokens::panel_border_focused())
-                                .style(tokens::panel_title_focused()),
-                        )
+                        .block(semantic_panel_block(
+                            "Repo Picker",
+                            true,
+                            SemanticTone::Accent,
+                        ))
                         .render(rows[1], frame);
                     Paragraph::new("j/k=navigate | Enter=filter by repo | Esc=close")
                         .style(tokens::footer())

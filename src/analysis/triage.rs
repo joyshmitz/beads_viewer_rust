@@ -608,8 +608,16 @@ pub fn compute_triage(
     });
     recommendations.truncate(max_recommendations);
 
+    // Top picks exclude in_progress issues (already being worked) to match
+    // legacy behavior: recommendations should surface NEW work to pick up.
     let top_picks = recommendations
         .iter()
+        .filter(|rec| {
+            lookups
+                .issue_by_id
+                .get(rec.id.as_str())
+                .is_none_or(|issue| issue.normalized_status() != "in_progress")
+        })
         .take(3)
         .map(|rec| QuickPick {
             id: rec.id.clone(),
@@ -1117,8 +1125,12 @@ mod tests {
         assert_eq!(triage.result.recommendations.len(), 1);
         assert_eq!(triage.result.recommendations[0].id, "A");
         assert_eq!(triage.result.recommendations[0].status, "in_progress");
-        assert_eq!(triage.result.quick_ref.top_picks.len(), 1);
-        assert_eq!(triage.result.quick_ref.top_picks[0].id, "A");
+        // top_picks excludes in_progress issues (already being worked) to match
+        // legacy behavior where recommendations surface new work to pick up.
+        assert!(
+            triage.result.quick_ref.top_picks.is_empty(),
+            "top_picks should exclude in_progress items"
+        );
     }
 
     #[test]

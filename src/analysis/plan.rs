@@ -134,7 +134,16 @@ pub fn compute_execution_plan(
             .then_with(|| left.id.cmp(&right.id))
     });
 
-    let highest_impact_item = tracks.first().and_then(|track| track.items.first());
+    // Exclude in_progress issues from highest_impact to match legacy behavior:
+    // the "highest impact" pick should surface new work, not work already claimed.
+    let highest_impact_item = tracks
+        .iter()
+        .flat_map(|track| track.items.iter())
+        .find(|item| {
+            graph
+                .issue(&item.id)
+                .is_none_or(|issue| issue.normalized_status() != "in_progress")
+        });
 
     let highest_impact = highest_impact_item.map(|item| item.id.clone());
 

@@ -484,10 +484,6 @@ fn push_metric_chip(line: &mut RichLine, label: &str, value: &str, tone: Semanti
     push_chip(line, &format!("{label}={value}"), tone);
 }
 
-fn push_chip_separator(line: &mut RichLine) {
-    line.push_span(RichSpan::raw(" "));
-}
-
 fn build_header_text(app: &BvrApp, width: u16) -> RichText {
     let bp = Breakpoint::from_width(width);
     let visible_count = app.visible_issue_indices().len();
@@ -505,11 +501,7 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
             SemanticTone::Neutral,
         );
         line.push_span(RichSpan::styled(" | ", tokens::dim()));
-        push_chip(
-            &mut line,
-            app.list_filter.label(),
-            SemanticTone::Muted,
-        );
+        push_chip(&mut line, app.list_filter.label(), SemanticTone::Muted);
         return RichText::from_lines([line]);
     }
 
@@ -601,6 +593,7 @@ fn type_badge(issue_type: &str) -> RichSpan<'static> {
     RichSpan::styled(icon, tokens::dim())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Metric strip: compact inline metric display with label and mini bar.
 /// Example output: `PR ██░░░░ 0.42` for PageRank.
 fn metric_strip(label: &str, value: f64, max_value: f64) -> Vec<RichSpan<'static>> {
@@ -631,12 +624,14 @@ fn blocker_indicator(open_blockers: usize, blocks_count: usize) -> Vec<RichSpan<
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Section separator: dim horizontal rule spanning the given width.
 fn section_separator(width: usize) -> RichLine {
     let rule = "─".repeat(width.min(120));
     RichLine::from_spans([RichSpan::styled(rule, tokens::dim())])
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Panel header: bold title with optional subtitle.
 fn panel_header<'a>(title: &'a str, subtitle: Option<&'a str>) -> RichLine {
     let mut spans = vec![RichSpan::styled(title, tokens::panel_title().bold())];
@@ -646,6 +641,7 @@ fn panel_header<'a>(title: &'a str, subtitle: Option<&'a str>) -> RichLine {
     RichLine::from_spans(spans)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Label chips: coloured label tags inline.
 fn label_chips(labels: &[String]) -> Vec<RichSpan<'static>> {
     let mut spans = Vec::new();
@@ -653,10 +649,7 @@ fn label_chips(labels: &[String]) -> Vec<RichSpan<'static>> {
         if i > 0 {
             spans.push(RichSpan::styled(" ", tokens::dim()));
         }
-        spans.push(RichSpan::styled(
-            format!("[{label}]"),
-            tokens::header(),
-        ));
+        spans.push(RichSpan::styled(format!("[{label}]"), tokens::header()));
     }
     spans
 }
@@ -1765,7 +1758,7 @@ impl Model for BvrApp {
                 ])
                 .split(body);
 
-            let list_text = self.list_panel_text();
+            let list_text = self.list_panel_render_text(panes[0].width);
             let list_title = match self.mode {
                 ViewMode::Board => "Board Lanes",
                 ViewMode::Insights => "Insight Queue",
@@ -1793,13 +1786,14 @@ impl Model for BvrApp {
             // ensure it is within the visible viewport.
             if vp_height > 0 {
                 let scroll = self.list_scroll_offset.get();
-                if let Some(cursor_line) = list_text.lines().position(|line| {
+                if let Some(cursor_line) = list_text.to_plain_text().lines().position(|line| {
                     line.starts_with('>')
                         || line.starts_with(" >")
                         || line.starts_with("  >")
                         || line.starts_with("   >")
                         || line.starts_with("    >")
                         || line.contains('\u{25b6}')
+                        || line.contains('▸')
                 }) {
                     if cursor_line < scroll {
                         self.list_scroll_offset.set(cursor_line);
@@ -5897,6 +5891,13 @@ impl BvrApp {
         }
     }
 
+    fn list_panel_render_text(&self, width: u16) -> RichText {
+        match self.mode {
+            ViewMode::Main => self.main_list_render_text(width),
+            _ => RichText::raw(self.list_panel_text()),
+        }
+    }
+
     fn main_list_text(&self) -> String {
         let visible = self.visible_issue_indices();
         if visible.is_empty() {
@@ -5934,6 +5935,75 @@ impl BvrApp {
             ));
         }
         out.join("\n")
+    }
+
+    fn main_list_render_text(&self, width: u16) -> RichText {
+        let visible = self.visible_issue_indices();
+        if visible.is_empty() {
+            return RichText::raw(format!(
+                "(no issues match filter: {})",
+                self.list_filter.label()
+            ));
+        }
+
+        let mut lines = Vec::<RichLine>::new();
+        if self.main_search_active {
+            lines.push(RichLine::raw(format!(
+                "Search (active): /{}",
+                self.main_search_query
+            )));
+        } else if !self.main_search_query.is_empty() {
+            lines.push(RichLine::raw(format!(
+                "Search: /{} (n/N cycles)",
+                self.main_search_query
+            )));
+        }
+        if !self.main_search_query.is_empty() {
+            let matches = self.main_search_matches();
+            if matches.is_empty() {
+                lines.push(RichLine::raw("Matches: none"));
+            } else {
+                let position = self
+                    .main_search_match_cursor
+                    .min(matches.len().saturating_sub(1))
+                    + 1;
+                lines.push(RichLine::raw(format!(
+                    "Matches: {position}/{}",
+                    matches.len()
+                )));
+            }
+            lines.push(RichLine::raw(""));
+        }
+
+        let line_width = usize::from(width.saturating_sub(2)).max(24);
+        for (index, issue) in visible
+            .into_iter()
+            .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
+        {
+            let open_blockers = self
+                .analyzer
+                .metrics
+                .blocked_by_count
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let blocks_count = self
+                .analyzer
+                .metrics
+                .blocks_count
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            lines.push(issue_scan_line(
+                issue,
+                index == self.selected,
+                open_blockers,
+                blocks_count,
+                line_width,
+            ));
+        }
+
+        RichText::from_lines(lines)
     }
 
     fn board_list_text(&self) -> String {
@@ -11258,16 +11328,15 @@ mod tests {
         BackgroundTickDecision, BoardGrouping, BvrApp, CommandHint, EmptyLaneVisibility, FocusPane,
         GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
-        ListSort, ModalOverlay, MouseButton, MouseEvent, MouseEventKind, Msg, ViewMode,
-        background_warning_message, buffer_to_text, cached_detail_content_area, center_display,
-        build_header_text,
-        command_hint_width, compact_history_duration_label, decide_background_tick, display_width,
-        fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
-        blocker_indicator, issue_scan_line, label_chips, metric_strip, panel_header,
-        priority_badge, record_view_size, render_debug_view, saturating_scroll_offset,
-        section_separator, should_apply_background_reload, sprint_reference_now, status_chip,
+        ListSort, ModalOverlay, MouseButton, MouseEvent, MouseEventKind, Msg, SemanticTone,
+        ViewMode, background_warning_message, blocker_indicator, buffer_to_text, build_header_text,
+        cached_detail_content_area, center_display, command_hint_width,
+        compact_history_duration_label, decide_background_tick, display_width, fit_display,
+        history_legacy_lifecycle_lines, issue_scan_line, label_chips,
+        legacy_history_author_initials, metric_strip, panel_header, priority_badge,
+        record_view_size, render_debug_view, saturating_scroll_offset, section_separator,
+        should_apply_background_reload, sprint_reference_now, status_chip,
         styled_detail_summary_line, truncate_display, type_badge, wrap_command_hints,
-        SemanticTone,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -14528,15 +14597,24 @@ mod tests {
         let h = header_for_width(&app, 100);
         assert!(h.contains("mode=Main"), "medium header should show mode=");
         assert!(h.contains("focus=list"), "medium header should show focus=");
-        assert!(h.contains("issues=3/3"), "medium header should show issues metric");
+        assert!(
+            h.contains("issues=3/3"),
+            "medium header should show issues metric"
+        );
     }
 
     #[test]
     fn snapshot_wide_header_is_full() {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 140);
-        assert!(h.contains("sort=default"), "wide header should show sort metric");
-        assert!(h.ends_with(" |"), "wide header should preserve trailing delimiter");
+        assert!(
+            h.contains("sort=default"),
+            "wide header should show sort metric"
+        );
+        assert!(
+            h.ends_with(" |"),
+            "wide header should preserve trailing delimiter"
+        );
     }
 
     #[test]
@@ -14557,6 +14635,17 @@ mod tests {
         let text = app.list_panel_text();
         assert!(text.contains("Root"), "list should contain issue title");
         assert!(text.contains('A'), "list should contain issue ID");
+    }
+
+    #[test]
+    fn main_list_render_text_uses_rich_issue_scan_rows() {
+        let app = new_app(ViewMode::Main, 1);
+        let text = app.main_list_render_text(80).to_plain_text();
+        assert!(text.contains('▸'), "selected row marker missing: {text}");
+        assert!(text.contains("P0"), "priority badge text missing: {text}");
+        assert!(text.contains("●open"), "status chip text missing: {text}");
+        assert!(text.contains("⊘1"), "blocker indicator missing: {text}");
+        assert!(text.contains("B"), "selected issue id missing: {text}");
     }
 
     #[test]
@@ -15721,16 +15810,26 @@ mod tests {
 
     #[test]
     fn styled_detail_summary_line_turns_status_into_chips() {
-        let line = styled_detail_summary_line("Status: open | Priority: p1 | Type: bug | State: ready")
-            .expect("styled summary line");
+        let line =
+            styled_detail_summary_line("Status: open | Priority: p1 | Type: bug | State: ready")
+                .expect("styled summary line");
         assert_eq!(
             line.to_plain_text(),
             "Status: open | Priority: p1 | Type: bug | State: ready"
         );
         let spans = line.spans();
-        assert_eq!(spans[2].style, Some(tokens::chip_style(SemanticTone::Accent)));
-        assert_eq!(spans[6].style, Some(tokens::chip_style(SemanticTone::Warning)));
-        assert_eq!(spans[14].style, Some(tokens::chip_style(SemanticTone::Success)));
+        assert_eq!(
+            spans[2].style,
+            Some(tokens::chip_style(SemanticTone::Accent))
+        );
+        assert_eq!(
+            spans[6].style,
+            Some(tokens::chip_style(SemanticTone::Warning))
+        );
+        assert_eq!(
+            spans[14].style,
+            Some(tokens::chip_style(SemanticTone::Success))
+        );
     }
 
     #[test]
@@ -20097,11 +20196,22 @@ mod tests {
     #[test]
     fn status_chip_covers_all_known_statuses() {
         for status in &[
-            "open", "in_progress", "blocked", "closed", "deferred",
-            "review", "pinned", "tombstone", "hooked",
+            "open",
+            "in_progress",
+            "blocked",
+            "closed",
+            "deferred",
+            "review",
+            "pinned",
+            "tombstone",
+            "hooked",
         ] {
             let spans = status_chip(status);
-            assert_eq!(spans.len(), 2, "status_chip({status}) should return 2 spans");
+            assert_eq!(
+                spans.len(),
+                2,
+                "status_chip({status}) should return 2 spans"
+            );
             let text = spans_text(&spans);
             assert!(!text.contains('?'), "known status {status} got '?' icon");
         }
@@ -20167,8 +20277,11 @@ mod tests {
     #[test]
     fn issue_scan_line_fields() {
         let issue = Issue {
-            id: "BD-42".into(), title: "Fix widget".into(),
-            status: "open".into(), priority: 1, issue_type: "bug".into(),
+            id: "BD-42".into(),
+            title: "Fix widget".into(),
+            status: "open".into(),
+            priority: 1,
+            issue_type: "bug".into(),
             ..Default::default()
         };
         let text = issue_scan_line(&issue, false, 0, 0, 80).to_plain_text();
@@ -20180,18 +20293,26 @@ mod tests {
     #[test]
     fn issue_scan_line_selected_marker() {
         let issue = Issue {
-            id: "A".into(), title: "Test".into(),
-            status: "open".into(), issue_type: "task".into(),
+            id: "A".into(),
+            title: "Test".into(),
+            status: "open".into(),
+            issue_type: "task".into(),
             ..Default::default()
         };
-        assert!(issue_scan_line(&issue, true, 0, 0, 60).to_plain_text().starts_with('▸'));
+        assert!(
+            issue_scan_line(&issue, true, 0, 0, 60)
+                .to_plain_text()
+                .starts_with('▸')
+        );
     }
 
     #[test]
     fn issue_scan_line_blocker() {
         let issue = Issue {
-            id: "A".into(), title: "Blocked".into(),
-            status: "blocked".into(), issue_type: "task".into(),
+            id: "A".into(),
+            title: "Blocked".into(),
+            status: "blocked".into(),
+            issue_type: "task".into(),
             ..Default::default()
         };
         let text = issue_scan_line(&issue, false, 2, 0, 80).to_plain_text();

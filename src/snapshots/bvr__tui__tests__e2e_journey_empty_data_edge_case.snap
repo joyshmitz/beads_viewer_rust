@@ -72,7 +72,7 @@ Board mode: lane counts, queued IDs, and selected issue delivery context | group
 bvr | mode=Graph | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
 ┌Graph Nodes [focus]─────────────────────┐┌Graph Focus─────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ (no issues loaded)                     ││ No graph data available.                               │
+│ (no issues match filter: all)          ││ No graph data available.                               │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │

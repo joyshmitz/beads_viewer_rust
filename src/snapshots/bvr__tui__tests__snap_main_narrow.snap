@@ -9,7 +9,7 @@ bvr Main | 3/3 | all
 │   T ●open P0 B ⊘1 ││ Status: open | Priority: p0 | Type: │
 │   T ✔done P0 C Cl ││ Assignee: alice | Repo: viewer | Es │
 │                   ││ Created: 2026-01-01 | Updated: 2026 │
-│                   ││ Closed: n/a | Labels: core, parity  │
+│                   ││ Closed: n/a | Labels: [core] [parit │
 │                   ││                                     │
 │                   ││ Triage Snapshot:                    │
 │                   ││   open blockers: 0 (none)           │

@@ -9,7 +9,7 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │   T ●open P0 B ⊘1 Dependent                       ││ Status: open | Priority: p0 | Type: task | State: ready                             │
 │   T ✔done P0 C Closed                             ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)                     │
 │                                                   ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)               │
-│                                                   ││ Closed: n/a | Labels: core, parity  (L label filter)                                │
+│                                                   ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                             │
 │                                                   ││                                                                                     │
 │                                                   ││ Triage Snapshot:                                                                    │
 │                                                   ││   open blockers: 0 (none)                                                           │

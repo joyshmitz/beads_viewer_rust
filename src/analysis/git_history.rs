@@ -698,7 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_commits_are_omitted() {
+    fn none_commits_serialize_as_null() {
         let history = HistoryBeadCompat {
             bead_id: "bd-test".to_string(),
             title: "Test".to_string(),
@@ -710,13 +710,15 @@ mod tests {
             last_author: String::new(),
         };
         let json = serde_json::to_value(&history).unwrap();
+        // commits and cycle_time are always present (as null) to match
+        // legacy Go output shape.
         assert!(
-            json.get("commits").is_none(),
-            "None commits should be omitted"
+            json.get("commits").is_some_and(serde_json::Value::is_null),
+            "None commits should serialize as null"
         );
         assert!(
-            json.get("cycle_time").is_none(),
-            "None cycle_time should be omitted"
+            json.get("cycle_time").is_some_and(serde_json::Value::is_null),
+            "None cycle_time should serialize as null"
         );
     }
 

@@ -12,7 +12,7 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │   B ●open P2 B Bug fix                     ││ Status: open | Priority: p1 | Type: feature | State: ready             │
 │   T ●open P3 C UI polish                   ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
 │                                            ││ Created: n/a | Updated: n/a | Due: n/a  (t time-travel)                │
-│                                            ││ Closed: n/a | Labels: backend, urgent  (L label filter)                │
+│                                            ││ Closed: n/a | Labels: [backend] [urgent]  (L label filter)             │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
 │                                            ││   open blockers: 0 (none)                                              │
@@ -271,7 +271,7 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │   B ●open P2 B Bug fix                     ││ Status: open | Priority: p1 | Type: feature | State: ready             │
 │   T ●open P3 C UI polish                   ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
 │                                            ││ Created: n/a | Updated: n/a | Due: n/a  (t time-travel)                │
-│                                            ││ Closed: n/a | Labels: backend, urgent  (L label filter)                │
+│                                            ││ Closed: n/a | Labels: [backend] [urgent]  (L label filter)             │
 │                                            ││                                                                        │
 │                                            ││ Triage Snapshot:                                                       │
 │                                            ││   open blockers: 0 (none)                                              │

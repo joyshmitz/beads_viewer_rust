@@ -239,7 +239,7 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │ Outlier Radar                              ││ Metric Strip                                                           │
 │ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.2597 betweenness=0.0000 eigenvector=0.0000          │
 │ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=0.0000 k-core=0                           │
-│ [Act  ] next-priority=A score=0.696 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
+│ [Act  ] next-priority=A score=0.695 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
 │                                            ││ [Flow ] blockers=0 dependents=0 crit-path=yes cycle=no                 │
 │ Panel Focus | Bottlenecks | blocking press ││ [Lead ] top-bottleneck=no                                              │
 │                                            ││                                                                        │
@@ -276,7 +276,7 @@ bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? he
 │ Outlier Radar                              ││ Metric Strip                                                           │
 │ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.2597 betweenness=0.0000 eigenvector=0.0000          │
 │ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=0.0000 k-core=0                           │
-│ [Act  ] next-priority=A score=0.696 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
+│ [Act  ] next-priority=A score=0.695 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
 │                                            ││ [Flow ] blockers=0 dependents=0 crit-path=yes cycle=no                 │
 │ Panel Focus | Keystones | foundational cha ││ [Lead ] top-bottleneck=no                                              │
 │                                            ││                                                                        │

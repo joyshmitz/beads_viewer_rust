@@ -114,7 +114,7 @@ bvr Actionable | 3/3 | all
 │ RECOMMENDE ││ completing A unblocks  │
 │            ││ 1 actionable item      │
 │ ▸ TRACK 1  ││                        │
-│   1 item   ││ ▸ A  score 0.696       │
+│   1 item   ││ ▸ A  score 0.695       │
 │    └─ A    ││   Root                 │
 │            ││   Unblocks: B          │
 │            ││   Claim: br update A - │

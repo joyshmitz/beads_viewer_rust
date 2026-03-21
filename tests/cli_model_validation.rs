@@ -694,7 +694,7 @@ fn triage_includes_open_statuses() {
 }
 
 #[test]
-fn robot_next_returns_in_progress_actionable_issue_when_it_is_top_pick() {
+fn robot_next_excludes_in_progress_from_top_pick() {
     let temp = tempfile::tempdir().expect("tempdir");
     let beads_path = temp.path().join("in_progress_actionable.jsonl");
     fs::write(
@@ -708,12 +708,12 @@ fn robot_next_returns_in_progress_actionable_issue_when_it_is_top_pick() {
     .expect("write fixture");
 
     let output = run_bvr_json_with_path(&["--robot-next"], &beads_path);
-    assert_eq!(output["id"], "A");
-    assert_eq!(output["title"], "Claimed blocker");
-    assert_eq!(output["claim_command"], "br update A --status=in_progress");
+    // In-progress issues are excluded from top_picks to match legacy behavior
+    // (top_picks surfaces new work, not already-claimed work). When the only
+    // actionable issue is in_progress, robot-next returns a no-pick message.
     assert!(
-        output.get("message").is_none_or(serde_json::Value::is_null),
-        "robot-next should not fall back to the no-actionable message: {output}"
+        output["id"].is_null(),
+        "robot-next should not pick an in_progress issue: {output}"
     );
 }
 

@@ -8,7 +8,7 @@ expression: artifact
 bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ (no issues loaded)                     ││ No issues to display. Create or load a .beads/*.jsonl  │
+│ (no issues match filter: all)          ││ No issues to display. Create or load a .beads/*.jsonl  │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │
@@ -200,7 +200,7 @@ Tree: 0 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
 bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ (no issues loaded)                     ││ No issues to display. Create or load a .beads/*.jsonl  │
+│ (no issues match filter: all)          ││ No issues to display. Create or load a .beads/*.jsonl  │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │

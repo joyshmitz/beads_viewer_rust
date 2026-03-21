@@ -8,9 +8,9 @@ expression: artifact
 bvr Main | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
-│ > A        ││ T A  Root  (C copy id) │
-│   B        ││ Status: open | Priorit │
-│   C        ││ Assignee: alice | Repo │
+│ ▸ T ●open  ││ T A  Root  (C copy id) │
+│   T ●open  ││ Status: open | Priorit │
+│   T ✔done  ││ Assignee: alice | Repo │
 │            ││ Created: 2026-01-01 |  │
 │            ││ Closed: n/a | Labels:  │
 │            ││                        │
@@ -144,9 +144,9 @@ Tree: 3 nodes | j/k navigate | Enter exp
 bvr Main | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
-│   A        ││ T C  Closed  (C copy i │
-│   B        ││ Status: closed | Prior │
-│ > C        ││ Assignee: unassigned | │
+│   T ●open  ││ T C  Closed  (C copy i │
+│   T ●open  ││ Status: closed | Prior │
+│ ▸ T ✔done  ││ Assignee: unassigned | │
 │            ││ Created: 2026-01-01 |  │
 │            ││ Closed: 2026-01-06 | L │
 │            ││                        │

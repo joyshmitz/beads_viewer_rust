@@ -8,9 +8,9 @@ expression: artifact
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ > A              open        p0 Root       ││ T A  Root  (C copy id)                                                 │
-│   B              open        p0 Dependent  ││ Status: open | Priority: p0 | Type: task | State: ready                │
-│   C              closed      p0 Closed     ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│ ▸ T ●open P0 A ↓1 Root                     ││ T A  Root  (C copy id)                                                 │
+│   T ●open P0 B ⊘1 Dependent                ││ Status: open | Priority: p0 | Type: task | State: ready                │
+│   T ✔done P0 C Closed                      ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
 │                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)  │
 │                                            ││ Closed: n/a | Labels: core, parity  (L label filter)                   │
 │                                            ││                                                                        │
@@ -45,9 +45,9 @@ b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
 bvr | mode=Main | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues──────────────────────────────────────┐┌Details [focus]─────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│   A              open        p0 Root       ││ T B  Dependent  (C copy id)                                            │
-│ > B              open        p0 Dependent  ││ Status: open | Priority: p0 | Type: task | State: blocked              │
-│   C              closed      p0 Closed     ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
+│   T ●open P0 A ↓1 Root                     ││ T B  Dependent  (C copy id)                                            │
+│ ▸ T ●open P0 B ⊘1 Dependent                ││ Status: open | Priority: p0 | Type: task | State: blocked              │
+│   T ✔done P0 C Closed                      ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
 │                                            ││ Created: 2026-01-03 | Updated: 2026-01-04 | Due: n/a  (t time-travel)  │
 │                                            ││ Closed: n/a | Labels: none                                             │
 │                                            ││                                                                        │
@@ -304,9 +304,9 @@ Insights [keystones] | s/S panel | e explanations=on | x proof=off
 bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│   A              open        p0 Root       ││ T C  Closed  (C copy id)                                               │
-│   B              open        p0 Dependent  ││ Status: closed | Priority: p0 | Type: task | State: closed             │
-│ > C              closed      p0 Closed     ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
+│   T ●open P0 A ↓1 Root                     ││ T C  Closed  (C copy id)                                               │
+│   T ●open P0 B ⊘1 Dependent                ││ Status: closed | Priority: p0 | Type: task | State: closed             │
+│ ▸ T ✔done P0 C Closed                      ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
 │                                            ││ Created: 2026-01-01 | Updated: 2026-01-06 | Due: n/a  (t time-travel)  │
 │                                            ││ Closed: 2026-01-06 | Labels: none                                      │
 │                                            ││                                                                        │

@@ -5894,6 +5894,7 @@ impl BvrApp {
     fn list_panel_render_text(&self, width: u16) -> RichText {
         match self.mode {
             ViewMode::Main => self.main_list_render_text(width),
+            ViewMode::Graph => self.graph_list_render_text(width),
             _ => RichText::raw(self.list_panel_text()),
         }
     }
@@ -6633,6 +6634,113 @@ impl BvrApp {
                 }),
         );
         lines.join("\n")
+    }
+
+    fn graph_list_render_text(&self, width: u16) -> RichText {
+        let visible = self.graph_visible_issue_indices();
+        if visible.is_empty() {
+            return RichText::raw(format!(
+                "(no issues match filter: {})",
+                self.list_filter.label()
+            ));
+        }
+
+        let total = visible.len();
+        let mut lines = vec![panel_header(
+            "Nodes",
+            Some(&format!(
+                "{total} by critical-path score | h/l nav | / search | Tab focus"
+            )),
+        )];
+        if self.graph_search_active {
+            lines.push(RichLine::raw(format!(
+                "Search (active): /{}",
+                self.graph_search_query
+            )));
+        } else if !self.graph_search_query.is_empty() {
+            lines.push(RichLine::raw(format!(
+                "Search: /{} (n/N cycles)",
+                self.graph_search_query
+            )));
+        }
+        if !self.graph_search_query.is_empty() {
+            let matches = self.graph_search_matches();
+            if matches.is_empty() {
+                lines.push(RichLine::raw("Matches: none"));
+            } else {
+                let position = self
+                    .graph_search_match_cursor
+                    .min(matches.len().saturating_sub(1))
+                    + 1;
+                lines.push(RichLine::raw(format!(
+                    "Matches: {position}/{}",
+                    matches.len()
+                )));
+            }
+        }
+        lines.push(section_separator(
+            usize::from(width.saturating_sub(2)).max(24),
+        ));
+
+        let pr_max = max_metric_value(&self.analyzer.metrics.pagerank);
+        let line_width = usize::from(width.saturating_sub(2)).max(24);
+        for index in visible {
+            let Some(issue) = self.analyzer.issues.get(index) else {
+                continue;
+            };
+            let blocked_by = self
+                .analyzer
+                .metrics
+                .blocked_by_count
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let blocks = self
+                .analyzer
+                .metrics
+                .blocks_count
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let pagerank = self
+                .analyzer
+                .metrics
+                .pagerank
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
+            let mut line = RichLine::new();
+            let marker_style = if index == self.selected {
+                tokens::selected()
+            } else {
+                tokens::dim()
+            };
+            line.push_span(RichSpan::styled(
+                if index == self.selected { "▸" } else { " " },
+                marker_style,
+            ));
+            line.push_span(RichSpan::raw(" "));
+            line.push_span(RichSpan::styled(
+                truncate_display(&issue.id, 12),
+                tokens::panel_title(),
+            ));
+            line.push_span(RichSpan::raw(" "));
+            for span in metric_strip("PR", pagerank, pr_max) {
+                line.push_span(span);
+            }
+            line.push_span(RichSpan::styled(
+                format!(" in:{blocked_by:>2} out:{blocks:>2} "),
+                tokens::dim(),
+            ));
+            let title_width = line_width.saturating_sub(34);
+            line.push_span(RichSpan::styled(
+                truncate_display(&issue.title, title_width.max(10)),
+                tokens::help_desc(),
+            ));
+            lines.push(line);
+        }
+
+        RichText::from_lines(lines)
     }
 
     fn graph_visible_issue_indices(&self) -> Vec<usize> {
@@ -8668,6 +8776,7 @@ impl BvrApp {
                 join_display_values(&issue.labels, 4)
             )
         });
+        let label_values = self.selected_issue().map(|issue| issue.labels.clone());
         let timeline_line = self.selected_issue().map(|issue| {
             format!(
                 "Created: {} | Updated: {} | Due: {}",
@@ -8709,11 +8818,32 @@ impl BvrApp {
                     .as_deref()
                     .is_some_and(|labels_line| line == labels_line)
             {
-                lines.push(RichLine::from_spans([
-                    RichSpan::raw(line),
-                    RichSpan::styled("  ", tokens::dim()),
-                    RichSpan::styled("(L label filter)", tokens::dim()),
-                ]));
+                let mut rich_line = RichLine::new();
+                let closed_display = self.selected_issue().map_or_else(
+                    || "n/a".to_string(),
+                    |issue| {
+                        if issue.is_closed_like() {
+                            format_compact_timestamp(issue.closed_at.or(issue.updated_at))
+                        } else {
+                            "n/a".to_string()
+                        }
+                    },
+                );
+                rich_line.push_span(RichSpan::raw(format!(
+                    "Closed: {closed_display} | Labels: "
+                )));
+                if let Some(labels) = label_values.as_ref() {
+                    if labels.is_empty() {
+                        rich_line.push_span(RichSpan::styled("none", tokens::dim()));
+                    } else {
+                        for span in label_chips(labels) {
+                            rich_line.push_span(span);
+                        }
+                    }
+                }
+                rich_line.push_span(RichSpan::styled("  ", tokens::dim()));
+                rich_line.push_span(RichSpan::styled("(L label filter)", tokens::dim()));
+                lines.push(rich_line);
             } else if show_timeline_hint
                 && timeline_line
                     .as_deref()
@@ -14649,6 +14779,15 @@ mod tests {
     }
 
     #[test]
+    fn graph_list_render_text_uses_metric_strips_and_header() {
+        let app = new_app(ViewMode::Graph, 0);
+        let text = app.graph_list_render_text(90).to_plain_text();
+        assert!(text.contains("Nodes"), "graph header missing: {text}");
+        assert!(text.contains("PR "), "metric strip label missing: {text}");
+        assert!(text.contains("in:"), "flow counts missing: {text}");
+    }
+
+    #[test]
     fn snapshot_detail_panel_content_consistent_across_breakpoints() {
         let app = new_app(ViewMode::Main, 0);
         let text = app.detail_panel_text();
@@ -14665,6 +14804,17 @@ mod tests {
         assert!(text.contains("Design Notes:"));
         assert!(text.contains("Recent Comments (2):"));
         assert!(text.contains("History Summary"));
+    }
+
+    #[test]
+    fn main_detail_render_text_uses_label_chips() {
+        let app = new_app(ViewMode::Main, 0);
+        let text = app.issue_detail_render_text().to_plain_text();
+        assert!(text.contains("[core]"), "label chip missing: {text}");
+        assert!(
+            text.contains("[parity]"),
+            "second label chip missing: {text}"
+        );
     }
 
     #[test]

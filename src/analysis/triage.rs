@@ -587,18 +587,11 @@ pub fn compute_triage(
 
         score_by_id.insert(issue.id.clone(), score);
 
-        let open_blocker_ids: Vec<String> = graph
-            .open_blockers(&issue.id)
-            .into_iter()
-            .collect();
+        let open_blocker_ids: Vec<String> = graph.open_blockers(&issue.id).into_iter().collect();
         let unblocks_ids: Vec<String> = graph
             .dependents(&issue.id)
             .into_iter()
-            .filter(|dep_id| {
-                graph
-                    .issue(dep_id)
-                    .is_some_and(|dep| dep.is_open_like())
-            })
+            .filter(|dep_id| graph.issue(dep_id).is_some_and(|dep| dep.is_open_like()))
             .collect();
 
         let action = if !open_blocker_ids.is_empty() {

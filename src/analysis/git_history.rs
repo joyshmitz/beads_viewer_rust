@@ -717,7 +717,8 @@ mod tests {
             "None commits should serialize as null"
         );
         assert!(
-            json.get("cycle_time").is_some_and(serde_json::Value::is_null),
+            json.get("cycle_time")
+                .is_some_and(serde_json::Value::is_null),
             "None cycle_time should serialize as null"
         );
     }

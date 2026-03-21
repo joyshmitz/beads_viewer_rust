@@ -84,7 +84,7 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                                  ││                                        ││                                        │
 │ No git commits correlated with b ││ Select a commit to view related beads. ││ No correlated git commits available.   │
 │ (ensure repo has commits referen ││                                        ││                                        │
-│                                  ││                                        ││ Browser Link: open selected commit (o  │
+│                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -113,7 +113,7 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | o open commit | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
 
 --- Step 4: history_search ---
 bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
@@ -121,7 +121,7 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                                  ││                                        ││                                        │
 │ (no commits match search: /test) ││ Select a commit to view related beads. ││ No correlated git commits available.   │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││ Browser Link: open selected commit (o  │
+│                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -150,7 +150,7 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | o open commit | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
 
 --- Step 5: history_bead_return ---
 bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |

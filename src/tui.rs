@@ -1642,47 +1642,24 @@ impl Model for BvrApp {
         } else {
             detail_title.to_string()
         };
-        let detail_border = if detail_focused {
-            tokens::panel_border_focused()
-        } else {
-            tokens::panel_border()
-        };
-        let detail_title_style = if detail_focused {
-            tokens::panel_title_focused()
-        } else {
-            tokens::panel_title()
-        };
-
         if graph_single_pane {
             record_detail_content_area(block_inner_rect(body));
             Paragraph::new(self.graph_detail_render_text())
-                .block(
-                    Block::bordered()
-                        .title(&detail_title)
-                        .border_style(detail_border)
-                        .style(detail_title_style),
-                )
+                .block(semantic_panel_block(
+                    &detail_title,
+                    detail_focused,
+                    SemanticTone::Accent,
+                ))
                 .render(body, frame);
         } else if history_multi_pane {
             let render_history_panel =
                 |frame: &mut Frame, area: Rect, title: String, focused: bool, text: RichText| {
-                    let border = if focused {
-                        tokens::panel_border_focused()
-                    } else {
-                        tokens::panel_border()
-                    };
-                    let title_style = if focused {
-                        tokens::panel_title_focused()
-                    } else {
-                        tokens::panel_title()
-                    };
                     Paragraph::new(text)
-                        .block(
-                            Block::bordered()
-                                .title(title.as_str())
-                                .border_style(border)
-                                .style(title_style),
-                        )
+                        .block(semantic_panel_block(
+                            title.as_str(),
+                            focused,
+                            SemanticTone::Accent,
+                        ))
                         .render(area, frame);
                 };
 
@@ -1814,16 +1791,6 @@ impl Model for BvrApp {
                 list_title.to_string()
             };
 
-            let list_border = if list_focused {
-                tokens::panel_border_focused()
-            } else {
-                tokens::panel_border()
-            };
-            let list_title_style = if list_focused {
-                tokens::panel_title_focused()
-            } else {
-                tokens::panel_title()
-            };
             let vp_height = panes[0].height.saturating_sub(2) as usize;
             self.list_viewport_height.set(vp_height);
             // Auto-scroll: find the line with the '>' cursor marker and
@@ -1847,12 +1814,11 @@ impl Model for BvrApp {
                 }
             }
             Paragraph::new(list_text)
-                .block(
-                    Block::bordered()
-                        .title(&list_title)
-                        .border_style(list_border)
-                        .style(list_title_style),
-                )
+                .block(semantic_panel_block(
+                    &list_title,
+                    list_focused,
+                    SemanticTone::Accent,
+                ))
                 .scroll((saturating_scroll_offset(self.list_scroll_offset.get()), 0))
                 .render(panes[0], frame);
 
@@ -1868,12 +1834,11 @@ impl Model for BvrApp {
                 self.detail_panel_render_text()
             };
             Paragraph::new(detail_text)
-                .block(
-                    Block::bordered()
-                        .title(&detail_title)
-                        .border_style(detail_border)
-                        .style(detail_title_style),
-                )
+                .block(semantic_panel_block(
+                    &detail_title,
+                    detail_focused,
+                    SemanticTone::Accent,
+                ))
                 .scroll((
                     if matches!(self.mode, ViewMode::Main) {
                         saturating_scroll_offset(self.main_detail_scroll_offset)
@@ -8655,7 +8620,9 @@ impl BvrApp {
         let external_ref = self.selected_issue_external_ref_url();
         let mut lines = Vec::new();
         for line in self.issue_detail_text().lines() {
-            if issue_header.as_deref().is_some_and(|header| line == header) {
+            if let Some(styled_line) = styled_detail_summary_line(line) {
+                lines.push(styled_line);
+            } else if issue_header.as_deref().is_some_and(|header| line == header) {
                 lines.push(RichLine::from_spans([
                     RichSpan::raw(line),
                     RichSpan::styled("  ", tokens::dim()),
@@ -8729,6 +8696,9 @@ impl BvrApp {
                     .strip_prefix("External: ")
                     .is_some_and(|rendered| rendered == url || rendered.ends_with('…'))
             {
+                continue;
+            } else if let Some(styled_line) = styled_detail_summary_line(line) {
+                lines.push(styled_line);
                 continue;
             }
 
@@ -10865,8 +10835,93 @@ fn truncate_display(value: &str, max_len: usize) -> String {
     truncate_with_ellipsis(value, max_len, "…")
 }
 
+fn tone_for_status(status: &str) -> SemanticTone {
+    if status.eq_ignore_ascii_case("open") || status.eq_ignore_ascii_case("review") {
+        SemanticTone::Accent
+    } else if status.eq_ignore_ascii_case("in_progress") || status.eq_ignore_ascii_case("hooked") {
+        SemanticTone::Warning
+    } else if status.eq_ignore_ascii_case("blocked") || status.eq_ignore_ascii_case("tombstone") {
+        SemanticTone::Danger
+    } else if status.eq_ignore_ascii_case("closed") {
+        SemanticTone::Success
+    } else {
+        SemanticTone::Muted
+    }
+}
+
+fn tone_for_state(state: &str) -> SemanticTone {
+    if state.eq_ignore_ascii_case("ready") {
+        SemanticTone::Success
+    } else if state.eq_ignore_ascii_case("blocked") {
+        SemanticTone::Danger
+    } else if state.eq_ignore_ascii_case("closed") {
+        SemanticTone::Muted
+    } else {
+        SemanticTone::Accent
+    }
+}
+
+fn tone_for_priority(priority: &str) -> SemanticTone {
+    match priority.trim_start_matches(['p', 'P']) {
+        "0" => SemanticTone::Danger,
+        "1" => SemanticTone::Warning,
+        "2" => SemanticTone::Accent,
+        "3" | "4" => SemanticTone::Muted,
+        _ => SemanticTone::Neutral,
+    }
+}
+
+fn summary_line_from_pairs(
+    line: &str,
+    tone_for_key: impl Fn(&str, &str) -> SemanticTone,
+) -> Option<RichLine> {
+    let mut out = RichLine::new();
+    let mut wrote_any = false;
+    for part in line.split(" | ") {
+        let (label, value) = part.split_once(": ")?;
+        if wrote_any {
+            out.push_span(RichSpan::styled("  ", tokens::dim()));
+        }
+        out.push_span(RichSpan::styled(format!("{label}:"), tokens::dim()));
+        out.push_span(RichSpan::raw(" "));
+        push_chip(&mut out, value, tone_for_key(label, value));
+        wrote_any = true;
+    }
+    wrote_any.then_some(out)
+}
+
+fn styled_detail_summary_line(line: &str) -> Option<RichLine> {
+    if line.ends_with(':') && !line.starts_with("  ") {
+        let mut out = RichLine::new();
+        push_chip(&mut out, line.trim_end_matches(':'), SemanticTone::Accent);
+        return Some(out);
+    }
+
+    if line.starts_with("Status: ") {
+        return summary_line_from_pairs(line, |label, value| match label {
+            "Status" => tone_for_status(value),
+            "Priority" => tone_for_priority(value),
+            "State" => tone_for_state(value),
+            "Type" => SemanticTone::Neutral,
+            _ => SemanticTone::Muted,
+        });
+    }
+
+    if line.starts_with("Assignee: ") || line.starts_with("Created: ") || line.starts_with("Closed: ")
+    {
+        return summary_line_from_pairs(line, |label, _| match label {
+            "Due" => SemanticTone::Warning,
+            "Closed" => SemanticTone::Muted,
+            "Labels" => SemanticTone::Accent,
+            _ => SemanticTone::Neutral,
+        });
+    }
+
+    None
+}
+
 fn command_hint_width(hint: CommandHint<'_>) -> usize {
-    display_width(hint.key) + 1 + display_width(hint.desc)
+    display_width(hint.key) + 2 + 1 + display_width(hint.desc)
 }
 
 fn command_hint_line(hints: &[CommandHint<'_>]) -> RichLine {
@@ -10875,7 +10930,7 @@ fn command_hint_line(hints: &[CommandHint<'_>]) -> RichLine {
         if index > 0 {
             line.push_span(RichSpan::styled(" | ", tokens::dim()));
         }
-        line.push_span(RichSpan::styled(hint.key, tokens::help_key()));
+        push_chip(&mut line, hint.key, SemanticTone::Accent);
         line.push_span(RichSpan::raw(" "));
         line.push_span(RichSpan::styled(hint.desc, tokens::help_desc()));
     }
@@ -11220,8 +11275,10 @@ mod tests {
         background_warning_message, buffer_to_text, cached_detail_content_area, center_display,
         command_hint_width, compact_history_duration_label, decide_background_tick, display_width,
         fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
-        record_view_size, render_debug_view, saturating_scroll_offset,
-        should_apply_background_reload, sprint_reference_now, truncate_display, wrap_command_hints,
+        blocker_indicator, issue_scan_line, label_chips, metric_strip, panel_header,
+        priority_badge, record_view_size, render_debug_view, saturating_scroll_offset,
+        section_separator, should_apply_background_reload, sprint_reference_now, status_chip,
+        truncate_display, type_badge, wrap_command_hints,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -14437,6 +14494,13 @@ mod tests {
     }
 
     #[test]
+    fn token_chip_style_has_semantic_background() {
+        let style = tokens::chip_style(SemanticTone::Warning);
+        assert_eq!(style.fg, Some(tokens::FG_WARNING));
+        assert_eq!(style.bg, Some(tokens::BG_SURFACE_WARNING));
+    }
+
+    #[test]
     fn token_focused_border_differs_from_unfocused() {
         let focused = tokens::panel_border_focused();
         let unfocused = tokens::panel_border();
@@ -14453,26 +14517,7 @@ mod tests {
 
     /// Build the header string the same way `view()` does for a given width.
     fn header_for_width(app: &BvrApp, width: u16) -> String {
-        let bp = Breakpoint::from_width(width);
-        let visible_count = app.visible_issue_indices().len();
-        match bp {
-            Breakpoint::Narrow => format!(
-                "bvr {} | {}/{}  | {}",
-                app.mode.label(),
-                visible_count,
-                app.analyzer.issues.len(),
-                app.list_filter.label(),
-            ),
-            _ => format!(
-                "bvr | mode={} | focus={} | issues={}/{} | filter={} | sort={} | ? help | Tab focus | Esc back/quit",
-                app.mode.label(),
-                app.focus.label(),
-                visible_count,
-                app.analyzer.issues.len(),
-                app.list_filter.label(),
-                app.list_sort.label()
-            ),
-        }
+        build_header_text(app, width).lines()[0].to_plain_text()
     }
 
     #[test]
@@ -14480,26 +14525,41 @@ mod tests {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 60);
         assert!(h.contains("bvr"), "header should contain 'bvr'");
-        // Narrow header should NOT contain 'mode=' verbose prefix
-        assert!(!h.contains("mode="), "narrow header should be compact");
+        assert!(h.contains("[Main]"), "narrow header should show mode chip");
+        assert!(
+            !h.contains("Esc back/quit"),
+            "narrow header should remain compact"
+        );
     }
 
     #[test]
     fn snapshot_medium_header_is_full() {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 100);
-        assert!(h.contains("mode="), "medium header should show mode=");
-        assert!(h.contains("focus="), "medium header should show focus=");
+        assert!(h.contains("[Main]"), "medium header should show mode chip");
+        assert!(h.contains("[List]"), "medium header should show focus chip");
+        assert!(h.contains("[issues "), "medium header should show issues metric chip");
     }
 
     #[test]
     fn snapshot_wide_header_is_full() {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 140);
-        assert!(h.contains("mode="), "wide header should show mode=");
+        assert!(h.contains("[sort "), "wide header should show sort metric chip");
         assert!(
-            h.contains("Esc back/quit"),
+            h.contains("[Esc back/quit]"),
             "wide header should show keybinding hints"
+        );
+    }
+
+    #[test]
+    fn header_shows_metrics_pending_chip() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.slow_metrics_pending = true;
+        let h = header_for_width(&app, 120);
+        assert!(
+            h.contains("[metrics computing]"),
+            "header should surface pending metrics chip: {h}"
         );
     }
 
@@ -15340,7 +15400,7 @@ mod tests {
     fn history_status_line_shows_legacy_mode_indicator() {
         let bead_view =
             render_debug_view(sample_issues(), "history", 100, 30).expect("history view renders");
-        assert!(bead_view.contains("mode=History ◈ Beads"));
+        assert!(bead_view.contains("[History ◈ Beads]"));
 
         let mut app = new_app(ViewMode::History, 0);
         app.handle_key(KeyCode::Char('v'), Modifiers::NONE);
@@ -15348,7 +15408,7 @@ mod tests {
         let mut frame = ftui::render::frame::Frame::new(100, 30, &mut pool);
         app.view(&mut frame);
         let git_view = buffer_to_text(&frame.buffer, &pool);
-        assert!(git_view.contains("mode=History ◉ Git"));
+        assert!(git_view.contains("[History ◉ Git]"));
     }
 
     #[test]
@@ -15609,12 +15669,15 @@ mod tests {
 
         let wrapped = wrap_command_hints(&hints, 18);
         assert_eq!(wrapped.lines().len(), 2);
-        assert_eq!(wrapped.lines()[0].to_plain_text(), "Tab mode");
-        assert_eq!(wrapped.lines()[1].to_plain_text(), "/ search | O edit");
+        assert_eq!(wrapped.lines()[0].to_plain_text(), "[Tab] mode");
+        assert_eq!(wrapped.lines()[1].to_plain_text(), "[/] search | [O] edit");
 
         let first_line = wrapped.lines()[0].spans();
         let second_line = wrapped.lines()[1].spans();
-        assert_eq!(first_line[0].style, Some(tokens::help_key()));
+        assert_eq!(
+            first_line[0].style,
+            Some(tokens::chip_style(SemanticTone::Accent))
+        );
         assert_eq!(first_line[2].style, Some(tokens::help_desc()));
         assert_eq!(second_line[3].style, Some(tokens::dim()));
     }
@@ -15662,12 +15725,26 @@ mod tests {
         assert_eq!(
             plain_lines,
             vec![
-                "b/i/g/h modes".to_string(),
-                "/ search | s sort".to_string(),
-                "p hints | C copy".to_string(),
-                "x export | O edit".to_string(),
+                "[b/i/g/h] modes".to_string(),
+                "[/] search | [s] sort".to_string(),
+                "[p] hints | [C] copy".to_string(),
+                "[x] export | [O] edit".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn styled_detail_summary_line_turns_status_into_chips() {
+        let line = styled_detail_summary_line("Status: open | Priority: p1 | Type: bug | State: ready")
+            .expect("styled summary line");
+        assert_eq!(
+            line.to_plain_text(),
+            "Status: [open]  Priority: [p1]  Type: [bug]  State: [ready]"
+        );
+        let spans = line.spans();
+        assert_eq!(spans[2].style, Some(tokens::chip_style(SemanticTone::Accent)));
+        assert_eq!(spans[6].style, Some(tokens::chip_style(SemanticTone::Warning)));
+        assert_eq!(spans[14].style, Some(tokens::chip_style(SemanticTone::Success)));
     }
 
     #[test]
@@ -19735,7 +19812,7 @@ mod tests {
         // Step 1: Start in Main — verify issue list
         let text = journey_capture(&app, w, h, "main_list_start", &mut caps);
         assert!(
-            text.contains("mode=Main") || text.contains("Issues"),
+            text.contains("[Main]") || text.contains("Issues"),
             "main should show issue list: {text}"
         );
 
@@ -19795,7 +19872,7 @@ mod tests {
         app.update(key(KeyCode::Escape));
         assert_eq!(app.mode, ViewMode::Main);
         let text = journey_capture(&app, w, h, "main_return", &mut caps);
-        assert!(text.contains("mode=Main") || text.contains("Issues"));
+        assert!(text.contains("[Main]") || text.contains("Issues"));
 
         // Snapshot the full journey artifact
         let artifact = journey_artifact("main→board→graph→insights→main", w, h, &caps);
@@ -19931,7 +20008,9 @@ mod tests {
         // Main with no issues
         let text = journey_capture(&app, w, h, "empty_main", &mut caps);
         assert!(
-            text.contains("issues=0") || text.contains("No issues") || text.contains("mode=Main"),
+            text.contains("[issues 0/0]")
+                || text.contains("No issues")
+                || text.contains("[Main]"),
             "empty main should render: {text}"
         );
 

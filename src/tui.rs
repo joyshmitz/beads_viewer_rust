@@ -11397,7 +11397,10 @@ pub fn render_debug_view(
 ) -> Result<String> {
     let (mode, kind) = parse_debug_render_target(view_name)?;
 
-    let app = new_app(issues, mode);
+    let mut app = new_app(issues, mode);
+    if matches!(mode, ViewMode::History) && matches!(kind, DebugRenderKind::Layout) {
+        app.history_view_mode = HistoryViewMode::Bead;
+    }
     let mut pool = ftui::GraphemePool::default();
     let mut frame = Frame::new(width, height, &mut pool);
     app.view(&mut frame);
@@ -12192,8 +12195,10 @@ mod tests {
             "main",
             "graph",
             "main-layout",
+            "history-layout",
             "graph-layout",
             "main-hittest",
+            "graph-hittest",
         ] {
             let output =
                 render_debug_view(sample_issues(), view, 80, 12).expect("debug render succeeds");
@@ -12256,6 +12261,27 @@ mod tests {
         let output = render_debug_view(issues, "main-hittest", 100, 20).expect("hittest debug");
         assert!(output.contains("HitTest Debug | view=Main"));
         assert!(output.contains("detail-content"));
+        assert!(output.contains("link-row"));
+        assert!(output.contains("link-center"));
+    }
+
+    #[test]
+    fn render_debug_view_history_layout_reports_timeline_rects() {
+        let output =
+            render_debug_view(sample_issues(), "history-layout", 140, 24).expect("layout debug");
+        assert!(output.contains("Layout Debug | view=History"));
+        assert!(output.contains("timeline"));
+        assert!(output.contains("middle"));
+        assert!(output.contains("detail"));
+    }
+
+    #[test]
+    fn render_debug_view_graph_hittest_reports_link_row() {
+        let mut issues = sample_issues();
+        issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        let output =
+            render_debug_view(issues, "graph-hittest", 100, 20).expect("graph hittest debug");
+        assert!(output.contains("HitTest Debug | view=Graph"));
         assert!(output.contains("link-row"));
         assert!(output.contains("link-center"));
     }

@@ -987,10 +987,18 @@ pub fn generate_robot_schemas() -> RobotSchemas {
                     "priority": schema_prop("integer"),
                     "labels": {"type": "array", "items": schema_prop("string")},
                     "score": schema_prop("number"),
+                    "impact_score": schema_prop("number"),
+                    "confidence": schema_prop("number"),
+                    "action": schema_prop("string"),
                     "reasons": {"type": "array", "items": schema_prop("string")},
                     "unblocks": schema_prop("integer"),
+                    "unblocks_ids": {"type": "array", "items": schema_prop("string")},
+                    "blocked_by": {"type": "array", "items": schema_prop("string")},
+                    "assignee": schema_prop("string"),
+                    "claim_command": schema_prop("string"),
+                    "show_command": schema_prop("string"),
                 },
-                "required": ["id", "title", "score"],
+                "required": ["id", "title", "score", "action"],
             }
         }
     }));
@@ -1030,17 +1038,29 @@ pub fn generate_robot_schemas() -> RobotSchemas {
                 "plan": {
                     "type": "object",
                     "properties": {
-                        "phases": {
+                        "total_actionable": schema_prop("integer"),
+                        "total_blocked": schema_prop("integer"),
+                        "tracks": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "phase": schema_prop("integer"),
-                                    "issues": {"type": "array"},
+                                    "track_id": schema_prop("string"),
+                                    "items": {"type": "array"},
+                                    "reason": schema_prop("string"),
                                 }
                             }
                         },
-                        "summary": {"type": "object"},
+                        "summary": {
+                            "type": "object",
+                            "properties": {
+                                "track_count": schema_prop("integer"),
+                                "actionable_count": schema_prop("integer"),
+                                "unblocks_count": schema_prop("integer"),
+                                "highest_impact": schema_prop("string"),
+                                "impact_reason": schema_prop("string"),
+                            }
+                        },
                     }
                 },
                 "status": {"type": "object"},

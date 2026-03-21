@@ -475,13 +475,13 @@ fn semantic_panel_block<'a>(title: &'a str, focused: bool, tone: SemanticTone) -
 
 fn push_chip(line: &mut RichLine, label: &str, tone: SemanticTone) {
     line.push_span(RichSpan::styled(
-        format!("[{}]", truncate_display(label, 32)),
+        truncate_display(label, 32),
         tokens::chip_style(tone),
     ));
 }
 
 fn push_metric_chip(line: &mut RichLine, label: &str, value: &str, tone: SemanticTone) {
-    push_chip(line, &format!("{label} {value}"), tone);
+    push_chip(line, &format!("{label}={value}"), tone);
 }
 
 fn push_chip_separator(line: &mut RichLine) {
@@ -498,14 +498,13 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
         line.push_span(RichSpan::styled("bvr", tokens::header()));
         line.push_span(RichSpan::raw(" "));
         push_chip(&mut line, app.mode.label(), SemanticTone::Accent);
-        push_chip_separator(&mut line);
-        push_metric_chip(
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_chip(
             &mut line,
-            "issues",
             &format!("{visible_count}/{total_count}"),
             SemanticTone::Neutral,
         );
-        push_chip_separator(&mut line);
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
         push_chip(
             &mut line,
             app.list_filter.label(),
@@ -529,20 +528,20 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
 
     let mut line = RichLine::new();
     line.push_span(RichSpan::styled("bvr", tokens::header()));
-    line.push_span(RichSpan::styled(" ", tokens::dim()));
+    line.push_span(RichSpan::styled(" | mode=", tokens::dim()));
     push_chip(&mut line, &mode_label, SemanticTone::Accent);
-    push_chip_separator(&mut line);
+    line.push_span(RichSpan::styled(" | focus=", tokens::dim()));
     push_chip(&mut line, app.focus.label(), SemanticTone::Warning);
-    push_chip_separator(&mut line);
+    line.push_span(RichSpan::styled(" | ", tokens::dim()));
     push_metric_chip(
         &mut line,
         "issues",
         &format!("{visible_count}/{total_count}"),
         SemanticTone::Neutral,
     );
-    push_chip_separator(&mut line);
+    line.push_span(RichSpan::styled(" | ", tokens::dim()));
     push_metric_chip(&mut line, "filter", &filter_label, SemanticTone::Muted);
-    push_chip_separator(&mut line);
+    line.push_span(RichSpan::styled(" | ", tokens::dim()));
     push_metric_chip(
         &mut line,
         "sort",
@@ -550,17 +549,14 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
         SemanticTone::Neutral,
     );
     if app.slow_metrics_pending {
-        push_chip_separator(&mut line);
-        push_chip(&mut line, "metrics computing", SemanticTone::Warning);
+        line.push_span(RichSpan::styled(" | metrics: ", tokens::dim()));
+        push_chip(&mut line, "computing...", SemanticTone::Warning);
     }
-    push_chip_separator(&mut line);
+    line.push_span(RichSpan::styled(" | ", tokens::dim()));
     push_chip(&mut line, "? help", SemanticTone::Muted);
-    push_chip_separator(&mut line);
+    line.push_span(RichSpan::styled(" | ", tokens::dim()));
     push_chip(&mut line, "Tab focus", SemanticTone::Muted);
-    if matches!(bp, Breakpoint::Wide) {
-        push_chip_separator(&mut line);
-        push_chip(&mut line, "Esc back/quit", SemanticTone::Muted);
-    }
+    line.push_span(RichSpan::styled(" |", tokens::dim()));
     RichText::from_lines([line])
 }
 
@@ -571,7 +567,7 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
 
 /// Status chip: coloured icon + abbreviated status text.
 /// Example output: `● open` (blue), `▶ in_progress` (yellow), `✖ closed` (green).
-fn status_chip(status: &str) -> Vec<RichSpan> {
+fn status_chip(status: &str) -> Vec<RichSpan<'static>> {
     let normalized = status.trim().to_ascii_lowercase();
     let (icon, label) = match normalized.as_str() {
         "open" => ("●", "open"),
@@ -593,21 +589,21 @@ fn status_chip(status: &str) -> Vec<RichSpan> {
 
 /// Priority badge: coloured priority indicator.
 /// Example output: `P0` (red), `P2` (blue).
-fn priority_badge(priority: i32) -> RichSpan {
+fn priority_badge(priority: i32) -> RichSpan<'static> {
     let prio = priority.clamp(0, 4) as u8;
     RichSpan::styled(format!("P{prio}"), tokens::priority_style(prio).bold())
 }
 
 /// Type badge: single-letter issue type with dim styling.
 /// Example output: `T` (task), `B` (bug), `E` (epic).
-fn type_badge(issue_type: &str) -> RichSpan {
+fn type_badge(issue_type: &str) -> RichSpan<'static> {
     let icon = type_icon(issue_type);
     RichSpan::styled(icon, tokens::dim())
 }
 
 /// Metric strip: compact inline metric display with label and mini bar.
 /// Example output: `PR ██░░░░ 0.42` for PageRank.
-fn metric_strip(label: &str, value: f64, max_value: f64) -> Vec<RichSpan> {
+fn metric_strip(label: &str, value: f64, max_value: f64) -> Vec<RichSpan<'static>> {
     let bar = mini_bar(value, max_value);
     let formatted = format!("{value:.2}");
     vec![
@@ -619,7 +615,7 @@ fn metric_strip(label: &str, value: f64, max_value: f64) -> Vec<RichSpan> {
 
 /// Blocker indicator: shows blocking state with colour coding.
 /// Returns empty vec if the issue has no blockers and blocks nothing.
-fn blocker_indicator(open_blockers: usize, blocks_count: usize) -> Vec<RichSpan> {
+fn blocker_indicator(open_blockers: usize, blocks_count: usize) -> Vec<RichSpan<'static>> {
     if open_blockers > 0 {
         vec![RichSpan::styled(
             format!("⊘{open_blockers}"),
@@ -651,7 +647,7 @@ fn panel_header<'a>(title: &'a str, subtitle: Option<&'a str>) -> RichLine {
 }
 
 /// Label chips: coloured label tags inline.
-fn label_chips(labels: &[String]) -> Vec<RichSpan> {
+fn label_chips(labels: &[String]) -> Vec<RichSpan<'static>> {
     let mut spans = Vec::new();
     for (i, label) in labels.iter().enumerate() {
         if i > 0 {
@@ -10880,7 +10876,7 @@ fn summary_line_from_pairs(
     for part in line.split(" | ") {
         let (label, value) = part.split_once(": ")?;
         if wrote_any {
-            out.push_span(RichSpan::styled("  ", tokens::dim()));
+            out.push_span(RichSpan::styled(" | ", tokens::dim()));
         }
         out.push_span(RichSpan::styled(format!("{label}:"), tokens::dim()));
         out.push_span(RichSpan::raw(" "));
@@ -10892,9 +10888,10 @@ fn summary_line_from_pairs(
 
 fn styled_detail_summary_line(line: &str) -> Option<RichLine> {
     if line.ends_with(':') && !line.starts_with("  ") {
-        let mut out = RichLine::new();
-        push_chip(&mut out, line.trim_end_matches(':'), SemanticTone::Accent);
-        return Some(out);
+        return Some(RichLine::from_spans([RichSpan::styled(
+            line,
+            tokens::chip_style(SemanticTone::Accent),
+        )]));
     }
 
     if line.starts_with("Status: ") {
@@ -10907,21 +10904,11 @@ fn styled_detail_summary_line(line: &str) -> Option<RichLine> {
         });
     }
 
-    if line.starts_with("Assignee: ") || line.starts_with("Created: ") || line.starts_with("Closed: ")
-    {
-        return summary_line_from_pairs(line, |label, _| match label {
-            "Due" => SemanticTone::Warning,
-            "Closed" => SemanticTone::Muted,
-            "Labels" => SemanticTone::Accent,
-            _ => SemanticTone::Neutral,
-        });
-    }
-
     None
 }
 
 fn command_hint_width(hint: CommandHint<'_>) -> usize {
-    display_width(hint.key) + 2 + 1 + display_width(hint.desc)
+    display_width(hint.key) + 1 + display_width(hint.desc)
 }
 
 fn command_hint_line(hints: &[CommandHint<'_>]) -> RichLine {
@@ -11273,12 +11260,14 @@ mod tests {
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
         ListSort, ModalOverlay, MouseButton, MouseEvent, MouseEventKind, Msg, ViewMode,
         background_warning_message, buffer_to_text, cached_detail_content_area, center_display,
+        build_header_text,
         command_hint_width, compact_history_duration_label, decide_background_tick, display_width,
         fit_display, history_legacy_lifecycle_lines, legacy_history_author_initials,
         blocker_indicator, issue_scan_line, label_chips, metric_strip, panel_header,
         priority_badge, record_view_size, render_debug_view, saturating_scroll_offset,
         section_separator, should_apply_background_reload, sprint_reference_now, status_chip,
-        truncate_display, type_badge, wrap_command_hints,
+        styled_detail_summary_line, truncate_display, type_badge, wrap_command_hints,
+        SemanticTone,
     };
     use crate::analysis::Analyzer;
     use crate::analysis::git_history::{
@@ -11289,6 +11278,7 @@ mod tests {
     use chrono::Utc;
     use ftui::core::event::{KeyCode, Modifiers};
     use ftui::runtime::{Cmd, Model};
+    use ftui::text::{Line as RichLine, Span as RichSpan};
     use std::cell::Cell;
     use std::collections::BTreeMap;
 
@@ -14525,7 +14515,7 @@ mod tests {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 60);
         assert!(h.contains("bvr"), "header should contain 'bvr'");
-        assert!(h.contains("[Main]"), "narrow header should show mode chip");
+        assert!(h.contains("Main"), "narrow header should show mode");
         assert!(
             !h.contains("Esc back/quit"),
             "narrow header should remain compact"
@@ -14536,20 +14526,17 @@ mod tests {
     fn snapshot_medium_header_is_full() {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 100);
-        assert!(h.contains("[Main]"), "medium header should show mode chip");
-        assert!(h.contains("[List]"), "medium header should show focus chip");
-        assert!(h.contains("[issues "), "medium header should show issues metric chip");
+        assert!(h.contains("mode=Main"), "medium header should show mode=");
+        assert!(h.contains("focus=list"), "medium header should show focus=");
+        assert!(h.contains("issues=3/3"), "medium header should show issues metric");
     }
 
     #[test]
     fn snapshot_wide_header_is_full() {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 140);
-        assert!(h.contains("[sort "), "wide header should show sort metric chip");
-        assert!(
-            h.contains("[Esc back/quit]"),
-            "wide header should show keybinding hints"
-        );
+        assert!(h.contains("sort=default"), "wide header should show sort metric");
+        assert!(h.ends_with(" |"), "wide header should preserve trailing delimiter");
     }
 
     #[test]
@@ -14558,7 +14545,7 @@ mod tests {
         app.slow_metrics_pending = true;
         let h = header_for_width(&app, 120);
         assert!(
-            h.contains("[metrics computing]"),
+            h.contains("metrics: computing..."),
             "header should surface pending metrics chip: {h}"
         );
     }
@@ -15400,7 +15387,7 @@ mod tests {
     fn history_status_line_shows_legacy_mode_indicator() {
         let bead_view =
             render_debug_view(sample_issues(), "history", 100, 30).expect("history view renders");
-        assert!(bead_view.contains("[History ◈ Beads]"));
+        assert!(bead_view.contains("mode=History ◈ Beads"));
 
         let mut app = new_app(ViewMode::History, 0);
         app.handle_key(KeyCode::Char('v'), Modifiers::NONE);
@@ -15408,7 +15395,7 @@ mod tests {
         let mut frame = ftui::render::frame::Frame::new(100, 30, &mut pool);
         app.view(&mut frame);
         let git_view = buffer_to_text(&frame.buffer, &pool);
-        assert!(git_view.contains("[History ◉ Git]"));
+        assert!(git_view.contains("mode=History ◉ Git"));
     }
 
     #[test]
@@ -15646,7 +15633,6 @@ mod tests {
             desc: "cmd",
         };
         let width = command_hint_width(hint);
-        // ⌘ is 1 cell wide in most terminals
         assert_eq!(width, display_width("⌘") + 1 + display_width("cmd"));
     }
 
@@ -15669,8 +15655,8 @@ mod tests {
 
         let wrapped = wrap_command_hints(&hints, 18);
         assert_eq!(wrapped.lines().len(), 2);
-        assert_eq!(wrapped.lines()[0].to_plain_text(), "[Tab] mode");
-        assert_eq!(wrapped.lines()[1].to_plain_text(), "[/] search | [O] edit");
+        assert_eq!(wrapped.lines()[0].to_plain_text(), "Tab mode");
+        assert_eq!(wrapped.lines()[1].to_plain_text(), "/ search | O edit");
 
         let first_line = wrapped.lines()[0].spans();
         let second_line = wrapped.lines()[1].spans();
@@ -15725,10 +15711,10 @@ mod tests {
         assert_eq!(
             plain_lines,
             vec![
-                "[b/i/g/h] modes".to_string(),
-                "[/] search | [s] sort".to_string(),
-                "[p] hints | [C] copy".to_string(),
-                "[x] export | [O] edit".to_string(),
+                "b/i/g/h modes".to_string(),
+                "/ search | s sort".to_string(),
+                "p hints | C copy".to_string(),
+                "x export | O edit".to_string(),
             ]
         );
     }
@@ -15739,7 +15725,7 @@ mod tests {
             .expect("styled summary line");
         assert_eq!(
             line.to_plain_text(),
-            "Status: [open]  Priority: [p1]  Type: [bug]  State: [ready]"
+            "Status: open | Priority: p1 | Type: bug | State: ready"
         );
         let spans = line.spans();
         assert_eq!(spans[2].style, Some(tokens::chip_style(SemanticTone::Accent)));
@@ -19812,7 +19798,7 @@ mod tests {
         // Step 1: Start in Main — verify issue list
         let text = journey_capture(&app, w, h, "main_list_start", &mut caps);
         assert!(
-            text.contains("[Main]") || text.contains("Issues"),
+            text.contains("mode=Main") || text.contains("Issues"),
             "main should show issue list: {text}"
         );
 
@@ -19872,7 +19858,7 @@ mod tests {
         app.update(key(KeyCode::Escape));
         assert_eq!(app.mode, ViewMode::Main);
         let text = journey_capture(&app, w, h, "main_return", &mut caps);
-        assert!(text.contains("[Main]") || text.contains("Issues"));
+        assert!(text.contains("mode=Main") || text.contains("Issues"));
 
         // Snapshot the full journey artifact
         let artifact = journey_artifact("main→board→graph→insights→main", w, h, &caps);
@@ -20008,9 +19994,7 @@ mod tests {
         // Main with no issues
         let text = journey_capture(&app, w, h, "empty_main", &mut caps);
         assert!(
-            text.contains("[issues 0/0]")
-                || text.contains("No issues")
-                || text.contains("[Main]"),
+            text.contains("issues=0") || text.contains("No issues") || text.contains("mode=Main"),
             "empty main should render: {text}"
         );
 
@@ -20096,5 +20080,121 @@ mod tests {
 
         let artifact = journey_artifact("history-deep-dive", w, h, &caps);
         insta::assert_snapshot!(artifact);
+    }
+
+    // -- Visual primitive tests ------------------------------------------------
+
+    /// Convert a slice of `RichSpan` into plain text for test assertions.
+    fn spans_text(spans: &[RichSpan<'_>]) -> String {
+        RichLine::from_spans(spans.to_vec()).to_plain_text()
+    }
+
+    /// Convert a single `RichSpan` into plain text for test assertions.
+    fn span_text(span: &RichSpan<'_>) -> String {
+        RichLine::from_spans([span.clone()]).to_plain_text()
+    }
+
+    #[test]
+    fn status_chip_covers_all_known_statuses() {
+        for status in &[
+            "open", "in_progress", "blocked", "closed", "deferred",
+            "review", "pinned", "tombstone", "hooked",
+        ] {
+            let spans = status_chip(status);
+            assert_eq!(spans.len(), 2, "status_chip({status}) should return 2 spans");
+            let text = spans_text(&spans);
+            assert!(!text.contains('?'), "known status {status} got '?' icon");
+        }
+    }
+
+    #[test]
+    fn status_chip_unknown_shows_question() {
+        let text = spans_text(&status_chip("nonexistent"));
+        assert!(text.contains('?'));
+        assert!(text.contains("unkn"));
+    }
+
+    #[test]
+    fn priority_badge_clamps_range() {
+        assert_eq!(span_text(&priority_badge(0)), "P0");
+        assert_eq!(span_text(&priority_badge(4)), "P4");
+        assert_eq!(span_text(&priority_badge(-5)), "P0");
+        assert_eq!(span_text(&priority_badge(99)), "P4");
+    }
+
+    #[test]
+    fn type_badge_maps_types() {
+        assert_eq!(span_text(&type_badge("task")), "T");
+        assert_eq!(span_text(&type_badge("bug")), "B");
+        assert_eq!(span_text(&type_badge("epic")), "E");
+    }
+
+    #[test]
+    fn blocker_indicator_states() {
+        assert!(blocker_indicator(0, 0).is_empty());
+        assert!(spans_text(&blocker_indicator(3, 0)).contains('3'));
+        assert!(spans_text(&blocker_indicator(0, 5)).contains('5'));
+    }
+
+    #[test]
+    fn metric_strip_content() {
+        let text = spans_text(&metric_strip("PR", 0.42, 1.0));
+        assert!(text.contains("PR"));
+        assert!(text.contains("0.42"));
+    }
+
+    #[test]
+    fn section_separator_caps_width() {
+        assert!(display_width(&section_separator(200).to_plain_text()) <= 120);
+    }
+
+    #[test]
+    fn panel_header_content() {
+        let h = panel_header("Issues", Some("3 open")).to_plain_text();
+        assert!(h.contains("Issues"));
+        assert!(h.contains("3 open"));
+        assert_eq!(panel_header("Graph", None).to_plain_text(), "Graph");
+    }
+
+    #[test]
+    fn label_chips_content() {
+        let text = spans_text(&label_chips(&["backend".into(), "urgent".into()]));
+        assert!(text.contains("[backend]"));
+        assert!(text.contains("[urgent]"));
+        assert!(label_chips(&[]).is_empty());
+    }
+
+    #[test]
+    fn issue_scan_line_fields() {
+        let issue = Issue {
+            id: "BD-42".into(), title: "Fix widget".into(),
+            status: "open".into(), priority: 1, issue_type: "bug".into(),
+            ..Default::default()
+        };
+        let text = issue_scan_line(&issue, false, 0, 0, 80).to_plain_text();
+        assert!(text.contains("BD-42"), "id missing: {text}");
+        assert!(text.contains("Fix widget"), "title missing: {text}");
+        assert!(text.contains("P1"), "priority missing: {text}");
+    }
+
+    #[test]
+    fn issue_scan_line_selected_marker() {
+        let issue = Issue {
+            id: "A".into(), title: "Test".into(),
+            status: "open".into(), issue_type: "task".into(),
+            ..Default::default()
+        };
+        assert!(issue_scan_line(&issue, true, 0, 0, 60).to_plain_text().starts_with('▸'));
+    }
+
+    #[test]
+    fn issue_scan_line_blocker() {
+        let issue = Issue {
+            id: "A".into(), title: "Blocked".into(),
+            status: "blocked".into(), issue_type: "task".into(),
+            ..Default::default()
+        };
+        let text = issue_scan_line(&issue, false, 2, 0, 80).to_plain_text();
+        assert!(text.contains("⊘2"), "blocker missing: {text}");
     }
 }

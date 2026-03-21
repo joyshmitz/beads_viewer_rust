@@ -11395,24 +11395,17 @@ pub fn render_debug_view(
     width: u16,
     height: u16,
 ) -> Result<String> {
-    let mode = match view_name {
-        "insights" => ViewMode::Insights,
-        "board" => ViewMode::Board,
-        "history" => ViewMode::History,
-        "main" => ViewMode::Main,
-        "graph" => ViewMode::Graph,
-        other => {
-            return Err(BvrError::InvalidArgument(format!(
-                "Unknown debug-render view '{other}'. Supported: insights, board, history, main, graph"
-            )));
-        }
-    };
+    let (mode, kind) = parse_debug_render_target(view_name)?;
 
     let app = new_app(issues, mode);
     let mut pool = ftui::GraphemePool::default();
     let mut frame = Frame::new(width, height, &mut pool);
     app.view(&mut frame);
-    Ok(buffer_to_text(&frame.buffer, &pool))
+    match kind {
+        DebugRenderKind::View => Ok(buffer_to_text(&frame.buffer, &pool)),
+        DebugRenderKind::Layout => Ok(render_layout_debug_report(&app, width, height)),
+        DebugRenderKind::HitTest => Ok(render_hittest_debug_report(&app, width, height)),
+    }
 }
 
 /// Convert a rendered buffer to a plain-text string (one line per row,
@@ -11450,6 +11443,179 @@ fn buffer_to_text(buf: &ftui::Buffer, pool: &ftui::GraphemePool) -> String {
         out.push_str(trimmed);
     }
     out
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DebugRenderKind {
+    View,
+    Layout,
+    HitTest,
+}
+
+fn parse_debug_render_target(view_name: &str) -> Result<(ViewMode, DebugRenderKind)> {
+    let (base_name, kind) = if let Some(base) = view_name.strip_suffix("-layout") {
+        (base, DebugRenderKind::Layout)
+    } else if let Some(base) = view_name.strip_suffix("-hittest") {
+        (base, DebugRenderKind::HitTest)
+    } else {
+        (view_name, DebugRenderKind::View)
+    };
+
+    let mode = match base_name {
+        "insights" => ViewMode::Insights,
+        "board" => ViewMode::Board,
+        "history" => ViewMode::History,
+        "main" => ViewMode::Main,
+        "graph" => ViewMode::Graph,
+        other => {
+            return Err(BvrError::InvalidArgument(format!(
+                "Unknown debug-render view '{other}'. Supported: insights, board, history, main, graph"
+            )));
+        }
+    };
+
+    Ok((mode, kind))
+}
+
+fn rect_debug_line(label: &str, area: Rect) -> String {
+    format!(
+        "{label:<14} x={} y={} w={} h={}",
+        area.x, area.y, area.width, area.height
+    )
+}
+
+fn debug_layout_rects(app: &BvrApp, width: u16, height: u16) -> Vec<(&'static str, Rect)> {
+    let full = Rect::from_size(width, height);
+    let rows = Flex::vertical()
+        .constraints([
+            Constraint::Fixed(1),
+            Constraint::Min(3),
+            Constraint::Fixed(1),
+        ])
+        .split(full);
+    let body = rows[1];
+    let bp = Breakpoint::from_width(width);
+    let graph_single_pane = matches!(app.mode, ViewMode::Graph) && matches!(bp, Breakpoint::Narrow);
+    let history_layout = if matches!(app.mode, ViewMode::History) {
+        HistoryLayout::from_width(body.width)
+    } else {
+        HistoryLayout::Narrow
+    };
+    let history_multi_pane =
+        matches!(app.mode, ViewMode::History) && history_layout.has_middle_pane();
+    let mut rects = vec![("header", rows[0]), ("body", body), ("footer", rows[2])];
+
+    if graph_single_pane {
+        rects.push(("detail", body));
+        return rects;
+    }
+
+    if history_multi_pane {
+        if matches!(history_layout, HistoryLayout::Wide)
+            && matches!(app.history_view_mode, HistoryViewMode::Bead)
+        {
+            let panes = Flex::horizontal()
+                .constraints([
+                    Constraint::Percentage(20.0),
+                    Constraint::Percentage(22.0),
+                    Constraint::Percentage(25.0),
+                    Constraint::Percentage(33.0),
+                ])
+                .split(body);
+            rects.push(("list", panes[0]));
+            rects.push(("timeline", panes[1]));
+            rects.push(("middle", panes[2]));
+            rects.push(("detail", panes[3]));
+        } else {
+            let pane_widths = if matches!(history_layout, HistoryLayout::Wide)
+                && matches!(app.history_view_mode, HistoryViewMode::Git)
+            {
+                [25.0, 30.0, 45.0]
+            } else {
+                [30.0, 35.0, 35.0]
+            };
+            let panes = Flex::horizontal()
+                .constraints([
+                    Constraint::Percentage(pane_widths[0]),
+                    Constraint::Percentage(pane_widths[1]),
+                    Constraint::Percentage(pane_widths[2]),
+                ])
+                .split(body);
+            rects.push(("list", panes[0]));
+            rects.push(("middle", panes[1]));
+            rects.push(("detail", panes[2]));
+        }
+        return rects;
+    }
+
+    let panes = Flex::horizontal()
+        .constraints([
+            Constraint::Percentage(bp.list_pct()),
+            Constraint::Percentage(bp.detail_pct()),
+        ])
+        .split(body);
+    rects.push(("list", panes[0]));
+    rects.push(("detail", panes[1]));
+    rects
+}
+
+fn render_layout_debug_report(app: &BvrApp, width: u16, height: u16) -> String {
+    let rects = debug_layout_rects(app, width, height);
+    let mut lines = vec![
+        format!(
+            "Layout Debug | view={} | focus={}",
+            app.mode.label(),
+            app.focus.label()
+        ),
+        format!(
+            "viewport       w={} h={} breakpoint={:?}",
+            width,
+            height,
+            Breakpoint::from_width(width)
+        ),
+    ];
+    lines.extend(
+        rects
+            .into_iter()
+            .map(|(label, area)| rect_debug_line(label, area)),
+    );
+
+    let detail_area = cached_detail_content_area();
+    if detail_area.width > 0 && detail_area.height > 0 {
+        lines.push(rect_debug_line("detail-content", detail_area));
+    }
+
+    lines.join("\n")
+}
+
+fn render_hittest_debug_report(app: &BvrApp, width: u16, height: u16) -> String {
+    let mut lines = vec![
+        format!(
+            "HitTest Debug | view={} | focus={}",
+            app.mode.label(),
+            app.focus.label()
+        ),
+        format!("viewport       w={} h={}", width, height),
+    ];
+
+    let detail_area = cached_detail_content_area();
+    lines.push(rect_debug_line("detail-content", detail_area));
+
+    if let Some(link_area) = app.current_detail_link_row_area() {
+        lines.push(rect_debug_line("link-row", link_area));
+        let center_x = link_area.x.saturating_add(link_area.width / 2);
+        let center_y = link_area.y;
+        lines.push(format!(
+            "link-center    x={} y={} inside={}",
+            center_x,
+            center_y,
+            rect_contains(link_area, center_x, center_y)
+        ));
+    } else {
+        lines.push("link-row       none".to_string());
+    }
+
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -12019,14 +12185,30 @@ mod tests {
 
     #[test]
     fn render_debug_view_supports_all_named_views() {
-        for view in ["insights", "board", "history", "main", "graph"] {
+        for view in [
+            "insights",
+            "board",
+            "history",
+            "main",
+            "graph",
+            "main-layout",
+            "graph-layout",
+            "main-hittest",
+        ] {
             let output =
                 render_debug_view(sample_issues(), view, 80, 12).expect("debug render succeeds");
-            assert_eq!(
-                output.lines().count(),
-                12,
-                "expected one line per requested row for view {view}"
-            );
+            if view.contains("-layout") || view.contains("-hittest") {
+                assert!(
+                    !output.is_empty(),
+                    "diagnostic debug render should return content for view {view}"
+                );
+            } else {
+                assert_eq!(
+                    output.lines().count(),
+                    12,
+                    "expected one line per requested row for view {view}"
+                );
+            }
         }
     }
 
@@ -12054,6 +12236,28 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("Unknown debug-render view 'bogus'"));
         assert!(message.contains("insights, board, history, main, graph"));
+    }
+
+    #[test]
+    fn render_debug_view_layout_reports_pane_rects() {
+        let output =
+            render_debug_view(sample_issues(), "main-layout", 100, 20).expect("layout debug");
+        assert!(output.contains("Layout Debug | view=Main"));
+        assert!(output.contains("header"));
+        assert!(output.contains("list"));
+        assert!(output.contains("detail"));
+        assert!(output.contains("detail-content"));
+    }
+
+    #[test]
+    fn render_debug_view_hittest_reports_link_row() {
+        let mut issues = sample_issues();
+        issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        let output = render_debug_view(issues, "main-hittest", 100, 20).expect("hittest debug");
+        assert!(output.contains("HitTest Debug | view=Main"));
+        assert!(output.contains("detail-content"));
+        assert!(output.contains("link-row"));
+        assert!(output.contains("link-center"));
     }
 
     #[test]

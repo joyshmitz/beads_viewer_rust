@@ -337,15 +337,21 @@ pub struct QuickPick {
 pub struct Recommendation {
     pub id: String,
     pub title: String,
+    #[serde(rename = "type")]
+    pub issue_type: String,
+    pub status: String,
+    pub priority: i32,
+    pub labels: Vec<String>,
     pub score: f64,
     pub impact_score: f64,
     pub confidence: f64,
+    pub action: String,
     pub reasons: Vec<String>,
     pub unblocks: usize,
-    pub status: String,
-    pub priority: i32,
-    pub issue_type: String,
-    pub labels: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unblocks_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blocked_by: Vec<String>,
     pub assignee: String,
     pub claim_command: String,
     pub show_command: String,
@@ -581,18 +587,46 @@ pub fn compute_triage(
 
         score_by_id.insert(issue.id.clone(), score);
 
+        let open_blocker_ids: Vec<String> = graph
+            .open_blockers(&issue.id)
+            .into_iter()
+            .collect();
+        let unblocks_ids: Vec<String> = graph
+            .dependents(&issue.id)
+            .into_iter()
+            .filter(|dep_id| {
+                graph
+                    .issue(dep_id)
+                    .is_some_and(|dep| dep.is_open_like())
+            })
+            .collect();
+
+        let action = if !open_blocker_ids.is_empty() {
+            format!(
+                "Work on {} first to unblock this",
+                open_blocker_ids.first().unwrap_or(&String::new())
+            )
+        } else if issue.normalized_status() == "in_progress" {
+            "Continue work on this issue".to_string()
+        } else {
+            "Start work on this issue".to_string()
+        };
+
         recommendations.push(Recommendation {
             id: issue.id.clone(),
             title: issue.title.clone(),
+            issue_type: issue.issue_type.clone(),
+            status: issue.status.clone(),
+            priority: issue.priority,
+            labels: issue.labels.clone(),
             score,
             impact_score: base_score,
             confidence: (0.5 + 0.5 * score).clamp(0.0, 1.0),
+            action,
             reasons,
             unblocks,
-            status: issue.status.clone(),
-            priority: issue.priority,
-            issue_type: issue.issue_type.clone(),
-            labels: issue.labels.clone(),
+            unblocks_ids,
+            blocked_by: open_blocker_ids,
             assignee: issue.assignee.clone(),
             claim_command: format!("br update {} --status=in_progress", issue.id),
             show_command: format!("br show {}", issue.id),

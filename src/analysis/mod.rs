@@ -415,18 +415,27 @@ impl Analyzer {
                 reasons.push("ready to execute now".to_string());
             }
 
+            let action = if issue.normalized_status() == "in_progress" {
+                "Continue work on this issue".to_string()
+            } else {
+                "Start work on this issue".to_string()
+            };
+
             results.push(Recommendation {
                 id: issue.id.clone(),
                 title: issue.title.clone(),
+                issue_type: issue.issue_type.clone(),
+                status: issue.status.clone(),
+                priority: issue.priority,
+                labels: issue.labels.clone(),
                 score,
                 impact_score: score,
                 confidence: (0.5 + 0.5 * score).clamp(0.0, 1.0),
+                action,
                 reasons,
                 unblocks,
-                status: issue.status.clone(),
-                priority: issue.priority,
-                issue_type: issue.issue_type.clone(),
-                labels: issue.labels.clone(),
+                unblocks_ids: Vec::new(),
+                blocked_by: Vec::new(),
                 assignee: issue.assignee.clone(),
                 claim_command: format!("br update {} --status=in_progress", issue.id),
                 show_command: format!("br show {}", issue.id),

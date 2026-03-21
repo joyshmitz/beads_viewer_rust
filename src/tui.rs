@@ -11408,6 +11408,12 @@ pub fn render_debug_view(
         DebugRenderKind::View => Ok(buffer_to_text(&frame.buffer, &pool)),
         DebugRenderKind::Layout => Ok(render_layout_debug_report(&app, width, height)),
         DebugRenderKind::HitTest => Ok(render_hittest_debug_report(&app, width, height)),
+        DebugRenderKind::Capture => Ok(render_capture_debug_report(
+            &app,
+            &buffer_to_text(&frame.buffer, &pool),
+            width,
+            height,
+        )),
     }
 }
 
@@ -11453,6 +11459,7 @@ enum DebugRenderKind {
     View,
     Layout,
     HitTest,
+    Capture,
 }
 
 fn parse_debug_render_target(view_name: &str) -> Result<(ViewMode, DebugRenderKind)> {
@@ -11460,6 +11467,8 @@ fn parse_debug_render_target(view_name: &str) -> Result<(ViewMode, DebugRenderKi
         (base, DebugRenderKind::Layout)
     } else if let Some(base) = view_name.strip_suffix("-hittest") {
         (base, DebugRenderKind::HitTest)
+    } else if let Some(base) = view_name.strip_suffix("-capture") {
+        (base, DebugRenderKind::Capture)
     } else {
         (view_name, DebugRenderKind::View)
     };
@@ -11621,6 +11630,31 @@ fn render_hittest_debug_report(app: &BvrApp, width: u16, height: u16) -> String 
     lines.join("\n")
 }
 
+fn render_capture_debug_report(app: &BvrApp, rendered: &str, width: u16, height: u16) -> String {
+    format!(
+        "Capture Debug | view={} | focus={} | selected={} | trace-len={}\nviewport       w={} h={}\n\n--- render ---\n{}\n\n--- layout ---\n{}\n\n--- hittest ---\n{}",
+        app.mode.label(),
+        app.focus.label(),
+        app.selected,
+        debug_trace_len(app),
+        width,
+        height,
+        rendered,
+        render_layout_debug_report(app, width, height),
+        render_hittest_debug_report(app, width, height),
+    )
+}
+
+#[cfg(test)]
+fn debug_trace_len(app: &BvrApp) -> usize {
+    app.key_trace.len()
+}
+
+#[cfg(not(test))]
+fn debug_trace_len(_app: &BvrApp) -> usize {
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -11649,6 +11683,21 @@ mod tests {
     use ftui::text::{Line as RichLine, Span as RichSpan};
     use std::cell::Cell;
     use std::collections::BTreeMap;
+    use std::fmt::Write as _;
+
+    #[derive(Debug, Clone)]
+    struct DebugReplayCapture {
+        step: String,
+        mode: ViewMode,
+        focus: FocusPane,
+        selected: usize,
+        width: u16,
+        height: u16,
+        trace_len: usize,
+        rendered: String,
+        layout: String,
+        hittest: String,
+    }
 
     fn sample_issues() -> Vec<Issue> {
         vec![
@@ -12199,10 +12248,11 @@ mod tests {
             "graph-layout",
             "main-hittest",
             "graph-hittest",
+            "main-capture",
         ] {
             let output =
                 render_debug_view(sample_issues(), view, 80, 12).expect("debug render succeeds");
-            if view.contains("-layout") || view.contains("-hittest") {
+            if view.contains("-layout") || view.contains("-hittest") || view.contains("-capture") {
                 assert!(
                     !output.is_empty(),
                     "diagnostic debug render should return content for view {view}"
@@ -12268,7 +12318,7 @@ mod tests {
     #[test]
     fn render_debug_view_history_layout_reports_timeline_rects() {
         let output =
-            render_debug_view(sample_issues(), "history-layout", 140, 24).expect("layout debug");
+            render_debug_view(sample_issues(), "history-layout", 160, 24).expect("layout debug");
         assert!(output.contains("Layout Debug | view=History"));
         assert!(output.contains("timeline"));
         assert!(output.contains("middle"));
@@ -12284,6 +12334,41 @@ mod tests {
         assert!(output.contains("HitTest Debug | view=Graph"));
         assert!(output.contains("link-row"));
         assert!(output.contains("link-center"));
+    }
+
+    #[test]
+    fn render_debug_view_capture_includes_render_layout_and_hittest_sections() {
+        let mut issues = sample_issues();
+        issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        let output = render_debug_view(issues, "main-capture", 100, 20).expect("capture debug");
+        assert!(output.contains("Capture Debug | view=Main"));
+        assert!(output.contains("--- render ---"));
+        assert!(output.contains("--- layout ---"));
+        assert!(output.contains("--- hittest ---"));
+        assert!(output.contains("Layout Debug | view=Main"));
+        assert!(output.contains("HitTest Debug | view=Main"));
+    }
+
+    #[test]
+    fn debug_replay_artifact_tracks_responsive_layout_and_trace_growth() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        let mut captures = Vec::new();
+
+        capture_debug_replay(&app, 100, 24, "history_standard", &mut captures);
+        app.update(key(KeyCode::Char('j')));
+        app.update(key(KeyCode::Tab));
+        capture_debug_replay(&app, 160, 24, "history_wide_detail", &mut captures);
+
+        let artifact = debug_replay_artifact("history responsive replay", &captures);
+        assert!(artifact.contains("=== Debug Replay: history responsive replay ==="));
+        assert!(artifact.contains("trace-len=0"));
+        assert!(artifact.contains("trace-len=2"));
+        assert!(artifact.contains("size=100x24"));
+        assert!(artifact.contains("size=160x24"));
+        assert!(artifact.contains("breakpoint=Medium"));
+        assert!(artifact.contains("breakpoint=Wide"));
+        assert!(artifact.contains("timeline"));
+        assert!(artifact.contains("HitTest Debug | view=History"));
     }
 
     #[test]
@@ -17390,6 +17475,56 @@ mod tests {
         let mut frame = ftui::render::frame::Frame::new(width, height, &mut pool);
         app.view(&mut frame);
         super::buffer_to_text(&frame.buffer, &pool)
+    }
+
+    fn capture_debug_replay(
+        app: &BvrApp,
+        width: u16,
+        height: u16,
+        step: &str,
+        captures: &mut Vec<DebugReplayCapture>,
+    ) -> String {
+        let rendered = render_app(app, width, height);
+        captures.push(DebugReplayCapture {
+            step: step.to_string(),
+            mode: app.mode,
+            focus: app.focus,
+            selected: app.selected,
+            width,
+            height,
+            trace_len: app.key_trace.len(),
+            rendered: rendered.clone(),
+            layout: super::render_layout_debug_report(app, width, height),
+            hittest: super::render_hittest_debug_report(app, width, height),
+        });
+        rendered
+    }
+
+    fn debug_replay_artifact(journey_name: &str, captures: &[DebugReplayCapture]) -> String {
+        let mut out = String::new();
+        let _ = writeln!(out, "=== Debug Replay: {journey_name} ===");
+        let _ = writeln!(out);
+        for (idx, capture) in captures.iter().enumerate() {
+            let _ = writeln!(
+                out,
+                "--- Step {}: {} | view={} | focus={} | selected={} | size={}x{} | trace-len={} ---",
+                idx + 1,
+                capture.step,
+                capture.mode.label(),
+                capture.focus.label(),
+                capture.selected,
+                capture.width,
+                capture.height,
+                capture.trace_len
+            );
+            let _ = writeln!(out, "{}", capture.rendered);
+            let _ = writeln!(out);
+            let _ = writeln!(out, "{}", capture.layout);
+            let _ = writeln!(out);
+            let _ = writeln!(out, "{}", capture.hittest);
+            let _ = writeln!(out);
+        }
+        out
     }
 
     fn detail_link_click_point(app: &BvrApp, width: u16, height: u16) -> Option<(u16, u16)> {

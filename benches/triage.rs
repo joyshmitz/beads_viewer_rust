@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use bvr::analysis::Analyzer;
 use bvr::analysis::alerts::AlertOptions;
 use bvr::analysis::graph::AnalysisConfig;
+use bvr::analysis::label_intel::{compute_all_label_health, compute_cross_label_flow};
+use bvr::analysis::search::{SearchMode, SearchWeights, execute_search};
 use bvr::analysis::suggest::SuggestOptions;
 use bvr::analysis::triage::TriageOptions;
 use bvr::loader;
@@ -314,6 +316,54 @@ fn bench_stress_fixture(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_search(c: &mut Criterion) {
+    let mut group = c.benchmark_group("search");
+    for &size in &[100, 500, 1000] {
+        let issues = gen_dense(size);
+        let analyzer = Analyzer::new(issues);
+        group.bench_with_input(BenchmarkId::new("text", size), &analyzer, |b, a| {
+            b.iter(|| {
+                black_box(execute_search(
+                    "issue",
+                    &a.issues,
+                    &a.metrics,
+                    SearchMode::Text,
+                    &SearchWeights::default_preset(),
+                    20,
+                ))
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("hybrid", size), &analyzer, |b, a| {
+            b.iter(|| {
+                black_box(execute_search(
+                    "issue",
+                    &a.issues,
+                    &a.metrics,
+                    SearchMode::Hybrid,
+                    &SearchWeights::default_preset(),
+                    20,
+                ))
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_label_intel(c: &mut Criterion) {
+    let mut group = c.benchmark_group("label_intel");
+    for &size in &[100, 500] {
+        let issues = gen_dense(size);
+        let analyzer = Analyzer::new(issues);
+        group.bench_with_input(BenchmarkId::new("health", size), &analyzer, |b, a| {
+            b.iter(|| black_box(compute_all_label_health(&a.issues, &a.graph, &a.metrics)));
+        });
+        group.bench_with_input(BenchmarkId::new("flow", size), &analyzer, |b, a| {
+            b.iter(|| black_box(compute_cross_label_flow(&a.issues)));
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_analyzer_construction,
@@ -326,6 +376,8 @@ criterion_group!(
     bench_alerts,
     bench_history,
     bench_cycle_detection,
+    bench_search,
+    bench_label_intel,
     bench_real_fixture,
     bench_stress_fixture,
 );

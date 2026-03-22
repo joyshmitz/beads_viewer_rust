@@ -633,7 +633,7 @@ fn header_mode_tabs(app: &BvrApp, width: u16) -> Vec<HeaderModeTab> {
 
     for mode in header_tab_candidate_modes(app.mode, bp) {
         let label = mode.tab_text(bp);
-        let tab_width = u16::try_from(display_width(label)).unwrap_or(u16::MAX);
+        let tab_width = u16::try_from(display_width(&label)).unwrap_or(u16::MAX);
         if tab_width == 0 {
             continue;
         }
@@ -652,7 +652,7 @@ fn header_mode_tabs(app: &BvrApp, width: u16) -> Vec<HeaderModeTab> {
 
     if !tabs.iter().any(|tab| tab.mode == app.mode) {
         let label = app.mode.tab_text(bp);
-        let tab_width = u16::try_from(display_width(label)).unwrap_or(u16::MAX);
+        let tab_width = u16::try_from(display_width(&label)).unwrap_or(u16::MAX);
         let start_x = width.saturating_sub(tab_width.saturating_add(1));
         tabs.push(HeaderModeTab {
             mode: app.mode,

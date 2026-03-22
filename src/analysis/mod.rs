@@ -129,6 +129,22 @@ pub struct Insights {
     pub cores: Vec<CoreItem>,
     #[serde(rename = "Articulation")]
     pub articulation_points: Vec<String>,
+    #[serde(rename = "Keystones")]
+    pub keystones: Vec<String>,
+    #[serde(rename = "Orphans")]
+    pub orphans: Vec<String>,
+    #[serde(rename = "ClusterDensity")]
+    pub cluster_density: f64,
+    #[serde(rename = "Velocity")]
+    pub velocity: InsightsVelocity,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InsightsVelocity {
+    pub closed_last_7_days: usize,
+    pub closed_last_30_days: usize,
+    pub avg_days_to_close: i64,
+    pub weekly: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -309,6 +325,80 @@ impl Analyzer {
             .collect::<Vec<_>>();
         articulation_points.sort();
 
+        // Keystones: articulation points that also block others.
+        let mut keystones = articulation_points
+            .iter()
+            .filter(|id| {
+                self.metrics
+                    .blocks_count
+                    .get(id.as_str())
+                    .is_some_and(|&count| count > 0)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        keystones.sort();
+
+        // Orphans: open issues with no dependencies and no dependents.
+        let mut orphans = self
+            .issues
+            .iter()
+            .filter(|issue| {
+                issue.is_open_like()
+                    && self.graph.blockers(&issue.id).is_empty()
+                    && self.graph.dependents(&issue.id).is_empty()
+            })
+            .map(|issue| issue.id.clone())
+            .collect::<Vec<_>>();
+        orphans.sort();
+
+        // Cluster density: edge_count / (node_count * (node_count - 1))
+        let n = self.issues.len();
+        let edge_count: usize = self
+            .issues
+            .iter()
+            .map(|issue| issue.dependencies.iter().filter(|d| d.is_blocking()).count())
+            .sum();
+        let cluster_density = if n > 1 {
+            edge_count as f64 / (n * (n - 1)) as f64
+        } else {
+            0.0
+        };
+
+        // Velocity: closure stats from project health data.
+        let now = chrono::Utc::now();
+        let closed_7 = self
+            .issues
+            .iter()
+            .filter(|issue| {
+                issue
+                    .closed_at
+                    .is_some_and(|dt| (now - dt).num_days() <= 7)
+            })
+            .count();
+        let closed_30 = self
+            .issues
+            .iter()
+            .filter(|issue| {
+                issue
+                    .closed_at
+                    .is_some_and(|dt| (now - dt).num_days() <= 30)
+            })
+            .count();
+        let close_durations: Vec<i64> = self
+            .issues
+            .iter()
+            .filter_map(|issue| {
+                let created = issue.created_at?;
+                let closed = issue.closed_at?;
+                Some((closed - created).num_days())
+            })
+            .collect();
+        let avg_days = if close_durations.is_empty() {
+            0
+        } else {
+            close_durations.iter().sum::<i64>() / close_durations.len() as i64
+        };
+
         Insights {
             status: MetricStatus::computed(),
             bottlenecks,
@@ -322,6 +412,15 @@ impl Analyzer {
             eigenvector: top_metric_items(&self.metrics.eigenvector, 20),
             cores: top_core_items(&self.metrics.k_core, 20),
             articulation_points,
+            keystones,
+            orphans,
+            cluster_density,
+            velocity: InsightsVelocity {
+                closed_last_7_days: closed_7,
+                closed_last_30_days: closed_30,
+                avg_days_to_close: avg_days,
+                weekly: Vec::new(),
+            },
         }
     }
 

@@ -133,9 +133,9 @@ fn compute_impact_score(
         .get(&issue.id)
         .copied()
         .unwrap_or_default();
-    let br_raw = blocks as f64;
-    let br_norm = if ctx.total_open > 1 {
-        br_raw / ctx.max_blocks
+    let blocker_ratio_raw = blocks as f64;
+    let blocker_ratio_norm = if ctx.total_open > 1 {
+        blocker_ratio_raw / ctx.max_blocks
     } else {
         0.0
     };
@@ -225,15 +225,22 @@ fn compute_impact_score(
     // Assemble components with feedback-adjusted weights.
     let w_pr = W_PAGERANK * adj("PageRank");
     let w_bt = W_BETWEENNESS * adj("Betweenness");
-    let w_br = W_BLOCKER_RATIO * adj("BlockerRatio");
-    let w_st = W_STALENESS * adj("Staleness");
-    let w_pb = W_PRIORITY_BOOST * adj("PriorityBoost");
+    let weight_blocker_ratio = W_BLOCKER_RATIO * adj("BlockerRatio");
+    let weight_staleness = W_STALENESS * adj("Staleness");
+    let weight_priority_boost = W_PRIORITY_BOOST * adj("PriorityBoost");
     let w_tti = W_TIME_TO_IMPACT * adj("TimeToImpact");
     let w_urg = W_URGENCY * adj("Urgency");
     let w_risk = W_RISK * adj("Risk");
 
     // Renormalize so adjusted weights still sum to 1.0.
-    let w_sum = w_pr + w_bt + w_br + w_st + w_pb + w_tti + w_urg + w_risk;
+    let w_sum = w_pr
+        + w_bt
+        + weight_blocker_ratio
+        + weight_staleness
+        + weight_priority_boost
+        + w_tti
+        + w_urg
+        + w_risk;
     let norm = if w_sum > 0.0 { 1.0 / w_sum } else { 1.0 };
 
     let components = vec![
@@ -255,10 +262,10 @@ fn compute_impact_score(
         },
         ScoreComponent {
             name: "BlockerRatio",
-            weight: w_br * norm,
-            raw: br_raw,
-            normalized: br_norm,
-            weighted: w_br * norm * br_norm,
+            weight: weight_blocker_ratio * norm,
+            raw: blocker_ratio_raw,
+            normalized: blocker_ratio_norm,
+            weighted: weight_blocker_ratio * norm * blocker_ratio_norm,
             explanation: if blocks > 0 {
                 Some(format!("blocks {blocks} issue(s)"))
             } else {
@@ -267,10 +274,10 @@ fn compute_impact_score(
         },
         ScoreComponent {
             name: "Staleness",
-            weight: w_st * norm,
+            weight: weight_staleness * norm,
             raw: days_stale,
             normalized: staleness_norm,
-            weighted: w_st * norm * staleness_norm,
+            weighted: weight_staleness * norm * staleness_norm,
             explanation: if days_stale > 30.0 {
                 Some(format!("stale: {days_stale:.0} days since last update"))
             } else {
@@ -279,10 +286,10 @@ fn compute_impact_score(
         },
         ScoreComponent {
             name: "PriorityBoost",
-            weight: w_pb * norm,
+            weight: weight_priority_boost * norm,
             raw: issue.priority as f64,
             normalized: priority_norm,
-            weighted: w_pb * norm * priority_norm,
+            weighted: weight_priority_boost * norm * priority_norm,
             explanation: None,
         },
         ScoreComponent {

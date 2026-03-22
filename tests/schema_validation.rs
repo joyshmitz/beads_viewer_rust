@@ -48,7 +48,7 @@ fn robot_plan_has_valid_envelope() {
 fn robot_insights_has_valid_envelope() {
     let output = run_bvr_json(&["--robot-insights"], "tests/testdata/minimal.jsonl");
     test_utils::assert_valid_envelope(&output);
-    assert!(validate_type_at(&output, "Stats", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "status", JsonType::Object).is_empty());
     assert!(validate_type_at(&output, "Bottlenecks", JsonType::Array).is_empty());
 }
 

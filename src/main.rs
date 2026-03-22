@@ -645,9 +645,11 @@ fn main() -> ExitCode {
             top_what_ifs,
             advanced_insights,
             usage_hints: vec![
-                "jq '.insights.bottlenecks[:5]'".to_string(),
-                "jq '.insights.cycles'".to_string(),
-                "jq '.insights.critical_path[:10]'".to_string(),
+                "jq '.Bottlenecks[:5]'".to_string(),
+                "jq '.Cycles'".to_string(),
+                "jq '.CriticalPath[:10]'".to_string(),
+                "jq '.Keystones'".to_string(),
+                "jq '.Velocity'".to_string(),
             ],
         };
 
@@ -6782,6 +6784,15 @@ mod tests {
                 eigenvector: Vec::new(),
                 cores: Vec::new(),
                 articulation_points: Vec::new(),
+                keystones: Vec::new(),
+                orphans: Vec::new(),
+                cluster_density: 0.0,
+                velocity: bvr::analysis::InsightsVelocity {
+                    closed_last_7_days: 0,
+                    closed_last_30_days: 0,
+                    avg_days_to_close: 0,
+                    weekly: Vec::new(),
+                },
             },
             full_stats: None,
             top_what_ifs: None,

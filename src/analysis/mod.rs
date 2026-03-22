@@ -105,7 +105,7 @@ pub struct CoreItem {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Insights {
-    #[serde(rename = "Stats")]
+    #[serde(rename = "status")]
     pub status: MetricStatus,
     #[serde(rename = "Bottlenecks")]
     pub bottlenecks: Vec<InsightItem>,

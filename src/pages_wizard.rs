@@ -242,7 +242,7 @@ impl WizardConfig {
             .ok_or_else(|| BvrError::InvalidArgument("deploy target is required".into()))?;
         match target {
             DeployTarget::Github => {
-                if self.github_repo.as_ref().map_or(true, |r| r.is_empty()) {
+                if self.github_repo.as_ref().is_none_or(String::is_empty) {
                     return Err(BvrError::InvalidArgument(
                         "GitHub repo name is required (owner/repo format)".into(),
                     ));
@@ -252,7 +252,7 @@ impl WizardConfig {
                 if self
                     .cloudflare_project
                     .as_ref()
-                    .map_or(true, |p| p.is_empty())
+                    .is_none_or(String::is_empty)
                 {
                     return Err(BvrError::InvalidArgument(
                         "Cloudflare project name is required".into(),

@@ -591,7 +591,7 @@ pub fn compute_triage(
         let unblocks_ids: Vec<String> = graph
             .dependents(&issue.id)
             .into_iter()
-            .filter(|dep_id| graph.issue(dep_id).is_some_and(|dep| dep.is_open_like()))
+            .filter(|dep_id| graph.issue(dep_id).is_some_and(Issue::is_open_like))
             .collect();
 
         let action = if !open_blocker_ids.is_empty() {

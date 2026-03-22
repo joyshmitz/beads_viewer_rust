@@ -760,7 +760,7 @@ fn count_files_recursive_inner(
         return Ok(0);
     }
 
-    if !visited_dirs.insert(resolved_path.clone()) {
+    if !visited_dirs.insert(resolved_path) {
         return Ok(0);
     }
 

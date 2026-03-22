@@ -77,23 +77,23 @@ impl MetricsCache {
 
         // Check cache.
         {
-            let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            let entries = self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some(entry) = entries.get(&key) {
                 if !entry.is_expired() {
-                    *self.hits.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+                    *self.hits.lock().unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
                     return entry.metrics.clone();
                 }
             }
         }
 
         // Cache miss — compute metrics.
-        *self.misses.lock().unwrap_or_else(|e| e.into_inner()) += 1;
+        *self.misses.lock().unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
         let graph = IssueGraph::build(issues);
         let metrics = graph.compute_metrics_with_config(config);
 
         // Store in cache.
         {
-            let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            let mut entries = self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             // Evict expired entries on insert to prevent unbounded growth.
             entries.retain(|_, entry| !entry.is_expired());
             entries.insert(
@@ -113,16 +113,16 @@ impl MetricsCache {
     pub fn clear(&self) {
         self.entries
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
     }
 
     /// Return cache statistics.
     #[must_use]
     pub fn stats(&self) -> CacheStats {
-        let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
-        let hits = *self.hits.lock().unwrap_or_else(|e| e.into_inner());
-        let misses = *self.misses.lock().unwrap_or_else(|e| e.into_inner());
+        let entries = self.entries.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let hits = *self.hits.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let misses = *self.misses.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         CacheStats {
             hits,
             misses,

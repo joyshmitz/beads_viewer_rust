@@ -610,7 +610,7 @@ fn detect_stale_cleanup(
         .filter(|i| i.is_open_like())
         .map(|i| metrics.pagerank.get(&i.id).copied().unwrap_or(0.0))
         .collect();
-    open_pageranks.sort_by(|a, b| a.total_cmp(b));
+    open_pageranks.sort_by(f64::total_cmp);
     let pagerank_threshold = if open_pageranks.is_empty() {
         0.0
     } else {

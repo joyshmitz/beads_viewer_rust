@@ -6160,6 +6160,14 @@ impl BvrApp {
                     || issue.title.to_ascii_lowercase().contains(&query)
                     || issue.status.to_ascii_lowercase().contains(&query)
                     || issue.issue_type.to_ascii_lowercase().contains(&query)
+                    || issue.description.to_ascii_lowercase().contains(&query)
+                    || issue.notes.to_ascii_lowercase().contains(&query)
+                    || issue.design.to_ascii_lowercase().contains(&query)
+                    || issue
+                        .acceptance_criteria
+                        .to_ascii_lowercase()
+                        .contains(&query)
+                    || issue.assignee.to_ascii_lowercase().contains(&query)
                     || issue
                         .labels
                         .iter()

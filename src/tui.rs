@@ -371,6 +371,12 @@ struct SplitterHitBox {
     rect: Rect,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HeaderModeTab {
+    mode: ViewMode,
+    rect: Rect,
+}
+
 impl PaneSplitState {
     fn adjust_splitter_target(&mut self, target: SplitterTarget, delta_pct: f32) -> bool {
         match target {
@@ -586,6 +592,77 @@ fn splitter_hit_boxes(app: &BvrApp, width: u16, height: u16) -> Vec<SplitterHitB
     }]
 }
 
+fn header_tab_candidate_modes(mode: ViewMode, bp: Breakpoint) -> Vec<ViewMode> {
+    let mut modes = match bp {
+        Breakpoint::Narrow => vec![
+            ViewMode::Main,
+            ViewMode::Board,
+            ViewMode::Insights,
+            ViewMode::Graph,
+            ViewMode::History,
+        ],
+        Breakpoint::Medium => vec![
+            ViewMode::Main,
+            ViewMode::Board,
+            ViewMode::Insights,
+            ViewMode::Graph,
+            ViewMode::History,
+            ViewMode::Actionable,
+            ViewMode::Attention,
+            ViewMode::Tree,
+            ViewMode::Sprint,
+        ],
+        Breakpoint::Wide => ViewMode::navigation_order().to_vec(),
+    };
+    if !modes.contains(&mode) {
+        modes.push(mode);
+    }
+    modes
+}
+
+fn header_mode_tabs(app: &BvrApp, width: u16) -> Vec<HeaderModeTab> {
+    let bp = Breakpoint::from_width(width);
+    let reserved_width = match bp {
+        Breakpoint::Narrow => 16u16,
+        Breakpoint::Medium => 34u16,
+        Breakpoint::Wide => 48u16,
+    };
+    let max_x = width.saturating_sub(reserved_width);
+    let mut x = 4u16;
+    let mut tabs = Vec::new();
+
+    for mode in header_tab_candidate_modes(app.mode, bp) {
+        let label = mode.tab_text(bp);
+        let tab_width = u16::try_from(display_width(label)).unwrap_or(u16::MAX);
+        if tab_width == 0 {
+            continue;
+        }
+
+        let next_end = x.saturating_add(tab_width);
+        if !tabs.is_empty() && next_end >= max_x {
+            break;
+        }
+
+        tabs.push(HeaderModeTab {
+            mode,
+            rect: Rect::new(x, 0, tab_width, 1),
+        });
+        x = next_end.saturating_add(1);
+    }
+
+    if !tabs.iter().any(|tab| tab.mode == app.mode) {
+        let label = app.mode.tab_text(bp);
+        let tab_width = u16::try_from(display_width(label)).unwrap_or(u16::MAX);
+        let start_x = width.saturating_sub(tab_width.saturating_add(1));
+        tabs.push(HeaderModeTab {
+            mode: app.mode,
+            rect: Rect::new(start_x, 0, tab_width.min(width.saturating_sub(start_x)), 1),
+        });
+    }
+
+    tabs
+}
+
 fn is_http_url(value: &str) -> bool {
     value.starts_with("https://") || value.starts_with("http://")
 }
@@ -786,12 +863,24 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
     let bp = Breakpoint::from_width(width);
     let visible_count = app.visible_issue_indices().len();
     let total_count = app.analyzer.issues.len();
+    let mode_tabs = header_mode_tabs(app, width);
 
     if matches!(bp, Breakpoint::Narrow) {
         let mut line = RichLine::new();
         line.push_span(RichSpan::styled("bvr", tokens::header()));
         line.push_span(RichSpan::raw(" "));
-        push_chip(&mut line, app.mode.label(), SemanticTone::Accent);
+        for tab in &mode_tabs {
+            push_chip(
+                &mut line,
+                &tab.mode.tab_text(bp),
+                if tab.mode == app.mode {
+                    SemanticTone::Accent
+                } else {
+                    SemanticTone::Muted
+                },
+            );
+            line.push_span(RichSpan::raw(" "));
+        }
         line.push_span(RichSpan::styled(" | ", tokens::dim()));
         push_chip(
             &mut line,
@@ -818,7 +907,20 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
 
     let mut line = RichLine::new();
     line.push_span(RichSpan::styled("bvr", tokens::header()));
-    line.push_span(RichSpan::styled(" | mode=", tokens::dim()));
+    line.push_span(RichSpan::raw(" "));
+    for tab in &mode_tabs {
+        push_chip(
+            &mut line,
+            &tab.mode.tab_text(bp),
+            if tab.mode == app.mode {
+                SemanticTone::Accent
+            } else {
+                SemanticTone::Muted
+            },
+        );
+        line.push_span(RichSpan::raw(" "));
+    }
+    line.push_span(RichSpan::styled("| mode=", tokens::dim()));
     push_chip(&mut line, &mode_label, SemanticTone::Accent);
     line.push_span(RichSpan::styled(" | focus=", tokens::dim()));
     push_chip(&mut line, app.focus.label(), SemanticTone::Warning);
@@ -1022,6 +1124,23 @@ enum ViewMode {
 }
 
 impl ViewMode {
+    const fn navigation_order() -> [Self; 12] {
+        [
+            Self::Main,
+            Self::Board,
+            Self::Insights,
+            Self::Graph,
+            Self::History,
+            Self::Actionable,
+            Self::Attention,
+            Self::Tree,
+            Self::LabelDashboard,
+            Self::FlowMatrix,
+            Self::TimeTravelDiff,
+            Self::Sprint,
+        ]
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::Main => "Main",
@@ -1037,6 +1156,49 @@ impl ViewMode {
             Self::TimeTravelDiff => "TimeTravel",
             Self::Sprint => "Sprint",
         }
+    }
+
+    const fn shortcut(self) -> &'static str {
+        match self {
+            Self::Main => "1",
+            Self::Board => "b",
+            Self::Insights => "i",
+            Self::Graph => "g",
+            Self::History => "h",
+            Self::Actionable => "a",
+            Self::Attention => "!",
+            Self::Tree => "T",
+            Self::LabelDashboard => "[",
+            Self::FlowMatrix => "]",
+            Self::TimeTravelDiff => "t",
+            Self::Sprint => "S",
+        }
+    }
+
+    const fn short_label(self) -> &'static str {
+        match self {
+            Self::Main => "Main",
+            Self::Board => "Board",
+            Self::Insights => "In",
+            Self::Graph => "Graph",
+            Self::History => "Hist",
+            Self::Actionable => "Act",
+            Self::Attention => "Attn",
+            Self::Tree => "Tree",
+            Self::LabelDashboard => "Lbl",
+            Self::FlowMatrix => "Flow",
+            Self::TimeTravelDiff => "Diff",
+            Self::Sprint => "Sprint",
+        }
+    }
+
+    fn tab_text(self, bp: Breakpoint) -> String {
+        let label = if matches!(bp, Breakpoint::Narrow) {
+            self.short_label()
+        } else {
+            self.label()
+        };
+        format!("{} {label}", self.shortcut())
     }
 }
 
@@ -2333,6 +2495,88 @@ impl Model for BvrApp {
 }
 
 impl BvrApp {
+    fn header_mode_tab_at(&self, x: u16, y: u16) -> Option<ViewMode> {
+        if y != 0 {
+            return None;
+        }
+
+        header_mode_tabs(self, cached_view_width())
+            .into_iter()
+            .find(|tab| rect_contains(tab.rect, x, y))
+            .map(|tab| tab.mode)
+    }
+
+    fn activate_mode_tab(&mut self, mode: ViewMode) {
+        match mode {
+            ViewMode::Main => {
+                self.mode = ViewMode::Main;
+                self.focus = FocusPane::List;
+            }
+            ViewMode::Board => {
+                self.mode = ViewMode::Board;
+                self.focus = FocusPane::List;
+            }
+            ViewMode::Insights => {
+                self.mode = ViewMode::Insights;
+                self.focus = FocusPane::List;
+            }
+            ViewMode::Graph => {
+                self.mode = ViewMode::Graph;
+                self.focus = FocusPane::List;
+            }
+            ViewMode::History => {
+                if !matches!(self.mode, ViewMode::History) {
+                    self.toggle_history_mode();
+                }
+                self.focus = FocusPane::List;
+            }
+            ViewMode::Actionable => {
+                if !matches!(self.mode, ViewMode::Actionable) {
+                    self.compute_actionable_plan();
+                    self.mode = ViewMode::Actionable;
+                }
+                self.focus = FocusPane::List;
+            }
+            ViewMode::Attention => {
+                if !matches!(self.mode, ViewMode::Attention) {
+                    self.compute_attention();
+                    self.mode = ViewMode::Attention;
+                }
+                self.focus = FocusPane::List;
+            }
+            ViewMode::Tree => {
+                if !matches!(self.mode, ViewMode::Tree) {
+                    self.toggle_tree_mode();
+                }
+                self.focus = FocusPane::List;
+            }
+            ViewMode::LabelDashboard => {
+                if !matches!(self.mode, ViewMode::LabelDashboard) {
+                    self.toggle_label_dashboard();
+                }
+                self.focus = FocusPane::List;
+            }
+            ViewMode::FlowMatrix => {
+                if !matches!(self.mode, ViewMode::FlowMatrix) {
+                    self.toggle_flow_matrix();
+                }
+                self.focus = FocusPane::List;
+            }
+            ViewMode::TimeTravelDiff => {
+                if !matches!(self.mode, ViewMode::TimeTravelDiff) {
+                    self.toggle_time_travel_mode();
+                }
+            }
+            ViewMode::Sprint => {
+                if !matches!(self.mode, ViewMode::Sprint) {
+                    self.toggle_sprint_mode();
+                }
+                self.focus = FocusPane::List;
+            }
+        }
+        self.status_msg = format!("Switched to {}", self.mode.label());
+    }
+
     fn splitter_hit_target_at(&self, x: u16, y: u16) -> Option<SplitterHitBox> {
         splitter_hit_boxes(self, cached_view_width(), cached_view_height())
             .into_iter()
@@ -2393,6 +2637,16 @@ impl BvrApp {
         };
 
         self.adjust_splitter_target(hit_box.target, delta_pct, "mouse");
+        Some(Cmd::None)
+    }
+
+    fn handle_header_mouse_click(&mut self, event: MouseEvent) -> Option<Cmd<Msg>> {
+        if !matches!(event.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return None;
+        }
+
+        let mode = self.header_mode_tab_at(event.x, event.y)?;
+        self.activate_mode_tab(mode);
         Some(Cmd::None)
     }
 
@@ -2903,6 +3157,10 @@ impl BvrApp {
     }
 
     fn handle_mouse(&mut self, event: MouseEvent) -> Cmd<Msg> {
+        if let Some(cmd) = self.handle_header_mouse_click(event) {
+            return cmd;
+        }
+
         if let Some(cmd) = self.handle_splitter_mouse_scroll(event) {
             return cmd;
         }
@@ -12071,6 +12329,13 @@ fn render_hittest_debug_report(app: &BvrApp, width: u16, height: u16) -> String 
     let detail_area = cached_detail_content_area();
     lines.push(rect_debug_line("detail-content", detail_area));
 
+    for tab in header_mode_tabs(app, width) {
+        lines.push(rect_debug_line(
+            &format!("tab-{}", tab.mode.label().to_ascii_lowercase()),
+            tab.rect,
+        ));
+    }
+
     if let Some(link_area) = app.current_detail_link_row_area() {
         lines.push(rect_debug_line("link-row", link_area));
         let center_x = link_area.x.saturating_add(link_area.width / 2);
@@ -18164,6 +18429,19 @@ mod tests {
         }
 
         None
+    }
+
+    fn header_tab_click_point(
+        app: &BvrApp,
+        width: u16,
+        height: u16,
+        mode: ViewMode,
+    ) -> Option<(u16, u16)> {
+        let _ = render_app(app, width, height);
+        let tab = super::header_mode_tabs(app, width)
+            .into_iter()
+            .find(|tab| tab.mode == mode)?;
+        Some((tab.rect.x, tab.rect.y))
     }
 
     #[test]

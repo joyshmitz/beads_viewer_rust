@@ -640,6 +640,7 @@ fn main() -> ExitCode {
             label_scope: label_scope.clone(),
             label_context: label_context.clone(),
             analysis_config: analyzer.metrics.config.clone(),
+            analysis_config_compat: analyzer.metrics.config.clone(),
             insights,
             full_stats,
             top_what_ifs,
@@ -5411,6 +5412,8 @@ struct RobotInsightsOutput {
     label_context: Option<bvr::analysis::label_intel::LabelHealth>,
     #[serde(rename = "Stats")]
     analysis_config: bvr::analysis::graph::AnalysisConfig,
+    #[serde(rename = "analysis_config")]
+    analysis_config_compat: bvr::analysis::graph::AnalysisConfig,
     #[serde(flatten)]
     insights: Insights,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -6772,6 +6775,7 @@ mod tests {
             label_scope: None,
             label_context: None,
             analysis_config: bvr::analysis::graph::AnalysisConfig::full(),
+            analysis_config_compat: bvr::analysis::graph::AnalysisConfig::full(),
             insights: bvr::analysis::Insights {
                 status: bvr::analysis::MetricStatus::computed(),
                 bottlenecks: Vec::new(),

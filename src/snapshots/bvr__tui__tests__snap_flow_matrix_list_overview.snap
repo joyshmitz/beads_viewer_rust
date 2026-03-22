@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Flow | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights ] Flow | mode=Flow | focus=list | issues=3/3 | filter=all |
 ┌Flow Matrix [focus]─────────────────────┐┌Flow Detail─────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ Cross-label flow (3 labels, 0 deps) |  ││ Label: backend                                         │

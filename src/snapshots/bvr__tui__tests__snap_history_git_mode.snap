@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus
+bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all
 ┌Commits [focus]─────────────┐┌Related Beads────────────────────┐┌Commit Details───────────────────┐
 │                            ││                                 ││                                 │
 │ No git commits correlated  ││ Select a commit to view related ││ No correlated git commits avail │
@@ -31,4 +31,4 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 └────────────────────────────┘└─────────────────────────────────┘└─────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | o open commit
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree

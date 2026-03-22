@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr Flow | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist ] Flow  | 3/3 | all
 ┌Flow Matrix [focus]┐┌Flow Detail──────────────────────────┐
 │                   ││                                     │
 │ (computing flow m ││ (no flow data)                      │

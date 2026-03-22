@@ -5,7 +5,7 @@ expression: artifact
 === E2E Journey: narrow-geometry-stress | 40x15 ===
 
 --- Step 1: narrow_main ---
-bvr Main | 3/3 | all
+bvr 1 Main b Board i In  | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
 │ ▸ T ●open  ││ T A  Root  (C copy id) │
@@ -22,7 +22,7 @@ bvr Main | 3/3 | all
 b/i/g/h modes | / search | s default
 
 --- Step 2: narrow_board ---
-bvr Board | 3/3 | all
+bvr 1 Main b Board i In  | 3/3 | all
 ┌Board Lanes ┐┌Board Focus─────────────┐
 │            ││                        │
 │ Grouping:  ││ ┌───────────────────── │
@@ -39,7 +39,7 @@ bvr Board | 3/3 | all
 Board mode: lane counts, queued IDs, and
 
 --- Step 3: narrow_board_nav ---
-bvr Board | 3/3 | all
+bvr 1 Main b Board i In  | 3/3 | all
 ┌Board Lanes ┐┌Board Focus─────────────┐
 │            ││                        │
 │   open     ││ ┌───────────────────── │
@@ -56,7 +56,7 @@ bvr Board | 3/3 | all
 Board mode: lane counts, queued IDs, and
 
 --- Step 4: narrow_graph ---
-bvr Graph | 3/3 | all
+bvr 1 Main b Board i In g Graph  | 3/3 |
 ┌Graph View [focus]────────────────────┐
 │                                      │
 │ Graph: nodes=3 edges=1 cycles=0 acti │
@@ -73,7 +73,7 @@ bvr Graph | 3/3 | all
 h/l nodes | j/k nodes | H/L jump
 
 --- Step 5: narrow_insights ---
-bvr Insights | 3/3 | all
+bvr 1 Main b Board i In  | 3/3 | all
 ┌Insight Queu┐┌Insight Detail──────────┐
 │            ││                        │
 │ [Bottlenec ││ Analytics Cockpit      │
@@ -90,7 +90,7 @@ bvr Insights | 3/3 | all
 Insights [bottlenecks] | s/S panel | e e
 
 --- Step 6: narrow_insights_cycle ---
-bvr Insights | 3/3 | all
+bvr 1 Main b Board i In  | 3/3 | all
 ┌Insight Queu┐┌Insight Detail──────────┐
 │            ││                        │
 │ [Keystones ││ Analytics Cockpit      │
@@ -107,7 +107,7 @@ bvr Insights | 3/3 | all
 Insights [keystones] | s/S panel | e exp
 
 --- Step 7: narrow_actionable ---
-bvr Actionable | 3/3 | all
+bvr 1 Main b Board i In a Act  | 3/3 | a
 ┌Execution Tr┐┌Track Detail────────────┐
 │            ││                        │
 │ ⚡ ACTIONA ││ TRACK 1                │
@@ -124,7 +124,7 @@ bvr Actionable | 3/3 | all
 Actionable: 1 tracks, 1 items | j/k navi
 
 --- Step 8: narrow_tree ---
-bvr Tree | 3/3 | all
+bvr 1 Main b Board i In T Tree  | 3/3 |
 ┌Dependency T┐┌Issue Detail────────────┐
 │            ││                        │
 │ Dependency ││ ID: A                  │
@@ -141,7 +141,7 @@ bvr Tree | 3/3 | all
 Tree: 3 nodes | j/k navigate | Enter exp
 
 --- Step 9: narrow_main_return ---
-bvr Main | 3/3 | all
+bvr 1 Main b Board i In  | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
 │   T ●open  ││ T C  Closed  (C copy i │

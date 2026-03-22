@@ -622,10 +622,13 @@ fn header_tab_candidate_modes(mode: ViewMode, bp: Breakpoint) -> Vec<ViewMode> {
 
 fn header_mode_tabs(app: &BvrApp, width: u16) -> Vec<HeaderModeTab> {
     let bp = Breakpoint::from_width(width);
+    // Keep enough horizontal budget for the status chips so the active
+    // filter/sort state remains visible at common terminal widths.
     let reserved_width = match bp {
         Breakpoint::Narrow => 16u16,
-        Breakpoint::Medium => 34u16,
-        Breakpoint::Wide => 48u16,
+        Breakpoint::Medium => 70u16,
+        Breakpoint::Wide if width < 132 => 68u16,
+        Breakpoint::Wide => 56u16,
     };
     let max_x = width.saturating_sub(reserved_width);
     let mut x = 4u16;
@@ -841,7 +844,7 @@ mod tokens {
     }
 }
 
-fn semantic_panel_block<'a>(title: &'a str, focused: bool, tone: SemanticTone) -> Block<'a> {
+fn semantic_panel_block(title: &str, focused: bool, tone: SemanticTone) -> Block<'_> {
     Block::bordered()
         .title(title)
         .border_style(tokens::panel_border_for(tone, focused))
@@ -931,23 +934,23 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
         &format!("{visible_count}/{total_count}"),
         SemanticTone::Neutral,
     );
-    line.push_span(RichSpan::styled(" | ", tokens::dim()));
-    push_metric_chip(&mut line, "filter", &filter_label, SemanticTone::Muted);
-    line.push_span(RichSpan::styled(" | ", tokens::dim()));
-    push_metric_chip(
-        &mut line,
-        "sort",
-        app.list_sort.label(),
-        SemanticTone::Neutral,
-    );
+    if matches!(bp, Breakpoint::Medium | Breakpoint::Wide) {
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(&mut line, "filter", &filter_label, SemanticTone::Muted);
+    }
+    if matches!(bp, Breakpoint::Wide) && !app.slow_metrics_pending {
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(
+            &mut line,
+            "sort",
+            app.list_sort.label(),
+            SemanticTone::Neutral,
+        );
+    }
     if app.slow_metrics_pending {
         line.push_span(RichSpan::styled(" | metrics: ", tokens::dim()));
         push_chip(&mut line, "computing...", SemanticTone::Warning);
     }
-    line.push_span(RichSpan::styled(" | ", tokens::dim()));
-    push_chip(&mut line, "? help", SemanticTone::Muted);
-    line.push_span(RichSpan::styled(" | ", tokens::dim()));
-    push_chip(&mut line, "Tab focus", SemanticTone::Muted);
     line.push_span(RichSpan::styled(" |", tokens::dim()));
     RichText::from_lines([line])
 }
@@ -2461,9 +2464,21 @@ impl Model for BvrApp {
                         key: "y",
                         desc: "copy",
                     },
+                ];
+                if self.history_selected_commit_url().is_some() {
+                    hints.push(CommandHint {
+                        key: "o",
+                        desc: "open commit",
+                    });
+                }
+                hints.extend([
                     CommandHint {
                         key: "f",
                         desc: "file-tree",
+                    },
+                    CommandHint {
+                        key: "h/Esc",
+                        desc: "back",
                     },
                     CommandHint {
                         key: "^←/→",
@@ -2473,17 +2488,7 @@ impl Model for BvrApp {
                         key: "^0",
                         desc: "reset split",
                     },
-                ];
-                if self.history_selected_commit_url().is_some() {
-                    hints.push(CommandHint {
-                        key: "o",
-                        desc: "open commit",
-                    });
-                }
-                hints.push(CommandHint {
-                    key: "h/Esc",
-                    desc: "back",
-                });
+                ]);
                 wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
             _ => unreachable!("footer rich hints only apply to main/graph/history"),
@@ -6007,22 +6012,6 @@ impl BvrApp {
                 key: "C",
                 desc: "copy",
             },
-            CommandHint {
-                key: "x",
-                desc: "export",
-            },
-            CommandHint {
-                key: "O",
-                desc: "edit",
-            },
-            CommandHint {
-                key: "^←/→",
-                desc: "resize",
-            },
-            CommandHint {
-                key: "^0",
-                desc: "reset split",
-            },
         ];
         if matches!(self.focus, FocusPane::Detail) {
             if self.selected_issue_external_ref_url().is_some() {
@@ -6040,6 +6029,24 @@ impl BvrApp {
                 desc: "scroll",
             });
         }
+        hints.extend([
+            CommandHint {
+                key: "x",
+                desc: "export",
+            },
+            CommandHint {
+                key: "O",
+                desc: "edit",
+            },
+            CommandHint {
+                key: "^←/→",
+                desc: "resize",
+            },
+            CommandHint {
+                key: "^0",
+                desc: "reset split",
+            },
+        ]);
         hints
     }
 
@@ -6549,11 +6556,10 @@ impl BvrApp {
 
         // Merge columns side by side.
         let max_rows = columns.iter().map(|c| c.len()).max().unwrap_or(0);
-        let actual_col_width = if num_cols > 0 {
-            (width.saturating_sub(num_cols - 1)) / num_cols
-        } else {
-            width
-        };
+        let actual_col_width = width
+            .saturating_sub(num_cols.saturating_sub(1))
+            .checked_div(num_cols)
+            .unwrap_or(width);
 
         let mut output = Vec::with_capacity(max_rows);
         for row in 0..max_rows {

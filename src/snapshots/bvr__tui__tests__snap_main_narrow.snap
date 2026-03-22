@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr Main | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 ┌Issues [focus]─────┐┌Details──────────────────────────────┐
 │                   ││                                     │
 │ ▸ T ●open P0 A ↓1 ││ T A  Root  (C copy id)              │

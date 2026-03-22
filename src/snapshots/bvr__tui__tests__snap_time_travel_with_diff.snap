@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=TimeTravel | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights t TimeTravel | mode=TimeTravel | focus=list | issues=3/3 | filter=all
 ┌Diff Categories [focus]─────────────────┐┌Diff Detail─────────────────────────────────────────────┐
 │                                        ││                                                        │
 │  Diff from: HEAD~1                     ││  New issues                                            │

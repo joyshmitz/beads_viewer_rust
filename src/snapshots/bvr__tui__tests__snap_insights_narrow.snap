@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr Insights | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 ┌Insight Queue [focu┐┌Insight Detail───────────────────────┐
 │                   ││                                     │
 │ [Bottlenecks] s/S ││ Analytics Cockpit                   │

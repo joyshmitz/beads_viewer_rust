@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr TimeTravel | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist t Diff  | 3/3 | all
 ┌Diff Categories [fo┐┌Diff Detail──────────────────────────┐
 │                   ││                                     │
 │  No diff loaded.  ││                                     │

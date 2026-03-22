@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Labels | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights [ Labels | mode=Labels | focus=detail | issues=3/3 | filter=all |
 ┌Label Health────────────────────────────┐┌Label Detail [focus]────────────────────────────────────┐
 │                                        ││                                                        │
 │ Label health (3 labels) | healthy:0 wa ││ Label: backend                                         │

@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | mode=Graph | focus=list | issues=3/3 | filter=all | sort=defa
 ┌Graph Nodes [focus]────────────────────────────────┐┌Graph Focus──────────────────────────────────────────────────────────────────────────┐
 │                                                   ││                                                                                     │
 │ Nodes  3 by critical-path score | h/l nav | / sea ││ Graph: nodes=3 edges=1 cycles=0 actionable=1                                        │
@@ -31,4 +31,4 @@ bvr | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default | ? help 
 │                                                   ││ Flow & Connectivity:                                                                │
 │                                                   ││                                                                                     │
 └───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
-h/l nodes | j/k nodes | H/L jump | Tab detail | / search | Enter open details | g/Esc back
+h/l nodes | j/k nodes | H/L jump | Tab detail | / search | Enter open details | g/Esc back | ^←/→ resize | ^0 reset split

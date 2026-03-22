@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr Tree | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist T Tree  | 3/3 | all
 ┌Dependency Tree [fo┐┌Issue Detail─────────────────────────┐
 │                   ││                                     │
 │ (no dependency tr ││ (no node selected)                  │

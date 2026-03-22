@@ -5,7 +5,7 @@ expression: artifact
 === E2E Journey: actionable→tree→attention | 120x35 ===
 
 --- Step 1: main_start ---
-bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ ▸ F ●open P1 A Feature work                ││ F A  Feature work  (C copy id)                                         │
@@ -39,10 +39,10 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split
 
 --- Step 2: actionable_entry ---
-bvr | mode=Actionable | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History a Actionable | mode=Actionable | focus=list | issues=3/3 | filter=all |
 ┌Execution Tracks [focus]────────────────────┐┌Track Detail────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ ⚡ ACTIONABLE ITEMS | 3 items in 3 tracks  ││ TRACK 1                                                                │
@@ -79,7 +79,7 @@ bvr | mode=Actionable | focus=list | issues=3/3 | filter=all | sort=default | ? 
 Actionable: 3 tracks, 3 items | j/k navigate | Tab focus | a/Esc back
 
 --- Step 3: actionable_detail_nav ---
-bvr | mode=Actionable | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History a Actionable | mode=Actionable | focus=detail | issues=3/3 | filter=all
 ┌Execution Tracks────────────────────────────┐┌Track Detail [focus]────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ ⚡ ACTIONABLE ITEMS | 3 items in 3 tracks  ││ TRACK 1                                                                │
@@ -116,7 +116,7 @@ bvr | mode=Actionable | focus=detail | issues=3/3 | filter=all | sort=default | 
 Actionable: 3 tracks, 3 items | j/k navigate | Tab focus | a/Esc back
 
 --- Step 4: tree_entry ---
-bvr | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default
 ┌Dependency Tree [focus]─────────────────────┐┌Issue Detail────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Dependency tree (3 nodes) | Enter expand/c ││ ID: A                                                                  │
@@ -153,7 +153,7 @@ bvr | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 Tree: 3 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
 
 --- Step 5: tree_navigate ---
-bvr | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default
 ┌Dependency Tree [focus]─────────────────────┐┌Issue Detail────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Dependency tree (3 nodes) | Enter expand/c ││ ID: A                                                                  │
@@ -190,7 +190,7 @@ bvr | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 Tree: 3 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
 
 --- Step 6: attention_entry ---
-bvr | mode=Attention | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History ! Attention | mode=Attention | focus=list | issues=3/3 | filter=all | so
 ┌Label Attention [focus]─────────────────────┐┌Label Detail────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Rank  Label                 Score  Reason  ││ Label: backend                                                         │
@@ -227,7 +227,7 @@ bvr | mode=Attention | focus=list | issues=3/3 | filter=all | sort=default | ? h
 Attention: 3 labels ranked | j/k navigate | Tab focus | !/Esc back
 
 --- Step 7: attention_detail ---
-bvr | mode=Attention | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History ! Attention | mode=Attention | focus=detail | issues=3/3 | filter=all |
 ┌Label Attention─────────────────────────────┐┌Label Detail [focus]────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Rank  Label                 Score  Reason  ││ Label: frontend                                                        │
@@ -264,7 +264,7 @@ bvr | mode=Attention | focus=detail | issues=3/3 | filter=all | sort=default | ?
 Attention: 3 labels ranked | j/k navigate | Tab focus | !/Esc back
 
 --- Step 8: main_return ---
-bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ ▸ F ●open P1 A Feature work                ││ F A  Feature work  (C copy id)                                         │
@@ -298,4 +298,4 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split

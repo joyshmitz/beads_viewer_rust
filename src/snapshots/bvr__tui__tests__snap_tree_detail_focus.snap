@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Tree | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights T Tree | mode=Tree | focus=detail | issues=3/3 | filter=all |
 ┌Dependency Tree─────────────────────────┐┌Issue Detail [focus]────────────────────────────────────┐
 │                                        ││                                                        │
 │ Dependency tree (3 nodes) | Enter expa ││ ID: A                                                  │

@@ -5,7 +5,7 @@ expression: artifact
 === E2E Journey: history-deep-dive | 120x35 ===
 
 --- Step 1: history_entry ---
-bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def
 ┌Beads With History [focus]────────┐┌Commits─────────────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
 │ Bead history list (3 beads) | v  ││ No commits correlated with A.          ││ History Summary: beads=3 closed-like=1 │
@@ -39,10 +39,10 @@ bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=defau
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 2: history_bead_nav ---
-bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def
 ┌Beads With History [focus]────────┐┌Commits─────────────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
 │ Bead history list (3 beads) | v  ││ No commits correlated with B.          ││ History Summary: beads=3 closed-like=1 │
@@ -76,10 +76,10 @@ bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=defau
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 3: history_git_mode ---
-bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
 ┌Commits [focus]───────────────────┐┌Related Beads───────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
 │ No git commits correlated with b ││ Select a commit to view related beads. ││ No correlated git commits available.   │
@@ -113,10 +113,10 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | o open commit | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 4: history_search ---
-bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
 ┌Commits [focus]───────────────────┐┌Related Beads───────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
 │ (no commits match search: /test) ││ Select a commit to view related beads. ││ No correlated git commits available.   │
@@ -150,10 +150,10 @@ bvr | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=default
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | o open commit | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 5: history_bead_return ---
-bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def
 ┌Beads With History [focus]────────┐┌Commits─────────────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
 │ (no issues match history search: ││ Select a bead to view correlated commi ││ No issues match the active filter (all │
@@ -187,10 +187,10 @@ bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=defau
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 6: history_middle_focus ---
-bvr | mode=History ◈ Beads | focus=middle | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=middle | issues=3/3 | filter=all | sort=d
 ┌Beads With History────────────────┐┌Commits [focus]─────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
 │ (no issues match history search: ││ Select a bead to view correlated commi ││ No issues match the active filter (all │
@@ -224,10 +224,10 @@ bvr | mode=History ◈ Beads | focus=middle | issues=3/3 | filter=all | sort=def
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 7: history_detail_focus ---
-bvr | mode=History ◈ Beads | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=detail | issues=3/3 | filter=all | sort=d
 ┌Beads With History────────────────┐┌Commits─────────────────────────────────┐┌Commit Details [focus]──────────────────┐
 │                                  ││                                        ││                                        │
 │ (no issues match history search: ││ Select a bead to view correlated commi ││ No issues match the active filter (all │
@@ -261,10 +261,10 @@ bvr | mode=History ◈ Beads | focus=detail | issues=3/3 | filter=all | sort=def
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 8: main_after_history ---
-bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ ▸ T ●open P0 A ↓1 Root                     ││ T A  Root  (C copy id)                                                 │
@@ -298,4 +298,4 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │                                            ││ Notes:                                                                 │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split

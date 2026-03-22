@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=3/3 | filter=all |
 ┌Help──────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                                  │
 │ [Navigation]                                     | [Search]                                      │
@@ -11,24 +11,24 @@ bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help |
 │   h/l          Lateral nav (lanes, peers)        |   Tab          Cycle search mode (in /)       │
 │   Ctrl+d/u     Jump down/up by 10                |   Esc          Cancel search                  │
 │   Ctrl+j/k     Scroll detail pane                |   Enter        Confirm search                 │
-│   PgUp/PgDn    Jump by 10                        |                                               │
-│   Home/End     Jump to top/bottom                | [Actions]                                     │
-│   G            Jump to bottom                    |   p            Toggle priority hints          │
-│   Tab          Toggle list/detail focus          |   C            Copy issue ID                  │
-│   J/K          Navigate deps in detail           |   x            Export issue markdown          │
-│   Enter        Return to main / drill            |   O            Open in editor                 │
-│   scroll       Mouse wheel scrolls list          |   Ctrl+R/F5    Refresh from disk              │
-│                                                  |                                               │
-│ [Views]                                          | [History]                                     │
-│   a            Toggle actionable mode            |   c            Cycle confidence filter        │
-│   b            Toggle board mode                 |   y            Copy SHA/ID                    │
-│   i            Toggle insights mode              |   o            Open commit in browser         │
-│   g            Toggle graph mode                 |   f            Toggle file tree               │
-│   h            Toggle history mode               |                                               │
-│   !            Toggle attention mode             | [Board]                                       │
-│   T            Toggle tree view                  |   1-4          Jump to lane                   │
-│   [            Toggle label dashboard            |   H/L          First/last lane                │
-│   ]            Toggle flow matrix                |   0/$          First/last in lane             │
+│   Ctrl+←/→     Resize active pane split          |                                               │
+│   Ctrl+0       Reset pane splits                 | [Actions]                                     │
+│   PgUp/PgDn    Jump by 10                        |   p            Toggle priority hints          │
+│   Home/End     Jump to top/bottom                |   C            Copy issue ID                  │
+│   G            Jump to bottom                    |   x            Export issue markdown          │
+│   Tab          Toggle list/detail focus          |   O            Open in editor                 │
+│   J/K          Navigate deps in detail           |   Ctrl+R/F5    Refresh from disk              │
+│   Enter        Return to main / drill            |                                               │
+│   scroll       Mouse wheel scrolls list          | [History]                                     │
+│   splitter click/scroll Mouse-resize active div… |   c            Cycle confidence filter        │
+│                                                  |   y            Copy SHA/ID                    │
+│ [Views]                                          |   o            Open commit in browser         │
+│   a            Toggle actionable mode            |   f            Toggle file tree               │
+│   b            Toggle board mode                 |                                               │
+│   i            Toggle insights mode              | [Board]                                       │
+│   g            Toggle graph mode                 |   1-4          Jump to lane                   │
+│   h            Toggle history mode               |   H/L          First/last lane                │
+│   !            Toggle attention mode             |   0/$          First/last in lane             │
 │                                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ? or Esc close | j/k scroll | Ctrl+d/u page | line 1/37

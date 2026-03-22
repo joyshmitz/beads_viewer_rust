@@ -5,7 +5,7 @@ expression: artifact
 === E2E Journey: empty-data-edge-case | 100x30 ===
 
 --- Step 1: empty_main ---
-bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=0/0 | filter=all |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues match filter: all)          ││ No issues to display. Create or load a .beads/*.jsonl  │
@@ -34,10 +34,10 @@ bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help |
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize
 
 --- Step 2: empty_board ---
-bvr | mode=Board | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=0/0 | filter=all |
 ┌Board Lanes [focus]─────────────────────┐┌Board Focus─────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues loaded)                     ││ No issues to display in board mode.                    │
@@ -69,7 +69,7 @@ bvr | mode=Board | focus=list | issues=0/0 | filter=all | sort=default | ? help 
 Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles
 
 --- Step 3: empty_graph ---
-bvr | mode=Graph | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph | mode=Graph | focus=list | issues=0/0 | filter=all |
 ┌Graph Nodes [focus]─────────────────────┐┌Graph Focus─────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues match filter: all)          ││ No graph data available.                               │
@@ -101,7 +101,7 @@ bvr | mode=Graph | focus=list | issues=0/0 | filter=all | sort=default | ? help 
 h/l nodes | j/k nodes | H/L jump | Tab detail | / search | Enter open details | g/Esc back
 
 --- Step 4: empty_insights ---
-bvr | mode=Insights | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights | mode=Insights | focus=list | issues=0/0 | filter=all |
 ┌Insight Queue [focus]───────────────────┐┌Insight Detail──────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues loaded)                     ││ No insights available.                                 │
@@ -133,7 +133,7 @@ bvr | mode=Insights | focus=list | issues=0/0 | filter=all | sort=default | ? he
 Insights [bottlenecks] | s/S panel | e explanations=on | x proof=off
 
 --- Step 5: empty_actionable ---
-bvr | mode=Actionable | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights a Actionable | mode=Actionable | focus=list | issues=0/0 | filter=all
 ┌Execution Tracks [focus]────────────────┐┌Track Detail────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues loaded)                     ││ (no track selected)                                    │
@@ -165,7 +165,7 @@ bvr | mode=Actionable | focus=list | issues=0/0 | filter=all | sort=default | ? 
 Actionable: 0 tracks, 0 items | j/k navigate | Tab focus | a/Esc back
 
 --- Step 6: empty_tree ---
-bvr | mode=Tree | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights T Tree | mode=Tree | focus=list | issues=0/0 | filter=all |
 ┌Dependency Tree [focus]─────────────────┐┌Issue Detail────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues loaded)                     ││ (no node selected)                                     │
@@ -197,7 +197,7 @@ bvr | mode=Tree | focus=list | issues=0/0 | filter=all | sort=default | ? help |
 Tree: 0 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
 
 --- Step 7: empty_main_return ---
-bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=0/0 | filter=all |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ (no issues match filter: all)          ││ No issues to display. Create or load a .beads/*.jsonl  │
@@ -226,4 +226,4 @@ bvr | mode=Main | focus=list | issues=0/0 | filter=all | sort=default | ? help |
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit
+b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize

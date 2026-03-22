@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr History | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 ┌Beads With History ┐┌Commit Details───────────────────────┐
 │                   ││                                     │
 │ Bead history list ││ History Summary: beads=3 closed-lik │

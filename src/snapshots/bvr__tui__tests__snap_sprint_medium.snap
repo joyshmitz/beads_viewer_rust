@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Sprint | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights S Sprint | mode=Sprint | focus=list | issues=3/3 | filter=all |
 ┌Sprints [focus]─────────────────────────┐┌Sprint Detail───────────────────────────────────────────┐
 │                                        ││                                                        │
 │  No sprints found.                     ││  Select a sprint from the list.                        │

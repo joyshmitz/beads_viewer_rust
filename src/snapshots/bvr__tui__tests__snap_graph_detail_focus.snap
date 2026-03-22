@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Graph | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph | mode=Graph | focus=detail | issues=3/3 | filter=all |
 ┌Graph Nodes─────────────────────────────┐┌Graph Focus [focus]─────────────────────────────────────┐
 │                                        ││                                                        │
 │ Nodes  3 by critical-path score | h/l  ││ Graph: nodes=3 edges=1 cycles=0 actionable=1           │
@@ -31,4 +31,4 @@ bvr | mode=Graph | focus=detail | issues=3/3 | filter=all | sort=default | ? hel
 │                                        ││ Flow & Connectivity:                                   │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-h/Tab list | Enter open details | j/k deps | g/Esc back
+h/Tab list | Enter open details | j/k deps | g/Esc back | ^←/→ resize | ^0 reset split

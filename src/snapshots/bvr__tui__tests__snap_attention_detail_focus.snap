@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Attention | focus=detail | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights ! Attention | mode=Attention | focus=detail | issues=3/3 | filter=all
 ┌Label Attention─────────────────────────┐┌Label Detail [focus]────────────────────────────────────┐
 │                                        ││                                                        │
 │ Rank  Label                 Score  Rea ││ Label: backend                                         │

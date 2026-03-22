@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | mode=Insights | focus=list | issues=3/3 | filter=all | sort=d
 ┌Insight Queue [focus]──────────────────────────────┐┌Insight Detail───────────────────────────────────────────────────────────────────────┐
 │                                                   ││                                                                                     │
 │ [Bottlenecks] s/S cycles panel | e explanations | ││ Analytics Cockpit                                                                   │

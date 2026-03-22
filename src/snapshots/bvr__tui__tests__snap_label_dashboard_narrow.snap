@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr Labels | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist [ Lbl  | 3/3 | all
 ┌Label Health [focus┐┌Label Detail─────────────────────────┐
 │                   ││                                     │
 │ (computing label  ││ (no data)                           │

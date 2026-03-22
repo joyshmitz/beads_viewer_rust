@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focu
+bvr 1 Main b Board i Insights h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=al
 ┌Beads With History [focus]──┐┌Commits──────────────────────────┐┌Commit Details───────────────────┐
 │                            ││                                 ││                                 │
 │ Bead history list (3 beads ││ No commits correlated with A.   ││ History Summary: beads=3 closed │

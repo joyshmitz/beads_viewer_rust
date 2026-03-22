@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr Sprint | 3/3 | all
+bvr 1 Main b Board i In g Graph h Hist S Sprint  | 3/3 | all
 ┌Sprints [focus]────┐┌Sprint Detail────────────────────────┐
 │                   ││                                     │
 │  No sprints found ││  Select a sprint from the list.     │

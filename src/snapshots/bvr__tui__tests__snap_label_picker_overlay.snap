@@ -2,7 +2,7 @@
 source: src/tui.rs
 expression: text
 ---
-bvr | mode=Main | focus=list | issues=3/3 | filter=all | sort=default | ? help | Tab focus |
+bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=3/3 | filter=all |
 ┌Label Picker──────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                                  │
 │  ▸ core                     (1 issues)                                                           │

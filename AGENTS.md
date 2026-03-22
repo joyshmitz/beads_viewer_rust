@@ -154,19 +154,20 @@ Every module includes inline `#[cfg(test)]` unit tests alongside the implementat
 - Edge cases (empty input, max values, boundary conditions)
 - Error conditions
 
-### Test Suite (1,318 tests)
+### Test Suite (1,606+ tests)
 
 ```bash
 # Full suite via rch
 export TMPDIR=/data/tmp && rch exec -- cargo test --tests
 
 # Individual suites
-export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 936 unit tests
+export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1245 unit tests
 export TMPDIR=/data/tmp && rch exec -- cargo test --test conformance           # 75 conformance
-export TMPDIR=/data/tmp && rch exec -- cargo test --test schema_validation     # 36 schema
-export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 35 e2e robot
-export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 27 e2e workspace
+export TMPDIR=/data/tmp && rch exec -- cargo test --test schema_validation     # 61 schema
+export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 62 e2e robot
+export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 34 e2e workspace
 export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_export_pages      # 20 e2e pages
+export TMPDIR=/data/tmp && rch exec -- cargo test --test cli_model_validation  # 60 CLI model
 export TMPDIR=/data/tmp && rch exec -- cargo test --test stress_fixtures       # 49 stress
 
 # Benchmarks
@@ -177,21 +178,19 @@ export TMPDIR=/data/tmp && rch exec -- cargo bench --bench triage              #
 
 | Suite | Count | Purpose |
 |-------|-------|---------|
-| Unit tests (`--lib`) | 936 | Module-level with inline `#[cfg(test)]` |
-| Conformance (`--test conformance`) | 75 | Go reference fixture parity |
-| Schema validation | 36 | JSON schema compliance |
-| E2E robot matrix | 35 | Full robot command integration |
-| E2E workspace/history | 27 | Workspace and history flows |
+| Unit tests (`--lib`) | 1245 | Module-level with inline `#[cfg(test)]` |
+| Conformance (`--test conformance`) | 75 | Go reference fixture parity (100%) |
+| Schema validation | 61 | JSON schema compliance |
+| E2E robot matrix | 62 | Full robot command integration (39/39 commands) |
+| E2E workspace/history | 34 | Workspace and history flows |
 | E2E export/pages | 20 | Pages export/preview/watch |
+| CLI model validation | 60 | CLI entrypoint and path semantics |
 | Stress fixtures | 49 | Large/pathological dataset handling |
-| Integration tests | 148 | CLI model, export, admin, background |
-| Snapshots | 21 | insta TUI visual regression |
-| Keyflow journeys | 11 | TUI interaction sequences |
 
 ### Shell E2E
 
 ```bash
-scripts/e2e_preview_pages.sh  # 5 scenarios: export+preview, watch, wizard, error paths
+scripts/e2e_preview_pages.sh  # 10 scenarios: export+preview, watch, wizard, artifacts, live-reload, filtering
 ```
 
 ---

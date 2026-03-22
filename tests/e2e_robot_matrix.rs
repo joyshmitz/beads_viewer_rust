@@ -383,8 +383,8 @@ fn e2e_robot_plan() {
 fn e2e_robot_insights() {
     let json = run_robot(&["--robot-insights"], COMPLEX_FIXTURE);
     assert_valid_envelope(&json);
-    assert!(validate_fields(&json, &["insights"], "").is_empty());
-    assert!(validate_type_at(&json, "insights.bottlenecks", JsonType::Array).is_empty());
+    assert!(validate_fields(&json, &["Bottlenecks"], "").is_empty());
+    assert!(validate_type_at(&json, "Bottlenecks", JsonType::Array).is_empty());
 }
 
 #[test]

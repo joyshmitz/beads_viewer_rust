@@ -901,9 +901,9 @@ fn robot_parity_slice_surfaces_bd_3q0_across_graph_insights_and_history() {
     }));
 
     let insights = run_bvr_json_from_path(&["--robot-insights"], &beads_path);
-    assert_eq!(insights["insights"]["bottlenecks"][0]["id"], "bd-3q0");
-    assert_eq!(insights["insights"]["bottlenecks"][0]["blocks_count"], 1);
-    assert_eq!(insights["insights"]["critical_path"][0], "bd-3q0");
+    assert_eq!(insights["Bottlenecks"][0]["id"], "bd-3q0");
+    assert_eq!(insights["Bottlenecks"][0]["blocks_count"], 1);
+    assert_eq!(insights["CriticalPath"][0], "bd-3q0");
 
     let bead_history = run_bvr_json_from_path(&["--bead-history", "bd-3q1"], &beads_path);
     assert_eq!(bead_history["history_count"], 1);
@@ -1488,11 +1488,11 @@ fn robot_plan_all_closed_has_empty_tracks() {
 fn robot_insights_single_issue_returns_valid_metrics() {
     let actual = run_bvr_json(&["--robot-insights"], "tests/testdata/single_issue.jsonl");
 
-    assert!(actual["insights"]["bottlenecks"].is_array());
-    assert!(actual["insights"]["critical_path"].is_array());
-    assert!(actual["insights"]["cycles"].is_array());
+    assert!(actual["Bottlenecks"].is_array());
+    assert!(actual["CriticalPath"].is_array());
+    assert!(actual["Cycles"].is_array());
     // Single issue with no deps should have no cycles.
-    assert!(actual["insights"]["cycles"].as_array().unwrap().is_empty());
+    assert!(actual["Cycles"].as_array().unwrap().is_empty());
 }
 
 #[test]
@@ -1724,7 +1724,7 @@ fn robot_adversarial_stress_fixture_surfaces_cycles_and_cascades() {
         &["--robot-insights"],
         "tests/testdata/adversarial_stress.jsonl",
     );
-    let cycles = insights["insights"]["cycles"].as_array().expect("cycles");
+    let cycles = insights["Cycles"].as_array().expect("cycles");
     assert!(!cycles.is_empty());
 
     let alerts = run_bvr_json(
@@ -1871,7 +1871,7 @@ fn stress_insights_detects_both_cycle_components() {
         &["--robot-insights"],
         "tests/testdata/stress_complex_89.jsonl",
     );
-    let cycles = actual["insights"]["cycles"]
+    let cycles = actual["Cycles"]
         .as_array()
         .expect("cycles array");
     // Two independent cycle components: (026,027,028) and (084,085,086,087,088,089)
@@ -1890,7 +1890,7 @@ fn stress_insights_detects_both_cycle_components() {
     assert!(members.contains(&"ST-026".to_string()));
     assert!(members.contains(&"ST-086".to_string()));
 
-    let bottlenecks = actual["insights"]["bottlenecks"]
+    let bottlenecks = actual["Bottlenecks"]
         .as_array()
         .expect("bottlenecks");
     assert!(bottlenecks.len() >= 10);
@@ -2438,7 +2438,7 @@ fn robot_insights_core_fields_match_legacy_fixture() {
     let actual_bottlenecks = actual
         .get("Bottlenecks")
         .and_then(Value::as_array)
-        .or_else(|| actual["insights"]["bottlenecks"].as_array())
+        .or_else(|| actual["Bottlenecks"].as_array())
         .expect("Bottlenecks array");
     let expected_bottlenecks = expected["Bottlenecks"]
         .as_array()

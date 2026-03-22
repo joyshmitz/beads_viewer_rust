@@ -48,9 +48,8 @@ fn robot_plan_has_valid_envelope() {
 fn robot_insights_has_valid_envelope() {
     let output = run_bvr_json(&["--robot-insights"], "tests/testdata/minimal.jsonl");
     test_utils::assert_valid_envelope(&output);
-    assert!(validate_type_at(&output, "insights", JsonType::Object).is_empty());
-    assert!(validate_type_at(&output, "insights.status", JsonType::Object).is_empty());
-    assert!(validate_type_at(&output, "insights.bottlenecks", JsonType::Array).is_empty());
+    assert!(validate_type_at(&output, "Stats", JsonType::Object).is_empty());
+    assert!(validate_type_at(&output, "Bottlenecks", JsonType::Array).is_empty());
 }
 
 #[test]
@@ -548,7 +547,7 @@ fn robot_insights_complex_has_bottlenecks() {
         "tests/testdata/synthetic_complex.jsonl",
     );
     test_utils::assert_valid_envelope(&output);
-    let bottlenecks = output["insights"]["bottlenecks"]
+    let bottlenecks = output["Bottlenecks"]
         .as_array()
         .expect("bottlenecks array");
     assert!(

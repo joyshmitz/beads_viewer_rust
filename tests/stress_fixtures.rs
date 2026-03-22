@@ -60,9 +60,9 @@ fn stress_large_500_triage() {
 #[test]
 fn stress_large_500_insights() {
     let json = run_robot(&["--robot-insights"], LARGE_500);
-    let insights = &json["insights"];
+    let insights = &json;
     // Should detect the 5 cycle groups
-    let cycles = insights["cycles"].as_array().unwrap();
+    let cycles = insights["Cycles"].as_array().unwrap();
     assert!(
         cycles.len() >= 5,
         "Expected at least 5 cycles, got {}",
@@ -191,8 +191,8 @@ fn stress_pathological_triage() {
 #[test]
 fn stress_pathological_insights_detects_cycles() {
     let json = run_robot(&["--robot-insights"], PATHOLOGICAL);
-    let insights = &json["insights"];
-    let cycles = insights["cycles"].as_array().unwrap();
+    let insights = &json;
+    let cycles = insights["Cycles"].as_array().unwrap();
     // Overlapping cycles + bidirectional + long cycle + self-dep = many cycles expected
     assert!(
         cycles.len() >= 3,
@@ -212,8 +212,8 @@ fn stress_pathological_graph_deep_chain() {
 fn stress_pathological_bottleneck_convergence() {
     // The convergence sink (PD-150) depends on 50 issues — should be flagged
     let json = run_robot(&["--robot-insights"], PATHOLOGICAL);
-    let insights = &json["insights"];
-    let bottlenecks = insights["bottlenecks"].as_array().unwrap();
+    let insights = &json;
+    let bottlenecks = insights["Bottlenecks"].as_array().unwrap();
     assert!(
         !bottlenecks.is_empty(),
         "Convergence bottleneck should be detected"

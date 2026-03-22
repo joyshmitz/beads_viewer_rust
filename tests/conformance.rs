@@ -1607,6 +1607,94 @@ fn robot_boundary_fixture_keeps_closed_items_out_of_recommendations() {
 }
 
 #[test]
+fn robot_boundary_top_picks_exclude_in_progress_issues() {
+    let triage = run_bvr_json(
+        &["--robot-triage"],
+        "tests/testdata/boundary_conditions.jsonl",
+    );
+
+    let top_picks = triage["triage"]["quick_ref"]["top_picks"]
+        .as_array()
+        .expect("top_picks array");
+
+    // BND-002 is in_progress — should NOT appear in top_picks
+    // (top_picks surfaces new work, not already-claimed work).
+    for pick in top_picks {
+        assert_ne!(
+            pick["id"], "BND-002",
+            "in_progress issue BND-002 should be excluded from top_picks"
+        );
+    }
+
+    // BND-002 is also blocked (depends on BND-001), so it won't be in
+    // recommendations at all (not actionable). Verify the exclusion holds
+    // even if a future change makes it actionable.
+    let recommendations = triage["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations array");
+    // In_progress items that ARE actionable would appear in recommendations
+    // but not top_picks. BND-002 is blocked so it's excluded from both.
+    for rec in recommendations {
+        if rec["id"] == "BND-002" {
+            // If BND-002 ever becomes actionable, it should still not be in top_picks.
+            assert!(
+                !top_picks.iter().any(|p| p["id"] == "BND-002"),
+                "in_progress issue should not be in top_picks even if in recommendations"
+            );
+        }
+    }
+}
+
+#[test]
+fn robot_boundary_recommendations_have_action_and_type_fields() {
+    let triage = run_bvr_json(
+        &["--robot-triage"],
+        "tests/testdata/boundary_conditions.jsonl",
+    );
+
+    let recommendations = triage["triage"]["recommendations"]
+        .as_array()
+        .expect("recommendations array");
+
+    for rec in recommendations {
+        assert!(
+            rec.get("action").is_some_and(|v| v.is_string()),
+            "recommendation {} missing action field",
+            rec["id"]
+        );
+        assert!(
+            rec.get("type").is_some_and(|v| v.is_string()),
+            "recommendation {} missing type field",
+            rec["id"]
+        );
+    }
+}
+
+#[test]
+fn robot_boundary_plan_has_parity_fields() {
+    let plan = run_bvr_json(
+        &["--robot-plan"],
+        "tests/testdata/boundary_conditions.jsonl",
+    );
+
+    assert!(plan["plan"]["total_actionable"].is_number());
+    assert!(plan["plan"]["total_blocked"].is_number());
+    assert!(plan["plan"]["summary"]["actionable_count"].is_number());
+
+    let tracks = plan["plan"]["tracks"].as_array().expect("tracks");
+    if let Some(track) = tracks.first() {
+        assert!(
+            track.get("track_id").is_some(),
+            "track should use track_id not id"
+        );
+        if let Some(item) = track["items"].as_array().and_then(|a| a.first()) {
+            assert!(item.get("status").is_some(), "item missing status");
+            assert!(item.get("priority").is_some(), "item missing priority");
+        }
+    }
+}
+
+#[test]
 fn robot_large_graph_fixture_reports_expected_graph_size() {
     let graph = run_bvr_json(
         &["--robot-graph", "--graph-format", "json"],

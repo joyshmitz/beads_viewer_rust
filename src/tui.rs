@@ -358,6 +358,42 @@ enum PaneSplitPreset {
     Four([f32; 4]),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SplitterTarget {
+    TwoPane { breakpoint: Breakpoint },
+    HistoryThree { wide: bool, divider: usize },
+    HistoryFour { divider: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SplitterHitBox {
+    target: SplitterTarget,
+    rect: Rect,
+}
+
+impl PaneSplitState {
+    fn adjust_splitter_target(&mut self, target: SplitterTarget, delta_pct: f32) -> bool {
+        match target {
+            SplitterTarget::TwoPane { breakpoint } => self.adjust_two_pane(breakpoint, delta_pct),
+            SplitterTarget::HistoryThree { wide, divider } => {
+                let target = if wide {
+                    &mut self.history_wide_git
+                } else {
+                    &mut self.history_standard
+                };
+                adjust_split_pair(target, divider, divider + 1, delta_pct, 18.0)
+            }
+            SplitterTarget::HistoryFour { divider } => adjust_split_pair(
+                &mut self.history_wide_bead,
+                divider,
+                divider + 1,
+                delta_pct,
+                15.0,
+            ),
+        }
+    }
+}
+
 fn adjust_split_pair<const N: usize>(
     ratios: &mut [f32; N],
     primary: usize,
@@ -403,6 +439,14 @@ fn cached_detail_content_area() -> Rect {
     LAST_DETAIL_CONTENT_AREA.with(Cell::get)
 }
 
+fn cached_view_width() -> u16 {
+    LAST_VIEW_WIDTH.with(Cell::get)
+}
+
+fn cached_view_height() -> u16 {
+    LAST_VIEW_HEIGHT.with(Cell::get)
+}
+
 fn pane_split_state() -> PaneSplitState {
     PANE_SPLIT_STATE.with(Cell::get)
 }
@@ -431,8 +475,115 @@ const fn rect_contains(area: Rect, x: u16, y: u16) -> bool {
         && y < area.y.saturating_add(area.height)
 }
 
-fn cached_view_width() -> u16 {
-    LAST_VIEW_WIDTH.with(Cell::get)
+fn splitter_rect_between(left: Rect, right: Rect) -> Rect {
+    let x = left.x.saturating_add(left.width).saturating_sub(1);
+    let max_right = right.x.saturating_add(right.width);
+    let width = if x < max_right {
+        (max_right - x).min(2)
+    } else {
+        1
+    };
+    Rect::new(x, left.y, width.max(1), left.height)
+}
+
+fn splitter_hit_boxes(app: &BvrApp, width: u16, height: u16) -> Vec<SplitterHitBox> {
+    let full = Rect::from_size(width, height);
+    let rows = Flex::vertical()
+        .constraints([
+            Constraint::Fixed(1),
+            Constraint::Min(3),
+            Constraint::Fixed(1),
+        ])
+        .split(full);
+    let body = rows[1];
+    let bp = Breakpoint::from_width(width);
+    let split_state = pane_split_state();
+    let graph_single_pane = matches!(app.mode, ViewMode::Graph) && matches!(bp, Breakpoint::Narrow);
+    let history_layout = if matches!(app.mode, ViewMode::History) {
+        HistoryLayout::from_width(body.width)
+    } else {
+        HistoryLayout::Narrow
+    };
+    let history_multi_pane =
+        matches!(app.mode, ViewMode::History) && history_layout.has_middle_pane();
+
+    if graph_single_pane {
+        return Vec::new();
+    }
+
+    if history_multi_pane {
+        if matches!(history_layout, HistoryLayout::Wide)
+            && matches!(app.history_view_mode, HistoryViewMode::Bead)
+        {
+            let PaneSplitPreset::Four(pcts) =
+                split_state.history_pcts(history_layout, app.history_view_mode)
+            else {
+                unreachable!("wide bead history should use four-pane split");
+            };
+            let panes = Flex::horizontal()
+                .constraints([
+                    Constraint::Percentage(pcts[0]),
+                    Constraint::Percentage(pcts[1]),
+                    Constraint::Percentage(pcts[2]),
+                    Constraint::Percentage(pcts[3]),
+                ])
+                .split(body);
+            return vec![
+                SplitterHitBox {
+                    target: SplitterTarget::HistoryFour { divider: 0 },
+                    rect: splitter_rect_between(panes[0], panes[1]),
+                },
+                SplitterHitBox {
+                    target: SplitterTarget::HistoryFour { divider: 1 },
+                    rect: splitter_rect_between(panes[1], panes[2]),
+                },
+                SplitterHitBox {
+                    target: SplitterTarget::HistoryFour { divider: 2 },
+                    rect: splitter_rect_between(panes[2], panes[3]),
+                },
+            ];
+        }
+
+        let PaneSplitPreset::Three(pane_widths) =
+            split_state.history_pcts(history_layout, app.history_view_mode)
+        else {
+            unreachable!("multi-pane history should use three-pane split");
+        };
+        let panes = Flex::horizontal()
+            .constraints([
+                Constraint::Percentage(pane_widths[0]),
+                Constraint::Percentage(pane_widths[1]),
+                Constraint::Percentage(pane_widths[2]),
+            ])
+            .split(body);
+        return vec![
+            SplitterHitBox {
+                target: SplitterTarget::HistoryThree {
+                    wide: matches!(history_layout, HistoryLayout::Wide),
+                    divider: 0,
+                },
+                rect: splitter_rect_between(panes[0], panes[1]),
+            },
+            SplitterHitBox {
+                target: SplitterTarget::HistoryThree {
+                    wide: matches!(history_layout, HistoryLayout::Wide),
+                    divider: 1,
+                },
+                rect: splitter_rect_between(panes[1], panes[2]),
+            },
+        ];
+    }
+
+    let panes = Flex::horizontal()
+        .constraints([
+            Constraint::Percentage(split_state.two_pane_list_pct(bp)),
+            Constraint::Percentage(split_state.two_pane_detail_pct(bp)),
+        ])
+        .split(body);
+    vec![SplitterHitBox {
+        target: SplitterTarget::TwoPane { breakpoint: bp },
+        rect: splitter_rect_between(panes[0], panes[1]),
+    }]
 }
 
 fn is_http_url(value: &str) -> bool {
@@ -2174,6 +2325,69 @@ impl Model for BvrApp {
 }
 
 impl BvrApp {
+    fn splitter_hit_target_at(&self, x: u16, y: u16) -> Option<SplitterHitBox> {
+        splitter_hit_boxes(self, cached_view_width(), cached_view_height())
+            .into_iter()
+            .find(|hit_box| rect_contains(hit_box.rect, x, y))
+    }
+
+    fn adjust_splitter_target(
+        &mut self,
+        target: SplitterTarget,
+        delta_pct: f32,
+        source: &'static str,
+    ) -> bool {
+        let mut state = pane_split_state();
+        let changed = state.adjust_splitter_target(target, delta_pct);
+        if changed {
+            set_pane_split_state(state);
+            self.status_msg = format!("Pane split adjusted ({source}, {delta_pct:+.0}%)");
+        }
+        changed
+    }
+
+    fn handle_splitter_mouse_scroll(&mut self, event: MouseEvent) -> Option<Cmd<Msg>> {
+        let hit_box = self.splitter_hit_target_at(event.x, event.y)?;
+        let delta_pct = match event.kind {
+            MouseEventKind::ScrollUp => 4.0,
+            MouseEventKind::ScrollDown => -4.0,
+            _ => return None,
+        };
+        self.adjust_splitter_target(hit_box.target, delta_pct, "mouse");
+        Some(Cmd::None)
+    }
+
+    fn handle_splitter_mouse_click(&mut self, event: MouseEvent) -> Option<Cmd<Msg>> {
+        if !matches!(event.kind, MouseEventKind::Down(MouseButton::Left)) {
+            return None;
+        }
+
+        let hit_box = self.splitter_hit_target_at(event.x, event.y)?;
+        let midpoint = hit_box.rect.x.saturating_add(hit_box.rect.width / 2);
+        let expand_leading = event.x < midpoint;
+        let delta_pct = if expand_leading { 4.0 } else { -4.0 };
+
+        self.focus = match (hit_box.target, expand_leading) {
+            (SplitterTarget::TwoPane { .. }, true) => FocusPane::List,
+            (SplitterTarget::TwoPane { .. }, false) => FocusPane::Detail,
+            (SplitterTarget::HistoryThree { divider, .. }, true) if divider == 0 => FocusPane::List,
+            (SplitterTarget::HistoryThree { divider, .. }, false) if divider == 0 => {
+                FocusPane::Middle
+            }
+            (SplitterTarget::HistoryThree { .. }, true) => FocusPane::Middle,
+            (SplitterTarget::HistoryThree { .. }, false) => FocusPane::Detail,
+            (SplitterTarget::HistoryFour { divider }, true) if divider == 0 => FocusPane::List,
+            (SplitterTarget::HistoryFour { divider }, false) if divider == 0 => FocusPane::Middle,
+            (SplitterTarget::HistoryFour { divider }, true) if divider == 1 => FocusPane::Middle,
+            (SplitterTarget::HistoryFour { divider }, false) if divider == 1 => FocusPane::Middle,
+            (SplitterTarget::HistoryFour { .. }, true) => FocusPane::Middle,
+            (SplitterTarget::HistoryFour { .. }, false) => FocusPane::Detail,
+        };
+
+        self.adjust_splitter_target(hit_box.target, delta_pct, "mouse");
+        Some(Cmd::None)
+    }
+
     fn adjust_active_pane_split(&mut self, delta_pct: f32) -> bool {
         let mut state = pane_split_state();
         let changed = if matches!(self.mode, ViewMode::History) {
@@ -2675,6 +2889,14 @@ impl BvrApp {
     }
 
     fn handle_mouse(&mut self, event: MouseEvent) -> Cmd<Msg> {
+        if let Some(cmd) = self.handle_splitter_mouse_scroll(event) {
+            return cmd;
+        }
+
+        if let Some(cmd) = self.handle_splitter_mouse_click(event) {
+            return cmd;
+        }
+
         match event.kind {
             MouseEventKind::ScrollUp => self.handle_key(KeyCode::Up, Modifiers::NONE),
             MouseEventKind::ScrollDown => self.handle_key(KeyCode::Down, Modifiers::NONE),
@@ -11822,6 +12044,13 @@ fn render_hittest_debug_report(app: &BvrApp, width: u16, height: u16) -> String 
         lines.push("link-row       none".to_string());
     }
 
+    for (index, hit_box) in splitter_hit_boxes(app, width, height)
+        .into_iter()
+        .enumerate()
+    {
+        lines.push(rect_debug_line(&format!("splitter-{index}"), hit_box.rect));
+    }
+
     lines.join("\n")
 }
 
@@ -12510,6 +12739,7 @@ mod tests {
         assert!(output.contains("detail-content"));
         assert!(output.contains("link-row"));
         assert!(output.contains("link-center"));
+        assert!(output.contains("splitter-0"));
     }
 
     #[test]
@@ -15197,6 +15427,68 @@ mod tests {
         assert!(clamped[2] >= 15.0);
         assert!(clamped[3] >= 15.0);
         assert!((clamped.iter().sum::<f32>() - 100.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn mouse_scroll_over_splitter_adjusts_two_pane_ratio() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.reset_pane_split_state();
+        let _ = render_app(&app, 100, 24);
+        let first_hit_box = super::splitter_hit_boxes(&app, 100, 24)
+            .into_iter()
+            .next()
+            .expect("main view should expose a two-pane splitter");
+
+        app.update(mouse(
+            MouseEventKind::ScrollUp,
+            first_hit_box.rect.x,
+            first_hit_box.rect.y.saturating_add(1),
+        ));
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            46.0
+        );
+
+        let second_hit_box = super::splitter_hit_boxes(&app, 100, 24)
+            .into_iter()
+            .next()
+            .expect("main view should still expose a splitter after resize");
+
+        app.update(mouse(
+            MouseEventKind::ScrollDown,
+            second_hit_box.rect.x,
+            second_hit_box.rect.y.saturating_add(1),
+        ));
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            42.0
+        );
+    }
+
+    #[test]
+    fn mouse_click_on_splitter_nudges_ratio_and_updates_focus() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.reset_pane_split_state();
+        let _ = render_app(&app, 100, 24);
+        let hit_box = super::splitter_hit_boxes(&app, 100, 24)
+            .into_iter()
+            .next()
+            .expect("main view should expose a two-pane splitter");
+        let right_edge = hit_box
+            .rect
+            .x
+            .saturating_add(hit_box.rect.width.saturating_sub(1));
+
+        app.update(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            right_edge,
+            hit_box.rect.y.saturating_add(1),
+        ));
+        assert_eq!(app.focus, FocusPane::Detail);
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            38.0
+        );
     }
 
     // -- Visual token tests --------------------------------------------------

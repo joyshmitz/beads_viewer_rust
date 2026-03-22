@@ -72,10 +72,20 @@ jobs:
         run: cargo test --test export_md --test export_pages -- --test-threads=4
       - name: Admin CLI tests
         run: cargo test --test admin_cli -- --test-threads=4
+      - name: CLI model validation
+        run: cargo test --test cli_model_validation -- --test-threads=4
+      - name: Workspace and history tests
+        run: cargo test --test e2e_workspace_history -- --test-threads=4
+      - name: E2E export pages
+        run: cargo test --test e2e_export_pages -- --test-threads=4
       - name: Background mode tests
         run: cargo test --test background_mode -- --test-threads=4
       - name: Stress fixture tests
         run: cargo test --test stress_fixtures -- --test-threads=4
+      - name: Shell e2e preview/pages
+        run: |
+          cargo build
+          ./scripts/e2e_preview_pages.sh ./target/debug/bvr
       - name: Upload e2e regression artifacts
         if: always()
         uses: actions/upload-artifact@v4

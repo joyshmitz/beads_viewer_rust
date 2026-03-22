@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command as ProcessCommand, Stdio};
+use std::sync::mpsc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::Duration;
@@ -475,6 +476,12 @@ fn write_hooks(repo_dir: &Path, yaml: &str) {
 fn preview_request(port: u16, path: &str) -> String {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect preview server");
     stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .expect("set preview write timeout");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .expect("set preview read timeout");
+    stream
         .write_all(
             format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
                 .as_bytes(),
@@ -500,6 +507,36 @@ fn preview_test_guard() -> MutexGuard<'static, ()> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn wait_for_watch_startup(child: &mut std::process::Child) -> String {
+    let stderr = child.stderr.as_mut().expect("watch stderr");
+    let mut captured = String::new();
+    let mut line = Vec::new();
+    let mut byte = [0_u8; 1];
+
+    for _ in 0..16 {
+        line.clear();
+        loop {
+            let bytes = stderr.read(&mut byte).expect("read watch startup");
+            assert!(bytes > 0, "watch process exited before entering watch mode");
+            line.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+        }
+        let line = String::from_utf8_lossy(&line);
+        assert!(
+            !line.is_empty(),
+            "watch process exited before entering watch mode"
+        );
+        captured.push_str(&line);
+        if line.starts_with("Watching ") {
+            return captured;
+        }
+    }
+
+    panic!("watch process did not advertise watch mode");
 }
 
 fn wait_for_preview_startup(child: &mut std::process::Child) -> (String, u16) {
@@ -1038,9 +1075,29 @@ fn watch_export_regenerates_after_change_and_keeps_repo_filter() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     write_repo_scoped_beads(repo_dir);
+    let beads_path = repo_dir.join(".beads/beads.jsonl");
+    let beads_path_for_modifier = beads_path.clone();
+    let (modifier_start_tx, modifier_start_rx) = mpsc::channel();
+
+    let modifier = thread::spawn(move || {
+        modifier_start_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("watch startup signal");
+        thread::sleep(Duration::from_millis(350));
+        let mut beads = fs::OpenOptions::new()
+            .append(true)
+            .open(&beads_path_for_modifier)
+            .expect("open beads for append");
+        beads
+            .write_all(
+                b"{\"id\":\"BD-ALPHA-2\",\"title\":\"Alpha Two\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\",\"source_repo\":\"alpha\"}\n",
+            )
+            .expect("append issue");
+        beads.flush().expect("flush append");
+    });
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args([
             "--export-pages",
@@ -1049,33 +1106,31 @@ fn watch_export_regenerates_after_change_and_keeps_repo_filter() {
             "--repo",
             "alpha",
         ])
-        .env("BVR_WATCH_MAX_LOOPS", "8")
+        .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "200")
         .stderr(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()
         .expect("spawn bvr watch export");
 
-    thread::sleep(Duration::from_millis(350));
-    let mut beads = fs::OpenOptions::new()
-        .append(true)
-        .open(repo_dir.join(".beads/beads.jsonl"))
-        .expect("open beads for append");
-    beads
-        .write_all(
-            b"{\"id\":\"BD-ALPHA-2\",\"title\":\"Alpha Two\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\",\"source_repo\":\"alpha\"}\n",
-        )
-        .expect("append issue");
-    beads.flush().expect("flush append");
-
+    let startup_stderr = wait_for_watch_startup(&mut child);
+    modifier_start_tx
+        .send(())
+        .expect("send watch startup signal");
     let output = child.wait_with_output().expect("wait for watch process");
+    modifier.join().expect("modifier thread");
     assert!(
         output.status.success(),
-        "watch export failed with stderr: {}",
+        "watch export failed with stderr: {}{}",
+        startup_stderr,
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = format!(
+        "{}{}",
+        startup_stderr,
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(
         stderr.contains("watch: regenerated"),
         "expected regeneration log in stderr, got: {stderr}"
@@ -1117,9 +1172,32 @@ fn watch_export_regenerates_after_workspace_change() {
         "{\"id\":\"UI-1\",\"title\":\"Web UI\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"task\"}\n",
     )
     .expect("write web issues");
+    let workspace_path = repo_dir.join(".bv/workspace.yaml");
+    let workspace_path_for_modifier = workspace_path.clone();
+    let (modifier_start_tx, modifier_start_rx) = mpsc::channel();
+
+    let modifier = thread::spawn(move || {
+        modifier_start_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("watch startup signal");
+        thread::sleep(Duration::from_millis(350));
+        fs::write(
+            &workspace_path_for_modifier,
+            concat!(
+                "repos:\n",
+                "  - name: api\n",
+                "    path: services/api\n",
+                "    prefix: api-\n",
+                "  - name: web\n",
+                "    path: apps/web\n",
+                "    prefix: web-\n",
+            ),
+        )
+        .expect("update workspace");
+    });
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args([
             "--export-pages",
@@ -1128,36 +1206,31 @@ fn watch_export_regenerates_after_workspace_change() {
             "--workspace",
             ".",
         ])
-        .env("BVR_WATCH_MAX_LOOPS", "8")
+        .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "200")
         .stderr(Stdio::piped())
         .stdout(Stdio::null())
         .spawn()
         .expect("spawn workspace watch export");
 
-    thread::sleep(Duration::from_millis(350));
-    fs::write(
-        repo_dir.join(".bv/workspace.yaml"),
-        concat!(
-            "repos:\n",
-            "  - name: api\n",
-            "    path: services/api\n",
-            "    prefix: api-\n",
-            "  - name: web\n",
-            "    path: apps/web\n",
-            "    prefix: web-\n",
-        ),
-    )
-    .expect("update workspace");
-
+    let startup_stderr = wait_for_watch_startup(&mut child);
+    modifier_start_tx
+        .send(())
+        .expect("send watch startup signal");
     let output = child.wait_with_output().expect("wait for workspace watch");
+    modifier.join().expect("modifier thread");
     assert!(
         output.status.success(),
-        "workspace watch export failed with stderr: {}",
+        "workspace watch export failed with stderr: {}{}",
+        startup_stderr,
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = format!(
+        "{}{}",
+        startup_stderr,
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(
         stderr.contains("watch: regenerated"),
         "expected regeneration log in stderr, got: {stderr}"
@@ -1177,12 +1250,34 @@ fn watch_export_regenerates_after_delete_and_recreate() {
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     write_test_beads(repo_dir);
+    let beads_path = repo_dir.join(".beads/beads.jsonl");
+    let beads_path_for_modifier = beads_path.clone();
+    let (modifier_start_tx, modifier_start_rx) = mpsc::channel();
+
+    let modifier = thread::spawn(move || {
+        modifier_start_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("watch startup signal");
+        thread::sleep(Duration::from_millis(350));
+        fs::remove_file(&beads_path_for_modifier).expect("remove beads file");
+        thread::sleep(Duration::from_millis(350));
+        fs::write(
+            &beads_path_for_modifier,
+            concat!(
+                "{\"id\":\"BD-1\",\"title\":\"Recreated One\",\"status\":\"open\",\"priority\":1,",
+                "\"issue_type\":\"task\",\"source_repo\":\".\"}\n",
+                "{\"id\":\"BD-2\",\"title\":\"Recreated Two\",\"status\":\"open\",\"priority\":2,",
+                "\"issue_type\":\"task\",\"source_repo\":\".\"}\n",
+            ),
+        )
+        .expect("rewrite beads file");
+    });
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--export-pages", "pages-out", "--watch-export"])
-        .env("BVR_WATCH_MAX_LOOPS", "12")
+        .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "100")
         .env("BVR_WATCH_DEBOUNCE_MS", "40")
         .stderr(Stdio::piped())
@@ -1190,29 +1285,24 @@ fn watch_export_regenerates_after_delete_and_recreate() {
         .spawn()
         .expect("spawn watch export");
 
-    thread::sleep(Duration::from_millis(250));
-    let beads_path = repo_dir.join(".beads/beads.jsonl");
-    fs::remove_file(&beads_path).expect("remove beads file");
-    thread::sleep(Duration::from_millis(250));
-    fs::write(
-        &beads_path,
-        concat!(
-            "{\"id\":\"BD-1\",\"title\":\"Recreated One\",\"status\":\"open\",\"priority\":1,",
-            "\"issue_type\":\"task\",\"source_repo\":\".\"}\n",
-            "{\"id\":\"BD-2\",\"title\":\"Recreated Two\",\"status\":\"open\",\"priority\":2,",
-            "\"issue_type\":\"task\",\"source_repo\":\".\"}\n",
-        ),
-    )
-    .expect("rewrite beads file");
-
+    let startup_stderr = wait_for_watch_startup(&mut child);
+    modifier_start_tx
+        .send(())
+        .expect("send watch startup signal");
     let output = child.wait_with_output().expect("wait for watch process");
+    modifier.join().expect("modifier thread");
     assert!(
         output.status.success(),
-        "watch export failed with stderr: {}",
+        "watch export failed with stderr: {}{}",
+        startup_stderr,
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = format!(
+        "{}{}",
+        startup_stderr,
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(
         stderr.contains("watch: change #"),
         "expected change detection after delete+recreate: {stderr}"

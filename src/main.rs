@@ -5409,6 +5409,7 @@ struct RobotInsightsOutput {
     label_scope: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     label_context: Option<bvr::analysis::label_intel::LabelHealth>,
+    #[serde(rename = "Stats")]
     analysis_config: bvr::analysis::graph::AnalysisConfig,
     #[serde(flatten)]
     insights: Insights,

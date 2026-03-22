@@ -1132,10 +1132,10 @@ impl ViewMode {
             Self::Graph,
             Self::History,
             Self::Actionable,
-            Self::Attention,
-            Self::Tree,
             Self::LabelDashboard,
             Self::FlowMatrix,
+            Self::Attention,
+            Self::Tree,
             Self::TimeTravelDiff,
             Self::Sprint,
         ]

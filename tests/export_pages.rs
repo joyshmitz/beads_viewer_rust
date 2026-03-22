@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command as ProcessCommand, Stdio};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -493,6 +494,45 @@ fn preview_response_body(response: &str) -> &str {
         .trim()
 }
 
+fn preview_test_guard() -> MutexGuard<'static, ()> {
+    static PREVIEW_TEST_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+    PREVIEW_TEST_MUTEX
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn wait_for_preview_startup(child: &mut std::process::Child) -> (String, u16) {
+    let stdout = child.stdout.as_mut().expect("preview stdout");
+    let mut reader = BufReader::new(stdout);
+    let mut captured = String::new();
+    let mut line = String::new();
+    let mut preview_port = None;
+
+    for _ in 0..16 {
+        line.clear();
+        let bytes = reader.read_line(&mut line).expect("read preview startup");
+        assert!(
+            bytes > 0,
+            "preview server exited before advertising its port"
+        );
+        captured.push_str(&line);
+        if preview_port.is_none() {
+            preview_port = line
+                .trim()
+                .strip_prefix("Preview server running at http://127.0.0.1:")
+                .and_then(|value| value.parse::<u16>().ok());
+        }
+        if line.trim() == "Press Ctrl+C to stop." {
+            if let Some(port) = preview_port {
+                return (captured, port);
+            }
+        }
+    }
+
+    panic!("failed to capture preview startup output: {captured}");
+}
+
 #[test]
 fn export_pages_writes_bundle_files() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -898,6 +938,7 @@ fn watch_export_requires_export_pages() {
 
 #[test]
 fn preview_pages_is_handled_before_issue_loading() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
 
@@ -913,6 +954,7 @@ fn preview_pages_is_handled_before_issue_loading() {
 
 #[test]
 fn preview_pages_relative_path_uses_workspace_root_when_repo_path_discovers_workspace() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let workspace_root = temp.path().join("workspace");
     let repo_dir = workspace_root.join("services/api");
@@ -938,7 +980,7 @@ fn preview_pages_relative_path_uses_workspace_root_when_repo_path_discovers_work
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(&caller_dir)
         .args([
             "--preview-pages",
@@ -953,19 +995,8 @@ fn preview_pages_relative_path_uses_workspace_root_when_repo_path_discovers_work
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut connected = false;
-    for _ in 0..40 {
-        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
-            stream
-                .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-                .expect("write request");
-            connected = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    assert!(connected, "failed to connect to preview server");
+    let (startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let _ = preview_request(actual_port, "/");
 
     let output = child.wait_with_output().expect("wait for preview");
     assert!(
@@ -974,8 +1005,12 @@ fn preview_pages_relative_path_uses_workspace_root_when_repo_path_discovers_work
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(&workspace_root.join("bundle").display().to_string()));
+    let stdout = format!(
+        "{}{}",
+        startup_stdout,
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(stdout.contains(&format!("Serving bundle: {}", bundle_dir.display())));
     assert!(stdout.contains("Preview server running at http://127.0.0.1:"));
 }
 
@@ -1174,6 +1209,7 @@ fn watch_export_regenerates_after_delete_and_recreate() {
 
 #[test]
 fn preview_pages_reports_session_diagnostics() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1189,7 +1225,7 @@ fn preview_pages_reports_session_diagnostics() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle"])
         .env("BVR_PREVIEW_PORT", port.to_string())
@@ -1199,19 +1235,12 @@ fn preview_pages_reports_session_diagnostics() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut connected = false;
-    for _ in 0..40 {
-        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
-            stream
-                .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-                .expect("write request");
-            connected = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    assert!(connected, "failed to connect to preview server");
+    let (startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let response = preview_request(actual_port, "/");
+    assert!(
+        response.contains("200 OK"),
+        "expected preview GET to succeed: {response}"
+    );
 
     let output = child.wait_with_output().expect("wait for preview");
     assert!(
@@ -1220,9 +1249,13 @@ fn preview_pages_reports_session_diagnostics() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = format!(
+        "{}{}",
+        startup_stdout,
+        String::from_utf8_lossy(&output.stdout)
+    );
     assert!(stdout.contains(&format!(
-        "Preview server running at http://127.0.0.1:{port}"
+        "Preview server running at http://127.0.0.1:{actual_port}"
     )));
     assert!(stdout.contains("Serving bundle:"));
     assert!(stdout.contains("Status endpoint:"));
@@ -1232,6 +1265,7 @@ fn preview_pages_reports_session_diagnostics() {
 
 #[test]
 fn preview_pages_request_limit_ignores_empty_preconnects() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1247,7 +1281,7 @@ fn preview_pages_request_limit_ignores_empty_preconnects() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle"])
         .env("BVR_PREVIEW_PORT", port.to_string())
@@ -1257,24 +1291,20 @@ fn preview_pages_request_limit_ignores_empty_preconnects() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
+    let (_startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
 
-    let mut ready = false;
-    for _ in 0..40 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            ready = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    assert!(ready, "failed to connect to preview server");
+    let preconnect = TcpStream::connect(("127.0.0.1", actual_port))
+        .expect("connect preview server for empty preconnect");
+    drop(preconnect);
+    thread::sleep(Duration::from_millis(50));
 
-    let response = preview_request(port, "/");
+    let response = preview_request(actual_port, "/");
     assert!(
         response.contains("200 OK"),
         "expected first GET request to succeed after empty preconnect: {response}"
     );
 
-    let second_response = preview_request(port, "/__preview__/status");
+    let second_response = preview_request(actual_port, "/__preview__/status");
     assert!(
         second_response.contains("200 OK"),
         "expected second GET request to succeed after empty preconnect: {second_response}"
@@ -1290,6 +1320,7 @@ fn preview_pages_request_limit_ignores_empty_preconnects() {
 
 #[test]
 fn preview_pages_status_endpoint_reports_bundle_metadata() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1306,38 +1337,30 @@ fn preview_pages_status_endpoint_reports_bundle_metadata() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle"])
         .env("BVR_PREVIEW_PORT", port.to_string())
-        .env("BVR_PREVIEW_MAX_REQUESTS", "2")
+        .env("BVR_PREVIEW_MAX_REQUESTS", "1")
         .env("BV_NO_BROWSER", "1")
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut response = None::<String>;
-    for _ in 0..40 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            response = Some(preview_request(port, "/__preview__/status"));
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    let response = response.expect("status response");
+    let (_startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let response = preview_request(actual_port, "/__preview__/status");
     let body = preview_response_body(&response);
     let payload = serde_json::from_str::<Value>(body).expect("decode status json");
     assert_eq!(payload["status"], "running");
-    assert_eq!(payload["port"], port);
-    assert_eq!(payload["url"], format!("http://127.0.0.1:{port}"));
+    assert_eq!(payload["port"], actual_port);
+    assert_eq!(payload["url"], format!("http://127.0.0.1:{actual_port}"));
     assert_eq!(payload["has_index"], true);
     assert_eq!(payload["live_reload"], true);
     assert_eq!(payload["reload_mode"], "poll");
     assert_eq!(payload["file_count"], 2);
     assert_eq!(
         payload["status_url"],
-        format!("http://127.0.0.1:{port}/__preview__/status")
+        format!("http://127.0.0.1:{actual_port}/__preview__/status")
     );
     assert_eq!(payload["reload_endpoint"], "/.bvr/livereload");
     assert!(
@@ -1356,6 +1379,7 @@ fn preview_pages_status_endpoint_reports_bundle_metadata() {
 
 #[test]
 fn preview_pages_no_live_reload_omits_reload_script() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1371,26 +1395,18 @@ fn preview_pages_no_live_reload_omits_reload_script() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle", "--no-live-reload"])
         .env("BVR_PREVIEW_PORT", port.to_string())
-        .env("BVR_PREVIEW_MAX_REQUESTS", "2")
+        .env("BVR_PREVIEW_MAX_REQUESTS", "1")
         .env("BV_NO_BROWSER", "1")
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut response = None::<String>;
-    for _ in 0..40 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            response = Some(preview_request(port, "/"));
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    let response = response.expect("html response");
+    let (_startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let response = preview_request(actual_port, "/");
     let body = preview_response_body(&response);
     assert!(body.contains("<body>ok</body>"));
     assert!(!body.contains("window.location.reload"));
@@ -1405,6 +1421,7 @@ fn preview_pages_no_live_reload_omits_reload_script() {
 
 #[test]
 fn preview_pages_no_live_reload_disables_reload_endpoint() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1420,26 +1437,18 @@ fn preview_pages_no_live_reload_disables_reload_endpoint() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle", "--no-live-reload"])
         .env("BVR_PREVIEW_PORT", port.to_string())
         .env("BVR_PREVIEW_MAX_REQUESTS", "1")
         .env("BV_NO_BROWSER", "1")
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut response = None::<String>;
-    for _ in 0..40 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            response = Some(preview_request(port, "/.bvr/livereload"));
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    let response = response.expect("reload response");
+    let (_startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let response = preview_request(actual_port, "/.bvr/livereload");
     assert!(
         response.contains("404 Not Found"),
         "reload endpoint should be disabled when live reload is off: {response}"
@@ -1455,6 +1464,7 @@ fn preview_pages_no_live_reload_disables_reload_endpoint() {
 
 #[test]
 fn preview_pages_serves_directory_index_without_trailing_slash() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1475,26 +1485,18 @@ fn preview_pages_serves_directory_index_without_trailing_slash() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle"])
         .env("BVR_PREVIEW_PORT", port.to_string())
         .env("BVR_PREVIEW_MAX_REQUESTS", "1")
         .env("BV_NO_BROWSER", "1")
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut response = None::<String>;
-    for _ in 0..40 {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            response = Some(preview_request(port, "/docs"));
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    let response = response.expect("directory response");
+    let (_startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let response = preview_request(actual_port, "/docs");
     assert!(
         response.contains("200 OK"),
         "expected /docs to resolve to docs/index.html: {response}"
@@ -1513,6 +1515,7 @@ fn preview_pages_serves_directory_index_without_trailing_slash() {
 #[cfg(unix)]
 #[test]
 fn preview_pages_handles_sigterm_gracefully() {
+    let _guard = preview_test_guard();
     let temp = tempfile::tempdir().expect("tempdir");
     let repo_dir = temp.path();
     let bundle_dir = repo_dir.join("bundle");
@@ -1528,7 +1531,7 @@ fn preview_pages_handles_sigterm_gracefully() {
     drop(probe);
 
     let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr env var");
-    let child = ProcessCommand::new(bvr_bin)
+    let mut child = ProcessCommand::new(bvr_bin)
         .current_dir(repo_dir)
         .args(["--preview-pages", "bundle"])
         .env("BVR_PREVIEW_PORT", port.to_string())
@@ -1537,19 +1540,12 @@ fn preview_pages_handles_sigterm_gracefully() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn preview");
-
-    let mut connected = false;
-    for _ in 0..40 {
-        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
-            stream
-                .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-                .expect("write request");
-            connected = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    assert!(connected, "failed to connect to preview server");
+    let (_startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
+    let response = preview_request(actual_port, "/");
+    assert!(
+        response.contains("200 OK"),
+        "expected preview GET to succeed: {response}"
+    );
 
     let status = ProcessCommand::new("kill")
         .args(["-TERM", &child.id().to_string()])

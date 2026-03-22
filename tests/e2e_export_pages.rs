@@ -536,6 +536,17 @@ fn create_mutable_beads_file(label: &str) -> (tempfile::TempDir, PathBuf) {
     (dir, beads_path)
 }
 
+fn wait_for_file(path: &Path, timeout: std::time::Duration) {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if path.is_file() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    panic!("timed out waiting for {}", path.display());
+}
+
 #[test]
 fn e2e_watch_export_requires_export_pages_flag() {
     let output = bvr()
@@ -615,11 +626,17 @@ fn e2e_watch_export_detects_file_change_and_regenerates() {
     // We'll modify the file, then let max_loops expire.
     let beads_path_clone = beads_path.clone();
     let export_path_clone = export_path.clone();
+    let export_path_for_modifier = export_path.clone();
 
-    // Use a thread to modify the beads file after a short delay
+    // Wait until the initial export has materialized before mutating the
+    // source file; otherwise the write can land before the watcher captures
+    // its baseline token on slower machines.
     let modifier = std::thread::spawn(move || {
-        // Wait for the watch to start
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        wait_for_file(
+            &export_path_for_modifier.join("index.html"),
+            std::time::Duration::from_secs(5),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(350));
         // Append an issue to the beads file to trigger change detection
         let extra_issue = r#"{"id":"WATCH-1","title":"Added by watch test","status":"open","issue_type":"task","priority":2}"#;
         let mut file = std::fs::OpenOptions::new()
@@ -636,10 +653,10 @@ fn e2e_watch_export_detects_file_change_and_regenerates() {
         .arg("--watch-export")
         .arg("--beads-file")
         .arg(&beads_path)
-        .env("BVR_WATCH_MAX_LOOPS", "5")
+        .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "100")
         .env("BVR_WATCH_DEBOUNCE_MS", "50")
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(20))
         .output()
         .expect("execute bvr");
 
@@ -704,8 +721,13 @@ fn e2e_watch_export_failure_reports_last_good_served() {
     let export_path = export_tmp.path().join("pages");
 
     let beads_path_clone = beads_path.clone();
+    let export_path_clone = export_path.clone();
     let modifier = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        wait_for_file(
+            &export_path_clone.join("index.html"),
+            std::time::Duration::from_secs(5),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(350));
         // Delete the beads file to trigger a reload error
         let _ = fs::remove_file(&beads_path_clone);
     });
@@ -716,10 +738,10 @@ fn e2e_watch_export_failure_reports_last_good_served() {
         .arg("--watch-export")
         .arg("--beads-file")
         .arg(&beads_path)
-        .env("BVR_WATCH_MAX_LOOPS", "5")
+        .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "100")
         .env("BVR_WATCH_DEBOUNCE_MS", "50")
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(20))
         .output()
         .expect("execute bvr");
 

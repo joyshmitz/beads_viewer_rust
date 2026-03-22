@@ -54,9 +54,11 @@ fn conflicting_operational_actions_are_rejected() {
 #[test]
 fn agents_force_defaults_to_check_mode() {
     let temp = tempfile::tempdir().expect("tempdir");
+    let work_dir = temp.path().join("level1/level2/level3");
+    std::fs::create_dir_all(&work_dir).expect("create nested work dir");
 
     let mut cmd = bvr_command();
-    cmd.current_dir(temp.path()).arg("--agents-force");
+    cmd.current_dir(&work_dir).arg("--agents-force");
 
     cmd.assert().success().stdout(
         predicate::str::contains("No agent file found")

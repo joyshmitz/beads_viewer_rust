@@ -13043,6 +13043,8 @@ mod tests {
         let output = render_debug_view(issues, "main-hittest", 100, 20).expect("hittest debug");
         assert!(output.contains("HitTest Debug | view=Main"));
         assert!(output.contains("detail-content"));
+        assert!(output.contains("tab-main"));
+        assert!(output.contains("tab-board"));
         assert!(output.contains("link-row"));
         assert!(output.contains("link-center"));
         assert!(output.contains("splitter-0"));
@@ -15895,7 +15897,10 @@ mod tests {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 60);
         assert!(h.contains("bvr"), "header should contain 'bvr'");
-        assert!(h.contains("Main"), "narrow header should show mode");
+        assert!(
+            h.contains("1 Main"),
+            "narrow header should show the main tab"
+        );
         assert!(
             !h.contains("Esc back/quit"),
             "narrow header should remain compact"
@@ -15906,6 +15911,11 @@ mod tests {
     fn snapshot_medium_header_is_full() {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 100);
+        assert!(h.contains("b Board"), "medium header should show board tab");
+        assert!(
+            h.contains("i Insights"),
+            "medium header should show insights tab"
+        );
         assert!(h.contains("mode=Main"), "medium header should show mode=");
         assert!(h.contains("focus=list"), "medium header should show focus=");
         assert!(
@@ -15919,12 +15929,27 @@ mod tests {
         let app = new_app(ViewMode::Main, 0);
         let h = header_for_width(&app, 140);
         assert!(
+            h.contains("[ Labels"),
+            "wide header should expose secondary tabs"
+        );
+        assert!(h.contains("] Flow"), "wide header should expose flow tab");
+        assert!(
             h.contains("sort=default"),
             "wide header should show sort metric"
         );
         assert!(
             h.ends_with(" |"),
             "wide header should preserve trailing delimiter"
+        );
+    }
+
+    #[test]
+    fn snapshot_narrow_header_keeps_active_non_primary_mode_visible() {
+        let app = new_app(ViewMode::Sprint, 0);
+        let h = header_for_width(&app, 60);
+        assert!(
+            h.contains("S Sprint"),
+            "narrow header should keep active tab visible"
         );
     }
 
@@ -17717,6 +17742,19 @@ mod tests {
             "expected non-link click to stay inert, got {:?}",
             app.status_msg
         );
+    }
+
+    #[test]
+    fn mouse_left_click_on_header_mode_tab_switches_mode() {
+        let mut app = new_app(ViewMode::Main, 0);
+        let (x, y) =
+            header_tab_click_point(&app, 120, 24, ViewMode::Graph).expect("graph header tab point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert_eq!(app.mode, ViewMode::Graph);
+        assert_eq!(app.focus, FocusPane::List);
+        assert_eq!(app.status_msg, "Switched to Graph");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command as ProcessCommand, Stdio};
@@ -504,16 +504,27 @@ fn preview_test_guard() -> MutexGuard<'static, ()> {
 
 fn wait_for_preview_startup(child: &mut std::process::Child) -> (String, u16) {
     let stdout = child.stdout.as_mut().expect("preview stdout");
-    let mut reader = BufReader::new(stdout);
     let mut captured = String::new();
-    let mut line = String::new();
+    let mut line = Vec::new();
     let mut preview_port = None;
+    let mut byte = [0_u8; 1];
 
     for _ in 0..16 {
         line.clear();
-        let bytes = reader.read_line(&mut line).expect("read preview startup");
+        loop {
+            let bytes = stdout.read(&mut byte).expect("read preview startup");
+            assert!(
+                bytes > 0,
+                "preview server exited before advertising its port"
+            );
+            line.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
+        }
+        let line = String::from_utf8_lossy(&line);
         assert!(
-            bytes > 0,
+            !line.is_empty(),
             "preview server exited before advertising its port"
         );
         captured.push_str(&line);
@@ -996,7 +1007,15 @@ fn preview_pages_relative_path_uses_workspace_root_when_repo_path_discovers_work
         .spawn()
         .expect("spawn preview");
     let (startup_stdout, actual_port) = wait_for_preview_startup(&mut child);
-    let _ = preview_request(actual_port, "/");
+    let response = preview_request(actual_port, "/");
+    assert!(
+        response.contains("200 OK"),
+        "expected preview request to succeed after workspace-root resolution: {response}"
+    );
+    assert!(
+        preview_response_body(&response).contains("workspace preview"),
+        "expected preview body from workspace-root bundle: {response}"
+    );
 
     let output = child.wait_with_output().expect("wait for preview");
     assert!(

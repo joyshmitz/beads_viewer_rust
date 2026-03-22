@@ -6171,12 +6171,12 @@ impl BvrApp {
 
         let (detail_text, line_index, scroll_offset) = match self.mode {
             ViewMode::Main => {
-                let url = self.selected_issue_external_ref_url()?;
                 let detail_text = self.issue_detail_render_text();
-                let line_index = self
-                    .issue_detail_text()
-                    .lines()
-                    .position(|line| line == format!("External: {url}"))?;
+                let line_index = detail_text.lines().iter().position(|line| {
+                    ftui::text::Line::spans(line)
+                        .iter()
+                        .any(|span| span.link.is_some())
+                })?;
                 (
                     detail_text,
                     line_index,
@@ -9461,127 +9461,299 @@ impl BvrApp {
     }
 
     fn issue_detail_render_text(&self) -> RichText {
-        let issue_header = self.selected_issue().map(|issue| {
+        let Some(issue) = self.selected_issue() else {
+            return RichText::raw(self.issue_detail_text());
+        };
+
+        let blockers = self.analyzer.graph.blockers(&issue.id);
+        let open_blockers = self.analyzer.graph.open_blockers(&issue.id);
+        let dependents = self.analyzer.graph.dependents(&issue.id);
+        let pagerank = self
+            .analyzer
+            .metrics
+            .pagerank
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let betweenness = self
+            .analyzer
+            .metrics
+            .betweenness
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let eigenvector = self
+            .analyzer
+            .metrics
+            .eigenvector
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let k_core = self
+            .analyzer
+            .metrics
+            .k_core
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let slack = self
+            .analyzer
+            .metrics
+            .slack
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let depth = self
+            .analyzer
+            .metrics
+            .critical_depth
+            .get(&issue.id)
+            .copied()
+            .unwrap_or_default();
+        let articulation = self
+            .analyzer
+            .metrics
+            .articulation_points
+            .contains(&issue.id);
+        let pr_max = max_metric_value(&self.analyzer.metrics.pagerank);
+        let bw_max = max_metric_value(&self.analyzer.metrics.betweenness);
+        let ev_max = max_metric_value(&self.analyzer.metrics.eigenvector);
+        let history = self.analyzer.history(Some(&issue.id), 1).into_iter().next();
+        let action_state = if issue.is_closed_like() {
+            "closed"
+        } else if open_blockers.is_empty() {
+            "ready"
+        } else {
+            "blocked"
+        };
+        let action_subtitle = match action_state {
+            "closed" => "reference state",
+            "ready" => "ready to execute",
+            _ => "waiting on blockers",
+        };
+        let action_line = if issue.is_closed_like() {
             format!(
+                "Action: Closed work item | Downstream still watching: {}",
+                dependents.len()
+            )
+        } else if open_blockers.is_empty() {
+            format!(
+                "Action: Pull now | Downstream impact: {} | Critical depth: {}",
+                dependents.len(),
+                depth
+            )
+        } else {
+            format!(
+                "Action: Unblock first via {} | Open blockers: {} | Downstream impact: {}",
+                join_display_values(&open_blockers, 3),
+                open_blockers.len(),
+                dependents.len()
+            )
+        };
+        let status_line = format!(
+            "Status: {} | Priority: p{} | Type: {} | State: {}",
+            issue.status,
+            issue.priority,
+            display_or_fallback(&issue.issue_type, "unknown"),
+            action_state
+        );
+        let context_line = format!(
+            "Assignee: {} | Repo: {} | Estimate: {}",
+            display_or_fallback(&issue.assignee, "unassigned"),
+            display_or_fallback(&issue.source_repo, "local"),
+            issue
+                .estimated_minutes
+                .map_or_else(|| "n/a".to_string(), |minutes| format!("{minutes}m"))
+        );
+        let closed_display = if issue.is_closed_like() {
+            format_compact_timestamp(issue.closed_at.or(issue.updated_at))
+        } else {
+            "n/a".to_string()
+        };
+        let timeline_line = format!(
+            "Created: {} | Updated: {} | Due: {}",
+            format_compact_timestamp(issue.created_at),
+            format_compact_timestamp(issue.updated_at),
+            format_compact_timestamp(issue.due_date)
+        );
+        let signal_summary = format!(
+            "Depth {depth} | k-core {k_core} | slack {slack:.4} | cut-point {}",
+            if articulation { "YES" } else { "no" }
+        );
+        let external_ref = self.selected_issue_external_ref_url();
+
+        let mut lines = Vec::new();
+        let push_module_header = |lines: &mut Vec<RichLine>, title: &str, subtitle: &str| {
+            if !lines.is_empty() {
+                lines.push(RichLine::raw(""));
+            }
+            lines.push(section_separator(48));
+            lines.push(panel_header(title, Some(subtitle)));
+        };
+
+        push_module_header(&mut lines, "Summary", action_subtitle);
+        lines.push(RichLine::from_spans([
+            RichSpan::raw(format!(
                 "{} {}  {}",
                 type_icon(&issue.issue_type),
                 issue.id,
                 issue.title
-            )
-        });
-        let repo_line = self.selected_issue().map(|issue| {
+            )),
+            RichSpan::styled("  ", tokens::dim()),
+            RichSpan::styled("(C copy id)", tokens::dim()),
+        ]));
+        if let Some(styled_line) = styled_detail_summary_line(&status_line) {
+            lines.push(styled_line);
+        }
+        lines.push(RichLine::from_spans([RichSpan::styled(
+            action_line,
+            tokens::panel_title_focused(),
+        )]));
+        lines.push(RichLine::from_spans([
+            RichSpan::raw(&context_line),
+            RichSpan::styled("  ", tokens::dim()),
+            RichSpan::styled("(w repo filter)", tokens::dim()),
+        ]));
+
+        let mut labels_line = RichLine::new();
+        labels_line.push_span(RichSpan::raw(format!(
+            "Closed: {closed_display} | Labels: "
+        )));
+        if issue.labels.is_empty() {
+            labels_line.push_span(RichSpan::styled("none", tokens::dim()));
+        } else {
+            for span in label_chips(&issue.labels) {
+                labels_line.push_span(span);
+            }
+        }
+        labels_line.push_span(RichSpan::styled("  ", tokens::dim()));
+        labels_line.push_span(RichSpan::styled("(L label filter)", tokens::dim()));
+        lines.push(labels_line);
+        lines.push(RichLine::from_spans([
+            RichSpan::raw(&timeline_line),
+            RichSpan::styled("  ", tokens::dim()),
+            RichSpan::styled("(t time-travel)", tokens::dim()),
+        ]));
+        if let Some(url) = external_ref {
+            lines.push(RichLine::from_spans([
+                RichSpan::raw("External: "),
+                RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                RichSpan::styled("  ", tokens::dim()),
+                RichSpan::styled("(o open, y copy)", tokens::dim()),
+            ]));
+        }
+
+        push_module_header(&mut lines, "Signals", "rank and graph pressure");
+        lines.push(RichLine::raw(signal_summary));
+        let mut primary_metrics = RichLine::new();
+        for span in metric_strip("PR", pagerank, pr_max) {
+            primary_metrics.push_span(span);
+        }
+        primary_metrics.push_span(RichSpan::styled("  ", tokens::dim()));
+        for span in metric_strip("BW", betweenness, bw_max) {
+            primary_metrics.push_span(span);
+        }
+        lines.push(primary_metrics);
+        let mut secondary_metrics = RichLine::new();
+        for span in metric_strip("EV", eigenvector, ev_max) {
+            secondary_metrics.push_span(span);
+        }
+        secondary_metrics.push_span(RichSpan::styled("  ", tokens::dim()));
+        secondary_metrics.push_span(RichSpan::styled(
             format!(
-                "Assignee: {} | Repo: {} | Estimate: {}",
-                display_or_fallback(&issue.assignee, "unassigned"),
-                display_or_fallback(&issue.source_repo, "local"),
-                issue
-                    .estimated_minutes
-                    .map_or_else(|| "n/a".to_string(), |minutes| format!("{minutes}m"))
-            )
-        });
-        let labels_line = self.selected_issue().map(|issue| {
-            let closed_display = if issue.is_closed_like() {
-                format_compact_timestamp(issue.closed_at.or(issue.updated_at))
-            } else {
-                "n/a".to_string()
-            };
-            format!(
-                "Closed: {} | Labels: {}",
-                closed_display,
-                join_display_values(&issue.labels, 4)
-            )
-        });
-        let label_values = self.selected_issue().map(|issue| issue.labels.clone());
-        let timeline_line = self.selected_issue().map(|issue| {
-            format!(
-                "Created: {} | Updated: {} | Due: {}",
-                format_compact_timestamp(issue.created_at),
-                format_compact_timestamp(issue.updated_at),
-                format_compact_timestamp(issue.due_date)
-            )
-        });
-        let show_repo_hint = self
-            .selected_issue()
-            .is_some_and(|issue| !issue.source_repo.trim().is_empty());
-        let show_label_hint = self
-            .selected_issue()
-            .is_some_and(|issue| !issue.labels.is_empty());
-        let show_timeline_hint = self.selected_issue().is_some();
-        let external_ref = self.selected_issue_external_ref_url();
-        let mut lines = Vec::new();
-        for line in self.issue_detail_text().lines() {
-            if let Some(styled_line) = styled_detail_summary_line(line) {
-                lines.push(styled_line);
-            } else if issue_header.as_deref().is_some_and(|header| line == header) {
-                lines.push(RichLine::from_spans([
-                    RichSpan::raw(line),
-                    RichSpan::styled("  ", tokens::dim()),
-                    RichSpan::styled("(C copy id)", tokens::dim()),
-                ]));
-            } else if show_repo_hint
-                && repo_line
-                    .as_deref()
-                    .is_some_and(|repo_line| line == repo_line)
-            {
-                lines.push(RichLine::from_spans([
-                    RichSpan::raw(line),
-                    RichSpan::styled("  ", tokens::dim()),
-                    RichSpan::styled("(w repo filter)", tokens::dim()),
-                ]));
-            } else if show_label_hint
-                && labels_line
-                    .as_deref()
-                    .is_some_and(|labels_line| line == labels_line)
-            {
-                let mut rich_line = RichLine::new();
-                let closed_display = self.selected_issue().map_or_else(
-                    || "n/a".to_string(),
-                    |issue| {
-                        if issue.is_closed_like() {
-                            format_compact_timestamp(issue.closed_at.or(issue.updated_at))
-                        } else {
-                            "n/a".to_string()
-                        }
-                    },
-                );
-                rich_line.push_span(RichSpan::raw(format!(
-                    "Closed: {closed_display} | Labels: "
-                )));
-                if let Some(labels) = label_values.as_ref() {
-                    if labels.is_empty() {
-                        rich_line.push_span(RichSpan::styled("none", tokens::dim()));
-                    } else {
-                        for span in label_chips(labels) {
-                            rich_line.push_span(span);
-                        }
-                    }
+                "blockers={} | unblocks={}",
+                open_blockers.len(),
+                dependents.len()
+            ),
+            tokens::dim(),
+        ));
+        lines.push(secondary_metrics);
+
+        push_module_header(&mut lines, "Dependencies", "upstream, gates, downstream");
+        lines.push(RichLine::raw(format!(
+            "Upstream: {}",
+            join_display_values(&blockers, 4)
+        )));
+        lines.push(RichLine::raw(format!(
+            "Open Gate: {}",
+            join_display_values(&open_blockers, 4)
+        )));
+        lines.push(RichLine::raw(format!(
+            "Downstream: {}",
+            join_display_values(&dependents, 4)
+        )));
+
+        if self.priority_hints_visible {
+            push_module_header(&mut lines, "Priority Hints", "scoring rationale");
+            let mut hint_lines = Vec::new();
+            self.append_priority_hints(&mut hint_lines, issue);
+            for line in hint_lines {
+                if let Some(styled_line) = styled_detail_summary_line(&line) {
+                    lines.push(styled_line);
+                } else {
+                    lines.push(RichLine::raw(line));
                 }
-                rich_line.push_span(RichSpan::styled("  ", tokens::dim()));
-                rich_line.push_span(RichSpan::styled("(L label filter)", tokens::dim()));
-                lines.push(rich_line);
-            } else if show_timeline_hint
-                && timeline_line
-                    .as_deref()
-                    .is_some_and(|timeline_line| line == timeline_line)
+            }
+        }
+
+        for line in self.issue_detail_text().lines() {
+            if matches!(
+                line,
+                "Triage Snapshot:" | "Graph Signals:" | "Dependency Map:"
+            ) {
+                continue;
+            }
+            if line.starts_with("  open blockers:")
+                || line.starts_with("  unblocks:")
+                || line.starts_with("  dependency pressure:")
+                || line.starts_with("  cycle time:")
+                || line.starts_with("  Critical depth:")
+                || line.starts_with("  PageRank:")
+                || line.starts_with("  Betweenness:")
+                || line.starts_with("  Eigenvector:")
+                || line.starts_with("  HITS:")
+                || line.starts_with("  upstream:")
+                || line.starts_with("  open gate:")
+                || line.starts_with("  downstream:")
+                || line == status_line
+                || line == context_line
+                || line == timeline_line
+                || line.starts_with("Closed: ")
+                || line.starts_with("External: ")
+                || line
+                    == format!(
+                        "{} {}  {}",
+                        type_icon(&issue.issue_type),
+                        issue.id,
+                        issue.title
+                    )
             {
-                lines.push(RichLine::from_spans([
-                    RichSpan::raw(line),
-                    RichSpan::styled("  ", tokens::dim()),
-                    RichSpan::styled("(t time-travel)", tokens::dim()),
-                ]));
-            } else if let Some(url) = external_ref
-                && line == format!("External: {url}")
-            {
-                lines.push(RichLine::from_spans([
-                    RichSpan::raw("External: "),
-                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
-                    RichSpan::styled("  ", tokens::dim()),
-                    RichSpan::styled("(o open, y copy)", tokens::dim()),
-                ]));
+                continue;
+            }
+
+            if line.ends_with(':') && !line.is_empty() {
+                lines.push(RichLine::raw(""));
+                lines.push(section_separator(48));
+                lines.push(panel_header(line.trim_end_matches(':'), None));
+            } else if let Some(styled_line) = styled_detail_summary_line(line) {
+                lines.push(styled_line);
             } else {
                 lines.push(RichLine::raw(line));
             }
         }
+
+        if let Some(history) = history.as_ref()
+            && !history.events.is_empty()
+            && !self.issue_detail_text().contains(&format!(
+                "History Summary ({} events):",
+                history.events.len()
+            ))
+        {
+            lines.push(RichLine::raw(""));
+            lines.push(section_separator(48));
+            lines.push(panel_header("History Summary", Some("recent lifecycle")));
+        }
+
         RichText::from_lines(lines)
     }
 
@@ -16035,6 +16207,22 @@ mod tests {
         assert!(
             text.contains("[parity]"),
             "second label chip missing: {text}"
+        );
+    }
+
+    #[test]
+    fn main_detail_render_text_uses_modular_cockpit_sections() {
+        let app = new_app(ViewMode::Main, 0);
+        let text = app.issue_detail_render_text().to_plain_text();
+        assert!(text.contains("Summary"), "summary module missing: {text}");
+        assert!(text.contains("Signals"), "signals module missing: {text}");
+        assert!(
+            text.contains("Dependencies"),
+            "dependencies module missing: {text}"
+        );
+        assert!(
+            text.contains("Action:"),
+            "action-first summary line missing: {text}"
         );
     }
 

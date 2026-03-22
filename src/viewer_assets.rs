@@ -586,6 +586,9 @@ mod tests {
     #[test]
     fn asset_content_types_are_consistent() {
         for entry in ASSET_INVENTORY {
+            let extension = std::path::Path::new(entry.path)
+                .extension()
+                .and_then(|ext| ext.to_str());
             // Every entry must have a non-empty content type
             assert!(
                 !entry.content_type.is_empty(),
@@ -593,14 +596,14 @@ mod tests {
                 entry.path
             );
             // Verify extension-to-type consistency
-            if entry.path.ends_with(".woff2") {
+            if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("woff2")) {
                 assert_eq!(
                     entry.content_type, "font/woff2",
                     "WOFF2 files must have font/woff2 content type: {}",
                     entry.path
                 );
             }
-            if entry.path.ends_with(".css") {
+            if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("css")) {
                 assert!(
                     entry.content_type.starts_with("text/css"),
                     "CSS files must have text/css content type: {} has {}",
@@ -608,7 +611,7 @@ mod tests {
                     entry.content_type
                 );
             }
-            if entry.path.ends_with(".html") {
+            if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("html")) {
                 assert!(
                     entry.content_type.starts_with("text/html"),
                     "HTML files must have text/html content type: {} has {}",

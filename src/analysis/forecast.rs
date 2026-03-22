@@ -661,7 +661,7 @@ mod tests {
 
     #[test]
     fn confidence_base_no_estimate_no_velocity() {
-        let issue = Issue { ..Issue::default() };
+        let issue = Issue::default();
         let confidence = super::estimate_eta_confidence(&issue, 0);
         // 0.25 (base) + (-0.05) (no velocity) + (-0.05) (no labels) = 0.15
         assert!((confidence - 0.15).abs() < 0.01);

@@ -239,16 +239,155 @@ impl Breakpoint {
         }
     }
 
+    #[cfg(test)]
     /// Detail pane percentage for the horizontal split.
     fn detail_pct(self) -> f32 {
         100.0 - self.list_pct()
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PaneSplitState {
+    narrow_list_pct: f32,
+    medium_list_pct: f32,
+    wide_list_pct: f32,
+    history_standard: [f32; 3],
+    history_wide_git: [f32; 3],
+    history_wide_bead: [f32; 4],
+}
+
+impl Default for PaneSplitState {
+    fn default() -> Self {
+        Self {
+            narrow_list_pct: Breakpoint::Narrow.list_pct(),
+            medium_list_pct: Breakpoint::Medium.list_pct(),
+            wide_list_pct: Breakpoint::Wide.list_pct(),
+            history_standard: [30.0, 35.0, 35.0],
+            history_wide_git: [25.0, 30.0, 45.0],
+            history_wide_bead: [20.0, 22.0, 25.0, 33.0],
+        }
+    }
+}
+
+impl PaneSplitState {
+    fn two_pane_list_pct(self, breakpoint: Breakpoint) -> f32 {
+        match breakpoint {
+            Breakpoint::Narrow => self.narrow_list_pct,
+            Breakpoint::Medium => self.medium_list_pct,
+            Breakpoint::Wide => self.wide_list_pct,
+        }
+    }
+
+    fn two_pane_detail_pct(self, breakpoint: Breakpoint) -> f32 {
+        100.0 - self.two_pane_list_pct(breakpoint)
+    }
+
+    fn adjust_two_pane(&mut self, breakpoint: Breakpoint, delta_pct: f32) -> bool {
+        let list = self.two_pane_list_pct(breakpoint);
+        let clamped = (list + delta_pct).clamp(25.0, 75.0);
+        if (clamped - list).abs() < f32::EPSILON {
+            return false;
+        }
+        match breakpoint {
+            Breakpoint::Narrow => self.narrow_list_pct = clamped,
+            Breakpoint::Medium => self.medium_list_pct = clamped,
+            Breakpoint::Wide => self.wide_list_pct = clamped,
+        }
+        true
+    }
+
+    fn history_pcts(self, layout: HistoryLayout, view_mode: HistoryViewMode) -> PaneSplitPreset {
+        match (layout, view_mode) {
+            (HistoryLayout::Wide, HistoryViewMode::Bead) => {
+                PaneSplitPreset::Four(self.history_wide_bead)
+            }
+            (HistoryLayout::Wide, HistoryViewMode::Git) => {
+                PaneSplitPreset::Three(self.history_wide_git)
+            }
+            (HistoryLayout::Standard, _) => PaneSplitPreset::Three(self.history_standard),
+            (HistoryLayout::Narrow, _) => {
+                PaneSplitPreset::Two([self.medium_list_pct, 100.0 - self.medium_list_pct])
+            }
+        }
+    }
+
+    fn adjust_history(
+        &mut self,
+        layout: HistoryLayout,
+        view_mode: HistoryViewMode,
+        focus: FocusPane,
+        delta_pct: f32,
+    ) -> bool {
+        match (layout, view_mode) {
+            (HistoryLayout::Wide, HistoryViewMode::Bead) => {
+                let (primary, secondary) = match focus {
+                    FocusPane::List => (0, 3),
+                    FocusPane::Middle => (2, 3),
+                    FocusPane::Detail => (3, 2),
+                };
+                adjust_split_pair(
+                    &mut self.history_wide_bead,
+                    primary,
+                    secondary,
+                    delta_pct,
+                    15.0,
+                )
+            }
+            (HistoryLayout::Standard, _) | (HistoryLayout::Wide, HistoryViewMode::Git) => {
+                let (primary, secondary) = match focus {
+                    FocusPane::List => (0, 2),
+                    FocusPane::Middle => (1, 2),
+                    FocusPane::Detail => (2, 1),
+                };
+                let target = if matches!(layout, HistoryLayout::Wide) {
+                    &mut self.history_wide_git
+                } else {
+                    &mut self.history_standard
+                };
+                adjust_split_pair(target, primary, secondary, delta_pct, 18.0)
+            }
+            (HistoryLayout::Narrow, _) => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PaneSplitPreset {
+    Two([f32; 2]),
+    Three([f32; 3]),
+    Four([f32; 4]),
+}
+
+fn adjust_split_pair<const N: usize>(
+    ratios: &mut [f32; N],
+    primary: usize,
+    secondary: usize,
+    delta_pct: f32,
+    min_pct: f32,
+) -> bool {
+    let max_increase = ratios[secondary] - min_pct;
+    let max_decrease = ratios[primary] - min_pct;
+    let applied = delta_pct.clamp(-max_decrease, max_increase);
+    if applied.abs() < f32::EPSILON {
+        return false;
+    }
+    ratios[primary] += applied;
+    ratios[secondary] -= applied;
+    true
+}
+
 thread_local! {
     static LAST_VIEW_WIDTH: Cell<u16> = const { Cell::new(80) };
     static LAST_VIEW_HEIGHT: Cell<u16> = const { Cell::new(24) };
     static LAST_DETAIL_CONTENT_AREA: Cell<Rect> = const { Cell::new(Rect::new(0, 0, 0, 0)) };
+    static PANE_SPLIT_STATE: Cell<PaneSplitState> = const { Cell::new(PaneSplitState {
+        narrow_list_pct: 35.0,
+        medium_list_pct: 42.0,
+        wide_list_pct: 38.0,
+        history_standard: [30.0, 35.0, 35.0],
+        history_wide_git: [25.0, 30.0, 45.0],
+        history_wide_bead: [20.0, 22.0, 25.0, 33.0],
+    }) };
 }
 
 fn record_view_size(width: u16, height: u16) {
@@ -262,6 +401,14 @@ fn record_detail_content_area(area: Rect) {
 
 fn cached_detail_content_area() -> Rect {
     LAST_DETAIL_CONTENT_AREA.with(Cell::get)
+}
+
+fn pane_split_state() -> PaneSplitState {
+    PANE_SPLIT_STATE.with(Cell::get)
+}
+
+fn set_pane_split_state(state: PaneSplitState) {
+    PANE_SPLIT_STATE.with(|cell| cell.set(state));
 }
 
 const fn block_inner_rect(area: Rect) -> Rect {
@@ -1603,6 +1750,7 @@ impl Model for BvrApp {
         } else {
             HistoryLayout::Narrow
         };
+        let split_state = pane_split_state();
         let history_multi_pane =
             matches!(self.mode, ViewMode::History) && history_layout.has_middle_pane();
         let mut detail_viewport_height = body.height.saturating_sub(2) as usize;
@@ -1655,12 +1803,17 @@ impl Model for BvrApp {
             if matches!(history_layout, HistoryLayout::Wide)
                 && matches!(self.history_view_mode, HistoryViewMode::Bead)
             {
+                let PaneSplitPreset::Four(pcts) =
+                    split_state.history_pcts(history_layout, self.history_view_mode)
+                else {
+                    unreachable!("wide bead history should use four-pane split");
+                };
                 let panes = Flex::horizontal()
                     .constraints([
-                        Constraint::Percentage(20.0),
-                        Constraint::Percentage(22.0),
-                        Constraint::Percentage(25.0),
-                        Constraint::Percentage(33.0),
+                        Constraint::Percentage(pcts[0]),
+                        Constraint::Percentage(pcts[1]),
+                        Constraint::Percentage(pcts[2]),
+                        Constraint::Percentage(pcts[3]),
                     ])
                     .split(body);
 
@@ -1703,12 +1856,10 @@ impl Model for BvrApp {
                 );
                 record_detail_content_area(block_inner_rect(panes[3]));
             } else {
-                let pane_widths = if matches!(history_layout, HistoryLayout::Wide)
-                    && matches!(self.history_view_mode, HistoryViewMode::Git)
-                {
-                    [25.0, 30.0, 45.0]
-                } else {
-                    [30.0, 35.0, 35.0]
+                let PaneSplitPreset::Three(pane_widths) =
+                    split_state.history_pcts(history_layout, self.history_view_mode)
+                else {
+                    unreachable!("multi-pane history should use three-pane split");
                 };
                 let panes = Flex::horizontal()
                     .constraints([
@@ -1753,8 +1904,8 @@ impl Model for BvrApp {
         } else {
             let panes = Flex::horizontal()
                 .constraints([
-                    Constraint::Percentage(bp.list_pct()),
-                    Constraint::Percentage(bp.detail_pct()),
+                    Constraint::Percentage(split_state.two_pane_list_pct(bp)),
+                    Constraint::Percentage(split_state.two_pane_detail_pct(bp)),
                 ])
                 .split(body);
 
@@ -2023,6 +2174,32 @@ impl Model for BvrApp {
 }
 
 impl BvrApp {
+    fn adjust_active_pane_split(&mut self, delta_pct: f32) -> bool {
+        let mut state = pane_split_state();
+        let changed = if matches!(self.mode, ViewMode::History) {
+            state.adjust_history(
+                self.history_layout(),
+                self.history_view_mode,
+                self.focus,
+                delta_pct,
+            )
+        } else if matches!(self.mode, ViewMode::Graph)
+            && matches!(
+                Breakpoint::from_width(cached_view_width()),
+                Breakpoint::Narrow
+            )
+        {
+            false
+        } else {
+            state.adjust_two_pane(Breakpoint::from_width(cached_view_width()), delta_pct)
+        };
+        if changed {
+            set_pane_split_state(state);
+            self.status_msg = format!("Pane split adjusted ({delta_pct:+.0}%)");
+        }
+        changed
+    }
+
     fn history_layout(&self) -> HistoryLayout {
         HistoryLayout::from_width(cached_view_width())
     }
@@ -2055,6 +2232,11 @@ impl BvrApp {
         self.selected_issue()
             .map(|issue| format!("Timeline: {}", issue.id))
             .unwrap_or_else(|| "Timeline".to_string())
+    }
+
+    #[cfg(test)]
+    fn reset_pane_split_state(&mut self) {
+        set_pane_split_state(PaneSplitState::default());
     }
 
     #[cfg(not(test))]
@@ -2915,6 +3097,12 @@ impl BvrApp {
                         .is_some_and(|state| !state.drill_active) =>
             {
                 self.move_insights_heatmap_col(1);
+            }
+            KeyCode::Right if modifiers.contains(Modifiers::CTRL) => {
+                self.adjust_active_pane_split(4.0);
+            }
+            KeyCode::Left if modifiers.contains(Modifiers::CTRL) => {
+                self.adjust_active_pane_split(-4.0);
             }
             KeyCode::Tab => {
                 if matches!(self.mode, ViewMode::History) && self.history_show_file_tree {
@@ -11397,6 +11585,9 @@ pub fn render_debug_view(
 ) -> Result<String> {
     let (mode, kind) = parse_debug_render_target(view_name)?;
 
+    #[cfg(test)]
+    set_pane_split_state(PaneSplitState::default());
+
     let mut app = new_app(issues, mode);
     if matches!(mode, ViewMode::History) && matches!(kind, DebugRenderKind::Layout) {
         app.history_view_mode = HistoryViewMode::Bead;
@@ -11507,6 +11698,7 @@ fn debug_layout_rects(app: &BvrApp, width: u16, height: u16) -> Vec<(&'static st
         .split(full);
     let body = rows[1];
     let bp = Breakpoint::from_width(width);
+    let split_state = pane_split_state();
     let graph_single_pane = matches!(app.mode, ViewMode::Graph) && matches!(bp, Breakpoint::Narrow);
     let history_layout = if matches!(app.mode, ViewMode::History) {
         HistoryLayout::from_width(body.width)
@@ -11526,12 +11718,17 @@ fn debug_layout_rects(app: &BvrApp, width: u16, height: u16) -> Vec<(&'static st
         if matches!(history_layout, HistoryLayout::Wide)
             && matches!(app.history_view_mode, HistoryViewMode::Bead)
         {
+            let PaneSplitPreset::Four(pcts) =
+                split_state.history_pcts(history_layout, app.history_view_mode)
+            else {
+                unreachable!("wide bead history should use four-pane split");
+            };
             let panes = Flex::horizontal()
                 .constraints([
-                    Constraint::Percentage(20.0),
-                    Constraint::Percentage(22.0),
-                    Constraint::Percentage(25.0),
-                    Constraint::Percentage(33.0),
+                    Constraint::Percentage(pcts[0]),
+                    Constraint::Percentage(pcts[1]),
+                    Constraint::Percentage(pcts[2]),
+                    Constraint::Percentage(pcts[3]),
                 ])
                 .split(body);
             rects.push(("list", panes[0]));
@@ -11539,12 +11736,10 @@ fn debug_layout_rects(app: &BvrApp, width: u16, height: u16) -> Vec<(&'static st
             rects.push(("middle", panes[2]));
             rects.push(("detail", panes[3]));
         } else {
-            let pane_widths = if matches!(history_layout, HistoryLayout::Wide)
-                && matches!(app.history_view_mode, HistoryViewMode::Git)
-            {
-                [25.0, 30.0, 45.0]
-            } else {
-                [30.0, 35.0, 35.0]
+            let PaneSplitPreset::Three(pane_widths) =
+                split_state.history_pcts(history_layout, app.history_view_mode)
+            else {
+                unreachable!("multi-pane history should use three-pane split");
             };
             let panes = Flex::horizontal()
                 .constraints([
@@ -11562,8 +11757,8 @@ fn debug_layout_rects(app: &BvrApp, width: u16, height: u16) -> Vec<(&'static st
 
     let panes = Flex::horizontal()
         .constraints([
-            Constraint::Percentage(bp.list_pct()),
-            Constraint::Percentage(bp.detail_pct()),
+            Constraint::Percentage(split_state.two_pane_list_pct(bp)),
+            Constraint::Percentage(split_state.two_pane_detail_pct(bp)),
         ])
         .split(body);
     rects.push(("list", panes[0]));
@@ -11954,7 +12149,7 @@ mod tests {
     }
 
     fn new_app(mode: ViewMode, selected: usize) -> BvrApp {
-        BvrApp {
+        let mut app = BvrApp {
             analyzer: Analyzer::new(sample_issues()),
             repo_root: None,
             selected,
@@ -12036,7 +12231,9 @@ mod tests {
             slow_metrics_pending: false,
             #[cfg(test)]
             key_trace: Vec::new(),
-        }
+        };
+        app.reset_pane_split_state();
+        app
     }
 
     fn new_app_with_issues(mode: ViewMode, selected: usize, issues: Vec<Issue>) -> BvrApp {
@@ -14948,6 +15145,58 @@ mod tests {
         assert_eq!(HistoryLayout::from_width(100), HistoryLayout::Standard);
         assert_eq!(HistoryLayout::from_width(149), HistoryLayout::Standard);
         assert_eq!(HistoryLayout::from_width(150), HistoryLayout::Wide);
+    }
+
+    #[test]
+    fn pane_split_two_pane_adjustment_persists_and_clamps() {
+        let mut app = new_app(ViewMode::Main, 0);
+        let _ = render_app(&app, 100, 24);
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            42.0
+        );
+
+        app.update(Msg::KeyPress(KeyCode::Right, Modifiers::CTRL));
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            46.0
+        );
+
+        app.mode = ViewMode::Board;
+        let _ = render_app(&app, 100, 24);
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            46.0
+        );
+
+        for _ in 0..20 {
+            app.update(Msg::KeyPress(KeyCode::Left, Modifiers::CTRL));
+        }
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            25.0
+        );
+    }
+
+    #[test]
+    fn pane_split_history_wide_bead_adjustment_preserves_minimums() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.focus = FocusPane::Middle;
+        let _ = render_app(&app, 160, 24);
+
+        app.update(Msg::KeyPress(KeyCode::Right, Modifiers::CTRL));
+        let split = super::pane_split_state();
+        assert_eq!(split.history_wide_bead[1], 22.0);
+        assert_eq!(split.history_wide_bead[2], 29.0);
+        assert_eq!(split.history_wide_bead[3], 29.0);
+
+        for _ in 0..20 {
+            app.update(Msg::KeyPress(KeyCode::Right, Modifiers::CTRL));
+        }
+        let clamped = super::pane_split_state().history_wide_bead;
+        assert!(clamped[2] >= 15.0);
+        assert!(clamped[3] >= 15.0);
+        assert!((clamped.iter().sum::<f32>() - 100.0).abs() < f32::EPSILON);
     }
 
     // -- Visual token tests --------------------------------------------------

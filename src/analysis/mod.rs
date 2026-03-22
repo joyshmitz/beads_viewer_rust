@@ -105,17 +105,29 @@ pub struct CoreItem {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Insights {
+    #[serde(rename = "Stats")]
     pub status: MetricStatus,
+    #[serde(rename = "Bottlenecks")]
     pub bottlenecks: Vec<InsightItem>,
+    #[serde(rename = "CriticalPath")]
     pub critical_path: Vec<String>,
+    #[serde(rename = "Cycles")]
     pub cycles: Vec<Vec<String>>,
+    #[serde(rename = "Slack")]
     pub slack: Vec<String>,
+    #[serde(rename = "Influencers")]
     pub influencers: Vec<MetricItem>,
+    #[serde(rename = "Betweenness")]
     pub betweenness: Vec<MetricItem>,
+    #[serde(rename = "Hubs")]
     pub hubs: Vec<MetricItem>,
+    #[serde(rename = "Authorities")]
     pub authorities: Vec<MetricItem>,
+    #[serde(rename = "Eigenvector")]
     pub eigenvector: Vec<MetricItem>,
+    #[serde(rename = "Cores")]
     pub cores: Vec<CoreItem>,
+    #[serde(rename = "Articulation")]
     pub articulation_points: Vec<String>,
 }
 

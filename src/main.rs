@@ -626,8 +626,6 @@ fn main() -> ExitCode {
 
     if cli.robot_insights {
         let insights = analyzer.insights();
-        let legacy_bottlenecks = insights.bottlenecks.clone();
-        let legacy_cycles = insights.cycles.clone();
         let full_stats = if cli.robot_full_stats {
             Some(build_full_stats(&analyzer.metrics))
         } else {
@@ -642,8 +640,6 @@ fn main() -> ExitCode {
             label_scope: label_scope.clone(),
             label_context: label_context.clone(),
             analysis_config: analyzer.metrics.config.clone(),
-            bottlenecks: legacy_bottlenecks,
-            cycles: legacy_cycles,
             insights,
             full_stats,
             top_what_ifs,
@@ -5412,10 +5408,7 @@ struct RobotInsightsOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     label_context: Option<bvr::analysis::label_intel::LabelHealth>,
     analysis_config: bvr::analysis::graph::AnalysisConfig,
-    #[serde(rename = "Bottlenecks")]
-    bottlenecks: Vec<bvr::analysis::InsightItem>,
-    #[serde(rename = "Cycles")]
-    cycles: Vec<Vec<String>>,
+    #[serde(flatten)]
     insights: Insights,
     #[serde(skip_serializing_if = "Option::is_none")]
     full_stats: Option<BTreeMap<String, FullStatsNode>>,
@@ -6776,8 +6769,6 @@ mod tests {
             label_scope: None,
             label_context: None,
             analysis_config: bvr::analysis::graph::AnalysisConfig::full(),
-            bottlenecks: Vec::new(),
-            cycles: Vec::new(),
             insights: bvr::analysis::Insights {
                 status: bvr::analysis::MetricStatus::computed(),
                 bottlenecks: Vec::new(),

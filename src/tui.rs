@@ -960,6 +960,7 @@ fn build_header_text(app: &BvrApp, width: u16) -> RichText {
 // Each returns RichSpan(s) or RichLine so callers can compose them freely.
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Status chip: coloured icon + abbreviated status text.
 /// Example output: `● open` (blue), `▶ in_progress` (yellow), `✖ closed` (green).
 fn status_chip(status: &str) -> Vec<RichSpan<'static>> {
@@ -982,6 +983,7 @@ fn status_chip(status: &str) -> Vec<RichSpan<'static>> {
     ]
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Priority badge: coloured priority indicator.
 /// Example output: `P0` (red), `P2` (blue).
 fn priority_badge(priority: i32) -> RichSpan<'static> {
@@ -989,6 +991,7 @@ fn priority_badge(priority: i32) -> RichSpan<'static> {
     RichSpan::styled(format!("P{prio}"), tokens::priority_style(prio).bold())
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Type badge: single-letter issue type with dim styling.
 /// Example output: `T` (task), `B` (bug), `E` (epic).
 fn type_badge(issue_type: &str) -> RichSpan<'static> {
@@ -1009,6 +1012,7 @@ fn metric_strip(label: &str, value: f64, max_value: f64) -> Vec<RichSpan<'static
     ]
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 /// Blocker indicator: shows blocking state with colour coding.
 /// Returns empty vec if the issue has no blockers and blocks nothing.
 fn blocker_indicator(open_blockers: usize, blocks_count: usize) -> Vec<RichSpan<'static>> {
@@ -1057,57 +1061,311 @@ fn label_chips(labels: &[String]) -> Vec<RichSpan<'static>> {
     spans
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScanLineVariant {
+    Narrow,
+    Medium,
+    Wide,
+}
+
+impl ScanLineVariant {
+    fn from_width(width: usize) -> Self {
+        if width < 54 {
+            Self::Narrow
+        } else if width < 92 {
+            Self::Medium
+        } else {
+            Self::Wide
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ScanSegment {
+    label: String,
+    kind: ScanSegmentKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ScanLineContext {
+    open_blockers: usize,
+    blocks_count: usize,
+    triage_rank: usize,
+    pagerank_rank: usize,
+    critical_depth: usize,
+    available_width: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScanSegmentKind {
+    Marker { selected: bool },
+    Chip(SemanticTone),
+    Dim,
+    Title { selected: bool },
+    Priority,
+    Type,
+}
+
+fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment) {
+    let span = match segment.kind {
+        ScanSegmentKind::Marker { selected } => RichSpan::styled(
+            segment.label.clone(),
+            if selected {
+                tokens::selected()
+            } else {
+                tokens::dim()
+            },
+        ),
+        ScanSegmentKind::Chip(tone) => {
+            RichSpan::styled(segment.label.clone(), tokens::chip_style(tone))
+        }
+        ScanSegmentKind::Dim => RichSpan::styled(segment.label.clone(), tokens::dim()),
+        ScanSegmentKind::Title { selected } => RichSpan::styled(
+            segment.label.clone(),
+            if selected {
+                tokens::panel_title()
+            } else {
+                tokens::help_desc()
+            },
+        ),
+        ScanSegmentKind::Priority => {
+            let prio = segment
+                .label
+                .trim_start_matches('P')
+                .parse::<i32>()
+                .unwrap_or_default();
+            RichSpan::styled(
+                segment.label.clone(),
+                tokens::priority_style(prio as u8).bold(),
+            )
+        }
+        ScanSegmentKind::Type => RichSpan::styled(segment.label.clone(), tokens::dim()),
+    };
+    line.push_span(span);
+}
+
+fn scan_segments_width(segments: &[ScanSegment]) -> usize {
+    if segments.is_empty() {
+        return 0;
+    }
+    segments
+        .iter()
+        .map(|segment| display_width(&segment.label))
+        .sum::<usize>()
+        + segments.len().saturating_sub(1)
+}
+
+fn issue_action_state(issue: &crate::model::Issue, open_blockers: usize) -> &'static str {
+    if issue.is_closed_like() {
+        "closed"
+    } else if open_blockers > 0 {
+        "blocked"
+    } else {
+        "ready"
+    }
+}
+
+fn action_state_tone(state: &str) -> SemanticTone {
+    match state {
+        "ready" => SemanticTone::Success,
+        "blocked" => SemanticTone::Danger,
+        "closed" => SemanticTone::Muted,
+        _ => SemanticTone::Neutral,
+    }
+}
+
+fn dependency_signal_segments(
+    open_blockers: usize,
+    blocks_count: usize,
+    variant: ScanLineVariant,
+) -> Vec<ScanSegment> {
+    let mut segments = Vec::new();
+    if open_blockers > 0 {
+        segments.push(ScanSegment {
+            label: format!("⊘{open_blockers}"),
+            kind: ScanSegmentKind::Chip(SemanticTone::Danger),
+        });
+    }
+    if blocks_count > 0 && !matches!(variant, ScanLineVariant::Narrow) {
+        segments.push(ScanSegment {
+            label: format!("↓{blocks_count}"),
+            kind: ScanSegmentKind::Chip(SemanticTone::Accent),
+        });
+    }
+    segments
+}
+
+fn issue_label_summary(issue: &crate::model::Issue) -> Option<String> {
+    issue.labels.first().map(|label| {
+        if issue.labels.len() > 1 {
+            format!(
+                "[{}+{}]",
+                truncate_display(label, 10),
+                issue.labels.len() - 1
+            )
+        } else {
+            format!("[{}]", truncate_display(label, 12))
+        }
+    })
+}
+
 /// Issue scan line: dense single-line summary for list views.
-/// Format: `{marker} {type} {status_chip} {priority} {id} {title} {blocker} {labels}`
+/// Format adapts by width to surface rank, state, ownership, freshness, and scope.
 fn issue_scan_line(
     issue: &crate::model::Issue,
     is_selected: bool,
-    open_blockers: usize,
-    blocks_count: usize,
-    available_width: usize,
+    context: ScanLineContext,
 ) -> RichLine {
-    let marker = if is_selected { "▸" } else { " " };
-    let marker_style = if is_selected {
-        tokens::selected()
-    } else {
-        tokens::dim()
-    };
+    let variant = ScanLineVariant::from_width(context.available_width);
+    let action_state = issue_action_state(issue, context.open_blockers);
+    let mut prefix = vec![
+        ScanSegment {
+            label: if is_selected {
+                "▸".to_string()
+            } else {
+                " ".to_string()
+            },
+            kind: ScanSegmentKind::Marker {
+                selected: is_selected,
+            },
+        },
+        ScanSegment {
+            label: format!("#{:02}", context.triage_rank),
+            kind: ScanSegmentKind::Chip(SemanticTone::Accent),
+        },
+        ScanSegment {
+            label: action_state.to_string(),
+            kind: ScanSegmentKind::Chip(action_state_tone(action_state)),
+        },
+        ScanSegment {
+            label: format!("P{}", issue.priority.clamp(0, 4)),
+            kind: ScanSegmentKind::Priority,
+        },
+        ScanSegment {
+            label: truncate_display(&issue.id, 14),
+            kind: ScanSegmentKind::Dim,
+        },
+    ];
 
-    let mut spans: Vec<RichSpan> = Vec::with_capacity(12);
-    spans.push(RichSpan::styled(marker, marker_style));
-    spans.push(RichSpan::raw(" "));
-    spans.push(type_badge(&issue.issue_type));
-    spans.push(RichSpan::raw(" "));
-    spans.extend(status_chip(&issue.status));
-    spans.push(RichSpan::raw(" "));
-    spans.push(priority_badge(issue.priority));
-    spans.push(RichSpan::raw(" "));
-
-    // ID — fixed width, truncated if needed
-    let id_display = truncate_display(&issue.id, 14);
-    spans.push(RichSpan::styled(id_display, tokens::dim()));
-    spans.push(RichSpan::raw(" "));
-
-    // Blocker indicator (if any)
-    let blocker = blocker_indicator(open_blockers, blocks_count);
-    let blocker_width = if blocker.is_empty() { 0 } else { 4 };
-    spans.extend(blocker);
-    if blocker_width > 0 {
-        spans.push(RichSpan::raw(" "));
+    if !matches!(variant, ScanLineVariant::Narrow) {
+        prefix.push(ScanSegment {
+            label: type_icon(&issue.issue_type).to_string(),
+            kind: ScanSegmentKind::Type,
+        });
+    }
+    if matches!(variant, ScanLineVariant::Wide) {
+        prefix.push(ScanSegment {
+            label: format!("{}{}", status_icon(&issue.status), issue.status),
+            kind: ScanSegmentKind::Chip(tone_for_status(&issue.status)),
+        });
     }
 
-    // Title — fill remaining width
-    let fixed_width = 2 + 2 + 5 + 3 + 3 + 14 + 1 + blocker_width;
-    let title_width = available_width.saturating_sub(fixed_width);
-    let title = truncate_display(&issue.title, title_width.max(10));
-    let title_style = if is_selected {
-        tokens::panel_title()
-    } else {
-        tokens::help_desc()
-    };
-    spans.push(RichSpan::styled(title, title_style));
+    let mut suffix =
+        dependency_signal_segments(context.open_blockers, context.blocks_count, variant);
+    if !issue.assignee.trim().is_empty() {
+        suffix.push(ScanSegment {
+            label: format!("@{}", truncate_display(issue.assignee.trim(), 12)),
+            kind: ScanSegmentKind::Chip(SemanticTone::Neutral),
+        });
+    } else if matches!(variant, ScanLineVariant::Wide) {
+        suffix.push(ScanSegment {
+            label: "@unassigned".to_string(),
+            kind: ScanSegmentKind::Chip(SemanticTone::Muted),
+        });
+    }
+    if matches!(variant, ScanLineVariant::Medium | ScanLineVariant::Wide) {
+        suffix.push(ScanSegment {
+            label: format!(
+                "↻{}",
+                format_compact_timestamp(issue.updated_at.or(issue.created_at))
+            ),
+            kind: ScanSegmentKind::Dim,
+        });
+    }
+    if matches!(variant, ScanLineVariant::Wide) {
+        suffix.push(ScanSegment {
+            label: format!(
+                "repo:{}",
+                truncate_display(&display_or_fallback(&issue.source_repo, "local"), 10)
+            ),
+            kind: ScanSegmentKind::Chip(SemanticTone::Muted),
+        });
+        suffix.push(ScanSegment {
+            label: format!("pr#{}", context.pagerank_rank),
+            kind: ScanSegmentKind::Chip(SemanticTone::Neutral),
+        });
+        suffix.push(ScanSegment {
+            label: format!("d{}", context.critical_depth),
+            kind: ScanSegmentKind::Chip(if context.critical_depth > 0 {
+                SemanticTone::Warning
+            } else {
+                SemanticTone::Muted
+            }),
+        });
+        if let Some(label_summary) = issue_label_summary(issue) {
+            suffix.push(ScanSegment {
+                label: label_summary,
+                kind: ScanSegmentKind::Chip(SemanticTone::Accent),
+            });
+        }
+    }
 
-    RichLine::from_spans(spans)
+    let min_title_width = match variant {
+        ScanLineVariant::Narrow => 10,
+        ScanLineVariant::Medium => 16,
+        ScanLineVariant::Wide => 22,
+    };
+    while !suffix.is_empty()
+        && context.available_width
+            < scan_segments_width(&prefix)
+                + scan_segments_width(&suffix)
+                + min_title_width
+                + usize::from(!prefix.is_empty())
+                + usize::from(!suffix.is_empty())
+    {
+        suffix.pop();
+    }
+
+    let reserved_width = scan_segments_width(&prefix)
+        + scan_segments_width(&suffix)
+        + usize::from(!prefix.is_empty())
+        + usize::from(!suffix.is_empty());
+    let title_width = context
+        .available_width
+        .saturating_sub(reserved_width)
+        .max(min_title_width);
+    let title = truncate_display(&issue.title, title_width);
+
+    let mut line = RichLine::new();
+    for (index, segment) in prefix.iter().enumerate() {
+        if index > 0 {
+            line.push_span(RichSpan::raw(" "));
+        }
+        push_scan_segment(&mut line, segment);
+    }
+    if !prefix.is_empty() {
+        line.push_span(RichSpan::raw(" "));
+    }
+    push_scan_segment(
+        &mut line,
+        &ScanSegment {
+            label: title,
+            kind: ScanSegmentKind::Title {
+                selected: is_selected,
+            },
+        },
+    );
+    if !suffix.is_empty() {
+        line.push_span(RichSpan::raw(" "));
+    }
+    for (index, segment) in suffix.iter().enumerate() {
+        if index > 0 {
+            line.push_span(RichSpan::raw(" "));
+        }
+        push_scan_segment(&mut line, segment);
+    }
+
+    line
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6615,53 +6873,37 @@ impl BvrApp {
     }
 
     fn main_list_text(&self) -> String {
-        let visible = self.visible_issue_indices();
-        if visible.is_empty() {
-            return format!("(no issues match filter: {})", self.list_filter.label());
-        }
-
-        let mut out = Vec::<String>::new();
-        if self.main_search_active {
-            out.push(format!("Search (active): /{}", self.main_search_query));
-        } else if !self.main_search_query.is_empty() {
-            out.push(format!("Search: /{} (n/N cycles)", self.main_search_query));
-        }
-        if !self.main_search_query.is_empty() {
-            let matches = self.main_search_matches();
-            if matches.is_empty() {
-                out.push("Matches: none".to_string());
-            } else {
-                let position = self
-                    .main_search_match_cursor
-                    .min(matches.len().saturating_sub(1))
-                    + 1;
-                out.push(format!("Matches: {position}/{}", matches.len()));
-            }
-            out.push(String::new());
-        }
-
-        for (index, issue) in visible
-            .into_iter()
-            .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
-        {
-            let marker = if index == self.selected { '>' } else { ' ' };
-            out.push(format!(
-                "{marker} {:<14} {:<11} p{} {}",
-                issue.id, issue.status, issue.priority, issue.title
-            ));
-        }
-        out.join("\n")
+        self.main_list_render_text(80).to_plain_text()
     }
 
-    fn main_list_render_text(&self, width: u16) -> RichText {
-        let visible = self.visible_issue_indices();
-        if visible.is_empty() {
-            return RichText::raw(format!(
-                "(no issues match filter: {})",
-                self.list_filter.label()
-            ));
-        }
+    fn main_list_empty_state_lines(&self) -> Vec<RichLine> {
+        let mut lines = vec![RichLine::from_spans([RichSpan::styled(
+            "No issues in the current triage slice",
+            tokens::panel_title(),
+        )])];
 
+        let mut scope = vec![format!("filter={}", self.list_filter.label())];
+        if let Some(label) = self.modal_label_filter.as_deref() {
+            scope.push(format!("label={label}"));
+        }
+        if let Some(repo) = self.modal_repo_filter.as_deref() {
+            scope.push(format!("repo={repo}"));
+        }
+        if !self.main_search_query.is_empty() {
+            scope.push(format!("search=/{}", self.main_search_query));
+        }
+        lines.push(RichLine::raw(format!("Scope: {}", scope.join(" | "))));
+
+        let recovery = if !self.main_search_query.is_empty() {
+            "Recover: Esc keeps context | / edits search | n/N cycle hits | 0..3 switch filters"
+        } else {
+            "Recover: 0 all | 1 open | 2 closed | 3 ready | L label filter | w repo filter"
+        };
+        lines.push(RichLine::raw(recovery));
+        lines
+    }
+
+    fn main_search_banner_lines(&self) -> Vec<RichLine> {
         let mut lines = Vec::<RichLine>::new();
         if self.main_search_active {
             lines.push(RichLine::raw(format!(
@@ -6674,10 +6916,14 @@ impl BvrApp {
                 self.main_search_query
             )));
         }
+        let visible = self.visible_issue_indices();
         if !self.main_search_query.is_empty() {
             let matches = self.main_search_matches();
             if matches.is_empty() {
-                lines.push(RichLine::raw("Matches: none"));
+                lines.push(RichLine::raw("Matches: none in visible issues"));
+                lines.push(RichLine::raw(
+                    "Hint: keep scanning rows, refine /query, or clear repo/label filters",
+                ));
             } else {
                 let position = self
                     .main_search_match_cursor
@@ -6690,11 +6936,24 @@ impl BvrApp {
             }
             lines.push(RichLine::raw(""));
         }
+        if visible.is_empty() {
+            lines.extend(self.main_list_empty_state_lines());
+        }
+        lines
+    }
+
+    fn main_list_render_text(&self, width: u16) -> RichText {
+        let visible = self.visible_issue_indices();
+        let mut lines = self.main_search_banner_lines();
+        if visible.is_empty() {
+            return RichText::from_lines(lines);
+        }
 
         let line_width = usize::from(width.saturating_sub(2)).max(24);
-        for (index, issue) in visible
+        for (slot, (index, issue)) in visible
             .into_iter()
             .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
+            .enumerate()
         {
             let open_blockers = self
                 .analyzer
@@ -6710,12 +6969,25 @@ impl BvrApp {
                 .get(&issue.id)
                 .copied()
                 .unwrap_or_default();
+            let pagerank_rank = metric_rank(&self.analyzer.metrics.pagerank, &issue.id);
+            let critical_depth = self
+                .analyzer
+                .metrics
+                .critical_depth
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
             lines.push(issue_scan_line(
                 issue,
                 index == self.selected,
-                open_blockers,
-                blocks_count,
-                line_width,
+                ScanLineContext {
+                    open_blockers,
+                    blocks_count,
+                    triage_rank: slot + 1,
+                    pagerank_rank,
+                    critical_depth,
+                    available_width: line_width,
+                },
             ));
         }
 
@@ -12569,9 +12841,9 @@ mod tests {
         BackgroundTickDecision, BoardGrouping, BvrApp, CommandHint, EmptyLaneVisibility, FocusPane,
         GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryGitCache, HistoryLayout,
         HistoryMilestonesCompat, HistorySearchMode, HistoryViewMode, InsightsPanel, ListFilter,
-        ListSort, ModalOverlay, MouseButton, MouseEvent, MouseEventKind, Msg, SemanticTone,
-        ViewMode, background_warning_message, blocker_indicator, buffer_to_text, build_header_text,
-        cached_detail_content_area, center_display, command_hint_width,
+        ListSort, ModalOverlay, MouseButton, MouseEvent, MouseEventKind, Msg, ScanLineContext,
+        SemanticTone, ViewMode, background_warning_message, blocker_indicator, buffer_to_text,
+        build_header_text, cached_detail_content_area, center_display, command_hint_width,
         compact_history_duration_label, decide_background_tick, display_width, fit_display,
         history_legacy_lifecycle_lines, issue_scan_line, label_chips,
         legacy_history_author_initials, metric_strip, panel_header, priority_badge,
@@ -16163,12 +16435,57 @@ mod tests {
     #[test]
     fn main_list_render_text_uses_rich_issue_scan_rows() {
         let app = new_app(ViewMode::Main, 1);
-        let text = app.main_list_render_text(80).to_plain_text();
+        let text = app.main_list_render_text(120).to_plain_text();
         assert!(text.contains('▸'), "selected row marker missing: {text}");
         assert!(text.contains("P0"), "priority badge text missing: {text}");
-        assert!(text.contains("●open"), "status chip text missing: {text}");
+        assert!(text.contains("#01"), "triage rank missing: {text}");
+        assert!(text.contains("oopen"), "status chip text missing: {text}");
         assert!(text.contains("⊘1"), "blocker indicator missing: {text}");
         assert!(text.contains("B"), "selected issue id missing: {text}");
+        assert!(
+            text.contains("pr#2"),
+            "pagerank rank signal missing: {text}"
+        );
+    }
+
+    #[test]
+    fn main_list_render_text_adapts_rows_to_narrow_width() {
+        let app = new_app(ViewMode::Main, 1);
+        let text = app.main_list_render_text(48).to_plain_text();
+        assert!(text.contains("▸"), "selected row marker missing: {text}");
+        assert!(text.contains("blocked"), "state chip missing: {text}");
+        assert!(text.contains("Dependent"), "title missing: {text}");
+        assert!(
+            !text.contains("repo:"),
+            "narrow variant should drop repo metadata: {text}"
+        );
+    }
+
+    #[test]
+    fn main_list_empty_state_is_recovery_oriented() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.modal_repo_filter = Some("missing".to_string());
+
+        let text = app.main_list_render_text(90).to_plain_text();
+        assert!(text.contains("No issues in the current triage slice"));
+        assert!(
+            text.contains("repo=missing"),
+            "scope should mention repo: {text}"
+        );
+        assert!(text.contains("Recover:"), "recovery hint missing: {text}");
+    }
+
+    #[test]
+    fn main_list_search_no_hits_keeps_guidance_visible() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.main_search_query = "zzz".to_string();
+
+        let text = app.main_list_render_text(90).to_plain_text();
+        assert!(text.contains("Matches: none in visible issues"));
+        assert!(
+            text.contains("refine /query"),
+            "search guidance missing: {text}"
+        );
     }
 
     #[test]
@@ -21919,10 +22236,23 @@ mod tests {
             issue_type: "bug".into(),
             ..Default::default()
         };
-        let text = issue_scan_line(&issue, false, 0, 0, 80).to_plain_text();
+        let text = issue_scan_line(
+            &issue,
+            false,
+            ScanLineContext {
+                open_blockers: 0,
+                blocks_count: 0,
+                triage_rank: 3,
+                pagerank_rank: 2,
+                critical_depth: 1,
+                available_width: 80,
+            },
+        )
+        .to_plain_text();
         assert!(text.contains("BD-42"), "id missing: {text}");
         assert!(text.contains("Fix widget"), "title missing: {text}");
         assert!(text.contains("P1"), "priority missing: {text}");
+        assert!(text.contains("#03"), "triage rank missing: {text}");
     }
 
     #[test]
@@ -21935,9 +22265,20 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            issue_scan_line(&issue, true, 0, 0, 60)
-                .to_plain_text()
-                .starts_with('▸')
+            issue_scan_line(
+                &issue,
+                true,
+                ScanLineContext {
+                    open_blockers: 0,
+                    blocks_count: 0,
+                    triage_rank: 1,
+                    pagerank_rank: 1,
+                    critical_depth: 0,
+                    available_width: 60,
+                },
+            )
+            .to_plain_text()
+            .starts_with('▸')
         );
     }
 
@@ -21950,7 +22291,20 @@ mod tests {
             issue_type: "task".into(),
             ..Default::default()
         };
-        let text = issue_scan_line(&issue, false, 2, 0, 80).to_plain_text();
+        let text = issue_scan_line(
+            &issue,
+            false,
+            ScanLineContext {
+                open_blockers: 2,
+                blocks_count: 1,
+                triage_rank: 4,
+                pagerank_rank: 3,
+                critical_depth: 2,
+                available_width: 80,
+            },
+        )
+        .to_plain_text();
         assert!(text.contains("⊘2"), "blocker missing: {text}");
+        assert!(text.contains("↓1"), "downstream count missing: {text}");
     }
 }

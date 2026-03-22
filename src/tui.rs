@@ -2303,6 +2303,14 @@ impl Model for BvrApp {
                         key: "f",
                         desc: "file-tree",
                     },
+                    CommandHint {
+                        key: "^←/→",
+                        desc: "resize",
+                    },
+                    CommandHint {
+                        key: "^0",
+                        desc: "reset split",
+                    },
                 ];
                 if self.history_selected_commit_url().is_some() {
                     hints.push(CommandHint {
@@ -2448,9 +2456,15 @@ impl BvrApp {
             .unwrap_or_else(|| "Timeline".to_string())
     }
 
-    #[cfg(test)]
-    fn reset_pane_split_state(&mut self) {
-        set_pane_split_state(PaneSplitState::default());
+    fn reset_pane_split_state(&mut self) -> bool {
+        let default_state = PaneSplitState::default();
+        if pane_split_state() == default_state {
+            return false;
+        }
+
+        set_pane_split_state(default_state);
+        self.status_msg = "Pane splits reset".to_string();
+        true
     }
 
     #[cfg(not(test))]
@@ -3091,6 +3105,14 @@ impl BvrApp {
             (KeyCode::Char('r'), true) | (KeyCode::F(5), _)
         ) {
             self.refresh_from_disk();
+            return Cmd::None;
+        }
+
+        if matches!(
+            (code, modifiers.contains(Modifiers::CTRL)),
+            (KeyCode::Char('0'), true)
+        ) {
+            self.reset_pane_split_state();
             return Cmd::None;
         }
 
@@ -5735,6 +5757,14 @@ impl BvrApp {
                 key: "O",
                 desc: "edit",
             },
+            CommandHint {
+                key: "^←/→",
+                desc: "resize",
+            },
+            CommandHint {
+                key: "^0",
+                desc: "reset split",
+            },
         ];
         if matches!(self.focus, FocusPane::Detail) {
             if self.selected_issue_external_ref_url().is_some() {
@@ -5818,6 +5848,14 @@ impl BvrApp {
         hints.push(CommandHint {
             key: "g/Esc",
             desc: "back",
+        });
+        hints.push(CommandHint {
+            key: "^←/→",
+            desc: "resize",
+        });
+        hints.push(CommandHint {
+            key: "^0",
+            desc: "reset split",
         });
         hints
     }
@@ -6103,6 +6141,8 @@ impl BvrApp {
                     ("h/l", "Lateral nav (lanes, peers)"),
                     ("Ctrl+d/u", "Jump down/up by 10"),
                     ("Ctrl+j/k", "Scroll detail pane"),
+                    ("Ctrl+←/→", "Resize active pane split"),
+                    ("Ctrl+0", "Reset pane splits"),
                     ("PgUp/PgDn", "Jump by 10"),
                     ("Home/End", "Jump to top/bottom"),
                     ("G", "Jump to bottom"),
@@ -6110,6 +6150,7 @@ impl BvrApp {
                     ("J/K", "Navigate deps in detail"),
                     ("Enter", "Return to main / drill"),
                     ("scroll", "Mouse wheel scrolls list"),
+                    ("splitter click/scroll", "Mouse-resize active divider"),
                 ],
             },
             Section {
@@ -15430,6 +15471,25 @@ mod tests {
     }
 
     #[test]
+    fn pane_split_reset_shortcut_restores_defaults() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.reset_pane_split_state();
+        let _ = render_app(&app, 100, 24);
+        app.update(Msg::KeyPress(KeyCode::Right, Modifiers::CTRL));
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            46.0
+        );
+
+        app.update(Msg::KeyPress(KeyCode::Char('0'), Modifiers::CTRL));
+        assert_eq!(
+            super::pane_split_state().two_pane_list_pct(Breakpoint::Medium),
+            42.0
+        );
+        assert_eq!(app.status_msg, "Pane splits reset");
+    }
+
+    #[test]
     fn mouse_scroll_over_splitter_adjusts_two_pane_ratio() {
         let mut app = new_app(ViewMode::Main, 0);
         app.reset_pane_split_state();
@@ -15601,6 +15661,15 @@ mod tests {
             h.ends_with(" |"),
             "wide header should preserve trailing delimiter"
         );
+    }
+
+    #[test]
+    fn help_overlay_mentions_splitter_resize_controls() {
+        let app = new_app(ViewMode::Main, 0);
+        let help = app.help_overlay_text(120);
+        assert!(help.contains("Ctrl+\u{2190}/\u{2192}"));
+        assert!(help.contains("Ctrl+0"));
+        assert!(help.contains("splitter click/scroll"));
     }
 
     #[test]

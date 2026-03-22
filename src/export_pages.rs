@@ -319,9 +319,7 @@ pub fn export_pages_bundle(
                                 event_type: e.kind.clone(),
                                 timestamp: e
                                     .timestamp
-                                    .map(|dt| {
-                                        dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-                                    })
+                                    .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
                                     .unwrap_or_default(),
                                 commit_sha: String::new(),
                                 commit_message: e.details.clone(),
@@ -329,8 +327,8 @@ pub fn export_pages_bundle(
                                 author_email: String::new(),
                             })
                             .collect(),
-                        milestones:
-                            crate::analysis::git_history::HistoryMilestonesCompat::default(),
+                        milestones: crate::analysis::git_history::HistoryMilestonesCompat::default(
+                        ),
                         commits: None,
                         cycle_time: None,
                         last_author: String::new(),

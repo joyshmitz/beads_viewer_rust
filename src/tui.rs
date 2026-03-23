@@ -4205,14 +4205,14 @@ impl BvrApp {
                     && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::List =>
             {
-                self.move_selection_relative(10);
+                self.move_selection_relative(self.list_page_step() as isize);
             }
             KeyCode::Char('u')
                 if modifiers.contains(Modifiers::CTRL)
                     && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::List =>
             {
-                self.move_selection_relative(-10);
+                self.move_selection_relative(-(self.list_page_step() as isize));
             }
             KeyCode::Char('h')
                 if matches!(self.mode, ViewMode::Graph) && self.focus == FocusPane::List =>
@@ -4430,10 +4430,10 @@ impl BvrApp {
                 self.move_selection_relative(-1);
             }
             KeyCode::PageUp if self.focus == FocusPane::List => {
-                self.move_selection_relative(-10);
+                self.move_selection_relative(-(self.list_page_step() as isize));
             }
             KeyCode::PageDown if self.focus == FocusPane::List => {
-                self.move_selection_relative(10);
+                self.move_selection_relative(self.list_page_step() as isize);
             }
             KeyCode::Home | KeyCode::Char('0') if self.board_shortcut_focus() => {
                 self.select_edge_in_current_board_lane(false);
@@ -5635,6 +5635,17 @@ impl BvrApp {
             current_slot.saturating_sub(delta.unsigned_abs())
         };
         self.set_selected_index(visible[next_slot]);
+    }
+
+    fn list_page_step(&self) -> usize {
+        let body_rows = usize::from(cached_view_height().saturating_sub(3));
+        if matches!(self.mode, ViewMode::Main) {
+            body_rows
+                .saturating_sub(self.main_search_banner_lines().len())
+                .max(5)
+        } else {
+            body_rows.saturating_sub(2).max(5)
+        }
     }
 
     fn select_first_visible(&mut self) {
@@ -6978,6 +6989,11 @@ impl BvrApp {
         let selected = self
             .selected_issue()
             .map_or_else(|| "none".to_string(), |issue| issue.id.clone());
+        let visible = self.visible_issue_indices_for_list_nav();
+        let position = self.selected_visible_slot(&visible).map_or_else(
+            || "0/0".to_string(),
+            |slot| format!("{}/{}", slot + 1, visible.len()),
+        );
         let mut line = RichLine::new();
         push_metric_chip(
             &mut line,
@@ -6999,6 +7015,8 @@ impl BvrApp {
             self.modal_repo_filter.as_deref().unwrap_or("any"),
             SemanticTone::Neutral,
         );
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(&mut line, "pos", &position, SemanticTone::Muted);
         line.push_span(RichSpan::styled(" | ", tokens::dim()));
         push_metric_chip(
             &mut line,
@@ -7883,13 +7901,43 @@ impl BvrApp {
             for span in metric_strip("PR", pagerank, pr_max) {
                 line.push_span(span);
             }
+            // Neighborhood: blocker/dependent indicators
+            let bl = blocker_indicator(blocked_by, blocks);
+            if !bl.is_empty() {
+                line.push_span(RichSpan::raw(" "));
+                for s in bl {
+                    line.push_span(s);
+                }
+            }
+            // Cycle membership
+            if self
+                .analyzer
+                .metrics
+                .cycles
+                .iter()
+                .any(|c| c.contains(&issue.id))
+            {
+                line.push_span(RichSpan::styled(
+                    " \u{27f3}",
+                    tokens::status_style("blocked"),
+                ));
+            }
+            // Articulation point
+            if self
+                .analyzer
+                .metrics
+                .articulation_points
+                .contains(&issue.id)
+            {
+                line.push_span(RichSpan::styled(
+                    " \u{25c6}",
+                    tokens::status_style("in_progress"),
+                ));
+            }
+            line.push_span(RichSpan::raw(" "));
+            let title_width = line_width.saturating_sub(42);
             line.push_span(RichSpan::styled(
-                format!(" in:{blocked_by:>2} out:{blocks:>2} "),
-                tokens::dim(),
-            ));
-            let title_width = line_width.saturating_sub(34);
-            line.push_span(RichSpan::styled(
-                truncate_display(&issue.title, title_width.max(10)),
+                truncate_display(&issue.title, title_width.max(8)),
                 tokens::help_desc(),
             ));
             lines.push(line);
@@ -14386,8 +14434,34 @@ mod tests {
 
         let text = app.main_list_render_text(100).to_plain_text();
         assert!(text.contains("label=core"), "label scope missing: {text}");
+        assert!(text.contains("pos=1/1"), "position scope missing: {text}");
         assert!(text.contains("repo=viewer"), "repo scope missing: {text}");
         assert!(text.contains("search=root"), "search scope missing: {text}");
+    }
+
+    #[test]
+    fn page_down_uses_viewport_aware_step_in_main_mode() {
+        let issues = (0..20)
+            .map(|idx| Issue {
+                id: format!("ISSUE-{idx:02}"),
+                title: format!("Issue {idx:02}"),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: idx % 4,
+                ..Issue::default()
+            })
+            .collect();
+        let mut app = new_app_with_issues(ViewMode::Main, 0, issues);
+        let _ = render_app(&app, 120, 16);
+        let visible = app.visible_issue_indices_for_list_nav();
+        let page_step = app.list_page_step();
+        let expected_down = visible[page_step.min(visible.len().saturating_sub(1))];
+
+        app.update(key(KeyCode::PageDown));
+        assert_eq!(app.selected, expected_down);
+
+        app.update(key(KeyCode::PageUp));
+        assert_eq!(selected_issue_id(&app), "ISSUE-00");
     }
 
     #[test]

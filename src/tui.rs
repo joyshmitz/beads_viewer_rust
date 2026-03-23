@@ -4482,11 +4482,13 @@ impl BvrApp {
                 if matches!(self.mode, ViewMode::Insights) && self.insights_heatmap.is_none() =>
             {
                 self.insights_panel = self.insights_panel.next();
+                self.reselect_ranked_list_context();
             }
             KeyCode::Char('S')
                 if matches!(self.mode, ViewMode::Insights) && self.insights_heatmap.is_none() =>
             {
                 self.insights_panel = self.insights_panel.prev();
+                self.reselect_ranked_list_context();
             }
             KeyCode::Char('e') if matches!(self.mode, ViewMode::Insights) => {
                 self.toggle_insights_explanations();
@@ -4504,12 +4506,18 @@ impl BvrApp {
                 self.focus = FocusPane::List;
             }
             KeyCode::Char('i') => {
-                self.mode = if matches!(self.mode, ViewMode::Insights) {
-                    ViewMode::Main
-                } else {
+                let entering_insights = !matches!(self.mode, ViewMode::Insights);
+                self.mode = if entering_insights {
                     ViewMode::Insights
+                } else {
+                    ViewMode::Main
                 };
                 self.focus = FocusPane::List;
+                if entering_insights {
+                    self.reselect_ranked_list_context();
+                } else {
+                    self.sync_ranked_list_context();
+                }
             }
             KeyCode::Char('g') if matches!(self.mode, ViewMode::History) => {
                 if matches!(self.history_view_mode, HistoryViewMode::Git)
@@ -4522,14 +4530,21 @@ impl BvrApp {
                 }
                 self.mode = ViewMode::Graph;
                 self.focus = FocusPane::List;
+                self.sync_ranked_list_context();
             }
             KeyCode::Char('g') => {
-                self.mode = if matches!(self.mode, ViewMode::Graph) {
-                    ViewMode::Main
-                } else {
+                let entering_graph = !matches!(self.mode, ViewMode::Graph);
+                self.mode = if entering_graph {
                     ViewMode::Graph
+                } else {
+                    ViewMode::Main
                 };
                 self.focus = FocusPane::List;
+                if entering_graph {
+                    self.reselect_ranked_list_context();
+                } else {
+                    self.sync_ranked_list_context();
+                }
             }
             KeyCode::Char('a') => {
                 self.mode = if matches!(self.mode, ViewMode::Actionable) {
@@ -5650,6 +5665,12 @@ impl BvrApp {
         {
             return self.history_visible_issue_indices();
         }
+        if matches!(self.mode, ViewMode::Graph) {
+            return self.graph_visible_issue_indices();
+        }
+        if matches!(self.mode, ViewMode::Insights) {
+            return self.insights_visible_issue_indices_for_list_nav();
+        }
 
         self.visible_issue_indices()
     }
@@ -5667,6 +5688,16 @@ impl BvrApp {
         if !visible.contains(&self.selected) {
             self.set_selected_index(visible[0]);
         }
+    }
+
+    fn sync_ranked_list_context(&mut self) {
+        self.ensure_selected_visible();
+        self.sync_insights_heatmap_selection();
+    }
+
+    fn reselect_ranked_list_context(&mut self) {
+        self.select_first_visible();
+        self.sync_insights_heatmap_selection();
     }
 
     fn move_selection_relative(&mut self, delta: isize) {
@@ -6163,6 +6194,106 @@ impl BvrApp {
         self.set_selected_index(matches[next]);
     }
 
+    fn issue_index_for_id(&self, issue_id: &str) -> Option<usize> {
+        self.analyzer
+            .issues
+            .iter()
+            .position(|issue| issue.id == issue_id)
+    }
+
+    fn insights_visible_issue_indices_for_list_nav(&self) -> Vec<usize> {
+        if let Some(state) = self.insights_heatmap.as_ref() {
+            let data = self.insights_heatmap_data();
+            let row = state
+                .row
+                .min(INSIGHTS_HEATMAP_DEPTH_LABELS.len().saturating_sub(1));
+            let col = state
+                .col
+                .min(INSIGHTS_HEATMAP_SCORE_LABELS.len().saturating_sub(1));
+            return data.issue_ids[row][col]
+                .iter()
+                .filter_map(|issue_id| self.issue_index_for_id(issue_id))
+                .collect();
+        }
+
+        let insights = self.analyzer.insights();
+        let ids = match self.insights_panel {
+            InsightsPanel::Bottlenecks => insights
+                .bottlenecks
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            InsightsPanel::Keystones => {
+                let mut keystones = self
+                    .analyzer
+                    .issues
+                    .iter()
+                    .filter(|issue| issue.is_open_like())
+                    .filter_map(|issue| {
+                        self.analyzer
+                            .metrics
+                            .critical_depth
+                            .get(&issue.id)
+                            .copied()
+                            .map(|depth| (issue.id.as_str(), depth))
+                    })
+                    .filter(|(_, depth)| *depth > 0)
+                    .collect::<Vec<_>>();
+                keystones
+                    .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0)));
+                keystones
+                    .into_iter()
+                    .map(|(id, _)| id.to_string())
+                    .collect::<Vec<_>>()
+            }
+            InsightsPanel::CriticalPath => insights.critical_path.clone(),
+            InsightsPanel::Influencers => insights
+                .influencers
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            InsightsPanel::Betweenness => insights
+                .betweenness
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            InsightsPanel::Hubs => insights
+                .hubs
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            InsightsPanel::Authorities => insights
+                .authorities
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            InsightsPanel::Cores => insights
+                .cores
+                .iter()
+                .map(|item| item.id.clone())
+                .collect::<Vec<_>>(),
+            InsightsPanel::CutPoints => insights.articulation_points.clone(),
+            InsightsPanel::Slack => insights.slack.clone(),
+            InsightsPanel::Priority => self
+                .analyzer
+                .priority(0.0, 15, None, None)
+                .into_iter()
+                .map(|item| item.id)
+                .collect::<Vec<_>>(),
+            InsightsPanel::Cycles => Vec::new(),
+        };
+
+        let indices = ids
+            .iter()
+            .filter_map(|issue_id| self.issue_index_for_id(issue_id))
+            .collect::<Vec<_>>();
+        if indices.is_empty() {
+            self.visible_issue_indices()
+        } else {
+            indices
+        }
+    }
+
     // ── Insights search ──────────────────────────────────────────
 
     fn start_insights_search(&mut self) {
@@ -6190,7 +6321,7 @@ impl BvrApp {
         if query.is_empty() {
             return Vec::new();
         }
-        self.visible_issue_indices()
+        self.insights_visible_issue_indices_for_list_nav()
             .into_iter()
             .filter(|&index| {
                 let issue = &self.analyzer.issues[index];
@@ -14667,6 +14798,79 @@ mod tests {
     }
 
     #[test]
+    fn graph_mode_navigation_uses_graph_ranked_order() {
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Graph, 0, issues);
+        let order = app
+            .graph_visible_issue_indices()
+            .into_iter()
+            .map(|index| app.analyzer.issues[index].id.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(order.len(), 2);
+
+        assert_eq!(selected_issue_id(&app), order[0]);
+        app.update(key(KeyCode::Char('j')));
+        assert_eq!(selected_issue_id(&app), order[1]);
+        app.update(key(KeyCode::Char('k')));
+        assert_eq!(selected_issue_id(&app), order[0]);
+    }
+
+    #[test]
+    fn graph_mode_toggle_reselects_first_graph_ranked_issue() {
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Main, 0, issues);
+        let graph_order = app.graph_visible_issue_indices();
+        assert_eq!(graph_order.len(), 2);
+        app.set_selected_index(graph_order[1]);
+        let expected = app.analyzer.issues[graph_order[0]].id.clone();
+        app.update(key(KeyCode::Char('g')));
+        assert_eq!(app.mode, ViewMode::Graph);
+        assert_eq!(selected_issue_id(&app), expected);
+    }
+
+    #[test]
     fn insights_mode_search_query_and_match_cycling_work() {
         let mut app = new_app(ViewMode::Main, 0);
         app.update(key(KeyCode::Char('i')));
@@ -14693,6 +14897,118 @@ mod tests {
         app.update(key(KeyCode::Escape));
         assert!(!app.insights_search_active);
         assert!(app.insights_search_query.is_empty());
+    }
+
+    #[test]
+    fn insights_mode_selection_tracks_bottleneck_order_not_storage_order() {
+        let issues = vec![
+            Issue {
+                id: "C".to_string(),
+                title: "Closed unrelated".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root bottleneck".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Insights, 0, issues);
+
+        let expected = app
+            .analyzer
+            .insights()
+            .bottlenecks
+            .first()
+            .map(|item| item.id.clone())
+            .expect("bottleneck ranking");
+        assert_eq!(selected_issue_id(&app), expected);
+
+        let order = app
+            .insights_visible_issue_indices_for_list_nav()
+            .into_iter()
+            .map(|index| app.analyzer.issues[index].id.clone())
+            .collect::<Vec<_>>();
+        assert!(!order.is_empty());
+
+        app.update(key(KeyCode::Char('j')));
+        let next_expected = order.get(1).cloned().unwrap_or_else(|| order[0].clone());
+        assert_eq!(selected_issue_id(&app), next_expected);
+    }
+
+    #[test]
+    fn insights_mode_toggle_and_panel_cycle_sync_ranked_selection() {
+        let issues = vec![
+            Issue {
+                id: "C".to_string(),
+                title: "Closed unrelated".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root bottleneck".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Main, 0, issues);
+        app.set_selected_index(0);
+
+        app.update(key(KeyCode::Char('i')));
+        assert_eq!(app.mode, ViewMode::Insights);
+        let bottleneck_expected = app
+            .insights_visible_issue_indices_for_list_nav()
+            .first()
+            .map(|index| app.analyzer.issues[*index].id.clone())
+            .expect("bottleneck ranked issue");
+        assert_eq!(selected_issue_id(&app), bottleneck_expected);
+
+        let bottleneck_order = app.insights_visible_issue_indices_for_list_nav();
+        if let Some(second_index) = bottleneck_order.get(1).copied() {
+            app.set_selected_index(second_index);
+        }
+
+        app.update(key(KeyCode::Char('s')));
+        assert_eq!(app.insights_panel, InsightsPanel::Keystones);
+        let keystone_expected = app
+            .insights_visible_issue_indices_for_list_nav()
+            .first()
+            .map(|index| app.analyzer.issues[*index].id.clone())
+            .expect("keystone ranked issue");
+        assert_eq!(selected_issue_id(&app), keystone_expected);
     }
 
     #[test]

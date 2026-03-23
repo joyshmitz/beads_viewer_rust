@@ -708,11 +708,12 @@ pub fn finalize_history_entries(histories_map: &mut BTreeMap<String, HistoryBead
 
 fn infer_event_type_from_commit(index: usize, message: &str) -> String {
     let lower = message.to_ascii_lowercase();
-    if has_word_prefix(&lower, "reopen") {
+    if has_word_token(&lower, "reopen") || has_word_token(&lower, "reopened") {
         "reopened".to_string()
-    } else if has_word_prefix(&lower, "close") || has_word_prefix(&lower, "closed") {
+    } else if has_word_token(&lower, "close") || has_word_token(&lower, "closed") {
         "closed".to_string()
-    } else if has_word_prefix(&lower, "claim")
+    } else if has_word_token(&lower, "claim")
+        || has_word_token(&lower, "claimed")
         || lower.contains("in_progress")
         || has_word_sequence(&lower, "in progress")
     {
@@ -724,14 +725,15 @@ fn infer_event_type_from_commit(index: usize, message: &str) -> String {
     }
 }
 
-/// Check if `text` contains `prefix` at a word boundary (start of text or
-/// preceded by a non-alphanumeric character). This avoids false positives like
-/// "disclose" matching "close" or "exclaim" matching "claim".
-fn has_word_prefix(text: &str, prefix: &str) -> bool {
-    text.match_indices(prefix).any(|(start, _)| {
-        start == 0
-            || text.as_bytes()[start - 1].is_ascii_whitespace()
-            || !text.as_bytes()[start - 1].is_ascii_alphanumeric()
+/// Check if `text` contains `token` delimited by non-alphanumeric boundaries.
+/// This avoids false positives like "disclose" matching "close" or
+/// "closedown" matching "closed".
+fn has_word_token(text: &str, token: &str) -> bool {
+    text.match_indices(token).any(|(start, _)| {
+        let end = start + token.len();
+        let left = start == 0 || !text.as_bytes()[start - 1].is_ascii_alphanumeric();
+        let right = end == text.len() || !text.as_bytes()[end].is_ascii_alphanumeric();
+        left && right
     })
 }
 
@@ -777,25 +779,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn has_word_prefix_rejects_substring_match() {
+    fn has_word_token_rejects_substring_match() {
         // "disclose" should NOT match "close"
-        assert!(!has_word_prefix("disclose the issue", "close"));
+        assert!(!has_word_token("disclose the issue", "close"));
         // "exclaim" should NOT match "claim"
-        assert!(!has_word_prefix("exclaim loudly", "claim"));
+        assert!(!has_word_token("exclaim loudly", "claim"));
         // "reopen" embedded in "unreopened" should not match at word boundary
-        assert!(!has_word_prefix("unreopened", "reopen"));
+        assert!(!has_word_token("unreopened", "reopen"));
+        // Suffix continuations should not match either
+        assert!(!has_word_token("closedown the task", "closed"));
+        assert!(!has_word_token("claimer picked it up", "claim"));
     }
 
     #[test]
-    fn has_word_prefix_accepts_word_boundary() {
-        assert!(has_word_prefix("close the issue", "close"));
-        assert!(has_word_prefix("closed bd-123", "close"));
-        assert!(has_word_prefix("claim this task", "claim"));
-        assert!(has_word_prefix("reopen bd-456", "reopen"));
+    fn has_word_token_accepts_word_boundary() {
+        assert!(has_word_token("close the issue", "close"));
+        assert!(has_word_token("closed bd-123", "closed"));
+        assert!(has_word_token("claim this task", "claim"));
+        assert!(has_word_token("reopen bd-456", "reopen"));
+        assert!(has_word_token("reopened bd-456", "reopened"));
         // At start of text
-        assert!(has_word_prefix("close", "close"));
+        assert!(has_word_token("close", "close"));
         // After punctuation
-        assert!(has_word_prefix("[close] bd-789", "close"));
+        assert!(has_word_token("[close] bd-789", "close"));
     }
 
     #[test]
@@ -805,6 +811,10 @@ mod tests {
         // "disclose" should NOT trigger "closed"
         assert_eq!(
             infer_event_type_from_commit(1, "disclose internal details"),
+            "modified"
+        );
+        assert_eq!(
+            infer_event_type_from_commit(1, "closedown remaining tasks"),
             "modified"
         );
     }
@@ -823,6 +833,10 @@ mod tests {
         // "exclaim" should NOT trigger "claimed"
         assert_eq!(
             infer_event_type_from_commit(1, "exclaim about progress"),
+            "modified"
+        );
+        assert_eq!(
+            infer_event_type_from_commit(1, "claimer rotation updated"),
             "modified"
         );
     }

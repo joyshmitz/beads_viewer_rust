@@ -8027,10 +8027,12 @@ impl BvrApp {
                         } else {
                             format!("{}+{}", related[..2].join(","), related.len() - 2)
                         };
-                        let msg = truncate_str(&commit.message, 30);
+                        let type_icon = commit_type_icon(&commit.message);
+                        let msg = truncate_str(&commit.message, 28);
+                        let ts = compact_history_duration_label(&commit.timestamp);
                         lines.push(format!(
-                            "{marker} {} {:<8} {:<16} {}",
-                            commit.short_sha, beads_str, msg, commit.timestamp
+                            "{marker} {type_icon} {} {:<8} {} {ts}",
+                            commit.short_sha, beads_str, msg
                         ));
                     }
                 }
@@ -8087,14 +8089,16 @@ impl BvrApp {
                 .into_iter()
                 .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
                 .map(|(index, issue)| {
-                    let marker = if index == self.selected { '>' } else { ' ' };
+                    let marker = if index == self.selected { "\u{25b8}" } else { " " };
                     let event_count = histories
                         .iter()
                         .find(|entry| entry.id == issue.id)
                         .map_or(0, |entry| entry.events.len());
+                    let si = status_icon(&issue.status);
+                    let ti = type_icon(&issue.issue_type);
                     format!(
-                        "{marker} {:<12} events:{:>2} {:<11}",
-                        issue.id, event_count, issue.status
+                        "{marker} {si}{ti} {:<12} {event_count:>2}\u{25aa} {:<11}",
+                        issue.id, issue.status
                     )
                 }),
         );

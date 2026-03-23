@@ -15,20 +15,54 @@ use crate::model::Issue;
 /// Configuration controlling which graph metrics are computed and their resource bounds.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisConfig {
+    #[serde(rename = "ComputePageRank")]
     pub enable_pagerank: bool,
+    #[serde(rename = "ComputeBetweenness")]
     pub enable_betweenness: bool,
+    #[serde(rename = "ComputeEigenvector")]
     pub enable_eigenvector: bool,
+    #[serde(rename = "ComputeHITS")]
     pub enable_hits: bool,
+    #[serde(rename = "ComputeCycles")]
     pub enable_cycles: bool,
+    #[serde(rename = "ComputeCriticalPath")]
     pub enable_critical_path: bool,
+    #[serde(rename = "ComputeKCore")]
     pub enable_k_core: bool,
+    #[serde(rename = "ComputeArticulation")]
     pub enable_articulation: bool,
+    #[serde(rename = "ComputeSlack")]
     pub enable_slack: bool,
 
     /// Skip betweenness for graphs exceeding this node count (expensive: O(V*E)).
+    #[serde(rename = "BetweennessSampleSize")]
     pub betweenness_max_nodes: usize,
     /// Skip eigenvector for graphs exceeding this node count.
     pub eigenvector_max_nodes: usize,
+
+    // Go-compatible betweenness metadata fields
+    #[serde(rename = "BetweennessIsApproximate")]
+    pub betweenness_is_approximate: bool,
+    #[serde(rename = "BetweennessMode")]
+    pub betweenness_mode: &'static str,
+    #[serde(rename = "BetweennessSkipReason")]
+    pub betweenness_skip_reason: &'static str,
+    #[serde(rename = "BetweennessTimeout")]
+    pub betweenness_timeout_ns: u64,
+    #[serde(rename = "PageRankSkipReason")]
+    pub pagerank_skip_reason: &'static str,
+    #[serde(rename = "PageRankTimeout")]
+    pub pagerank_timeout_ns: u64,
+    #[serde(rename = "HITSSkipReason")]
+    pub hits_skip_reason: &'static str,
+    #[serde(rename = "HITSTimeout")]
+    pub hits_timeout_ns: u64,
+    #[serde(rename = "CyclesSkipReason")]
+    pub cycles_skip_reason: &'static str,
+    #[serde(rename = "CyclesTimeout")]
+    pub cycles_timeout_ns: u64,
+    #[serde(rename = "MaxCyclesToStore")]
+    pub max_cycles_to_store: usize,
 }
 
 impl Default for AnalysisConfig {
@@ -53,6 +87,17 @@ impl AnalysisConfig {
             enable_slack: true,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         }
     }
 
@@ -71,6 +116,17 @@ impl AnalysisConfig {
             enable_slack: true,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         }
     }
 
@@ -89,6 +145,17 @@ impl AnalysisConfig {
             enable_slack: false,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         }
     }
 
@@ -110,6 +177,17 @@ impl AnalysisConfig {
             enable_slack: false,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         }
     }
 
@@ -131,6 +209,17 @@ impl AnalysisConfig {
             enable_slack: true,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         }
     }
 
@@ -149,6 +238,17 @@ impl AnalysisConfig {
             enable_slack: false,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         }
     }
 

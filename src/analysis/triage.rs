@@ -444,6 +444,7 @@ pub struct ProjectHealth {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TriageResult {
+    pub meta: TriageMeta,
     pub quick_ref: QuickRef,
     pub recommendations: Vec<Recommendation>,
     pub quick_wins: Vec<Recommendation>,
@@ -451,6 +452,25 @@ pub struct TriageResult {
     pub recommendations_by_track: Vec<RecommendationsByTrack>,
     pub recommendations_by_label: Vec<RecommendationsByLabel>,
     pub project_health: ProjectHealth,
+    pub commands: TriageCommands,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TriageMeta {
+    pub version: &'static str,
+    pub generated_at: String,
+    pub phase2_ready: bool,
+    pub issue_count: usize,
+    pub compute_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TriageCommands {
+    pub claim_top: String,
+    pub show_top: String,
+    pub list_ready: String,
+    pub list_blocked: String,
+    pub refresh_triage: String,
 }
 
 /// Configurable scoring weights and thresholds for triage (matches Go's TriageScoringOptions).
@@ -644,7 +664,7 @@ pub fn compute_triage(
 
     // Top picks exclude in_progress issues (already being worked) to match
     // legacy behavior: recommendations should surface NEW work to pick up.
-    let top_picks = recommendations
+    let top_picks: Vec<QuickPick> = recommendations
         .iter()
         .filter(|rec| {
             lookups
@@ -697,7 +717,16 @@ pub fn compute_triage(
         .filter(|issue| issue.is_open_like() && issue.normalized_status() == "in_progress")
         .count();
 
+    let top_id = top_picks.first().map_or_else(String::new, |p| p.id.clone());
+
     let result = TriageResult {
+        meta: TriageMeta {
+            version: "1.0.0",
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            phase2_ready: true,
+            issue_count: issues.len(),
+            compute_time_ms: 0,
+        },
         quick_ref: QuickRef {
             total_open,
             total_actionable: actionable.len(),
@@ -719,6 +748,13 @@ pub fn compute_triage(
             total_open,
             actionable.len(),
         ),
+        commands: TriageCommands {
+            claim_top: format!("CI=1 br update {top_id} --status in_progress --json"),
+            show_top: format!("CI=1 br show {top_id} --json"),
+            list_ready: "CI=1 br ready --json".to_string(),
+            list_blocked: "CI=1 br blocked --json".to_string(),
+            refresh_triage: "bv --robot-triage".to_string(),
+        },
     };
 
     TriageComputation {

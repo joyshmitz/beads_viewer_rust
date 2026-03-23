@@ -230,6 +230,13 @@ mod tests {
 
     fn make_triage_result() -> TriageResult {
         TriageResult {
+            meta: crate::analysis::triage::TriageMeta {
+                version: "1.0.0",
+                generated_at: "2025-01-01T00:00:00Z".to_string(),
+                phase2_ready: true,
+                issue_count: 5,
+                compute_time_ms: 0,
+            },
             quick_ref: QuickRef {
                 total_open: 5,
                 total_actionable: 3,
@@ -302,6 +309,13 @@ mod tests {
                         closed: 0,
                     }],
                 },
+            },
+            commands: crate::analysis::triage::TriageCommands {
+                claim_top: "br update A-1 --status=in_progress".to_string(),
+                show_top: "br show A-1".to_string(),
+                list_ready: "br ready".to_string(),
+                list_blocked: "br list --status open --where blocked=true".to_string(),
+                refresh_triage: "bv --robot-triage".to_string(),
             },
         }
     }

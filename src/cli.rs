@@ -3,6 +3,14 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
 
+fn parse_confidence(s: &str) -> Result<f64, String> {
+    let value: f64 = s.parse().map_err(|e| format!("{e}"))?;
+    if !(0.0..=1.0).contains(&value) {
+        return Err(format!("confidence must be between 0.0 and 1.0, got {value}"));
+    }
+    Ok(value)
+}
+
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
 pub enum OutputFormat {
     #[default]
@@ -120,7 +128,7 @@ pub struct Cli {
     #[arg(long)]
     pub suggest_type: Option<String>,
 
-    #[arg(long, default_value_t = 0.0)]
+    #[arg(long, default_value_t = 0.0, value_parser = parse_confidence)]
     pub suggest_confidence: f64,
 
     #[arg(long)]
@@ -144,7 +152,7 @@ pub struct Cli {
     #[arg(long)]
     pub history_since: Option<String>,
 
-    #[arg(long = "min-confidence", default_value_t = 0.0)]
+    #[arg(long = "min-confidence", default_value_t = 0.0, value_parser = parse_confidence)]
     pub history_min_confidence: f64,
 
     #[arg(long)]

@@ -866,11 +866,19 @@ fn upsert_contract_meta(connection: &Connection, page_size: u32) -> Result<()> {
 }
 
 fn query_pragma_i64(connection: &Connection, pragma_name: &str) -> Result<i64> {
+    debug_assert!(
+        pragma_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "pragma name must be alphanumeric"
+    );
     let sql = format!("PRAGMA {pragma_name}");
     Ok(connection.query_row(&sql, [], |row| row.get(0))?)
 }
 
 fn query_pragma_string(connection: &Connection, pragma_name: &str) -> Result<String> {
+    debug_assert!(
+        pragma_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "pragma name must be alphanumeric"
+    );
     let sql = format!("PRAGMA {pragma_name}");
     Ok(connection.query_row(&sql, [], |row| row.get(0))?)
 }

@@ -2023,6 +2023,7 @@ struct BvrApp {
     board_search_match_cursor: usize,
     board_detail_scroll_offset: usize,
     main_detail_scroll_offset: usize,
+    graph_detail_scroll_offset: usize,
     main_search_active: bool,
     main_search_query: String,
     main_search_match_cursor: usize,
@@ -2580,10 +2581,12 @@ impl Model for BvrApp {
                     SemanticTone::Accent,
                 ))
                 .scroll((
-                    if matches!(self.mode, ViewMode::Main) {
-                        saturating_scroll_offset(self.main_detail_scroll_offset)
-                    } else {
-                        0
+                    match self.mode {
+                        ViewMode::Main => saturating_scroll_offset(self.main_detail_scroll_offset),
+                        ViewMode::Graph => {
+                            saturating_scroll_offset(self.graph_detail_scroll_offset)
+                        }
+                        _ => 0,
                     },
                     0,
                 ))
@@ -3167,6 +3170,7 @@ impl BvrApp {
         self.detail_dep_cursor = 0;
         self.board_detail_scroll_offset = 0;
         self.main_detail_scroll_offset = 0;
+        self.graph_detail_scroll_offset = 0;
         self.selected = 0;
 
         if let Some(id) = selected_id.as_deref() {
@@ -3984,6 +3988,20 @@ impl BvrApp {
             {
                 self.scroll_main_detail(-3);
             }
+            KeyCode::Char('j')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Graph)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_graph_detail(3);
+            }
+            KeyCode::Char('k')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Graph)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_graph_detail(-3);
+            }
             KeyCode::Char('h') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(-1);
             }
@@ -4205,6 +4223,20 @@ impl BvrApp {
                     && self.focus == FocusPane::Detail =>
             {
                 self.scroll_main_detail(-10);
+            }
+            KeyCode::Char('d')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Graph)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_graph_detail(10);
+            }
+            KeyCode::Char('u')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Graph)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_graph_detail(-10);
             }
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
@@ -5870,6 +5902,22 @@ impl BvrApp {
         }
     }
 
+    fn scroll_graph_detail(&mut self, delta: isize) {
+        if delta == 0 || !matches!(self.mode, ViewMode::Graph) || self.focus != FocusPane::Detail {
+            return;
+        }
+
+        if delta > 0 {
+            self.graph_detail_scroll_offset = self
+                .graph_detail_scroll_offset
+                .saturating_add(delta.unsigned_abs());
+        } else {
+            self.graph_detail_scroll_offset = self
+                .graph_detail_scroll_offset
+                .saturating_sub(delta.unsigned_abs());
+        }
+    }
+
     fn set_selected_index(&mut self, index: usize) {
         let changed = self.selected != index;
         self.selected = index;
@@ -5880,6 +5928,9 @@ impl BvrApp {
             }
             if matches!(self.mode, ViewMode::Main) {
                 self.main_detail_scroll_offset = 0;
+            }
+            if matches!(self.mode, ViewMode::Graph) {
+                self.graph_detail_scroll_offset = 0;
             }
         }
     }
@@ -13006,6 +13057,7 @@ fn new_app_with_background(
         board_search_query: String::new(),
         board_search_match_cursor: 0,
         board_detail_scroll_offset: 0,
+        graph_detail_scroll_offset: 0,
         main_detail_scroll_offset: 0,
         main_search_active: false,
         main_search_query: String::new(),
@@ -13700,6 +13752,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -15580,6 +15633,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -15683,6 +15737,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -15780,6 +15835,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -15895,6 +15951,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -15994,6 +16051,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16094,6 +16152,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16195,6 +16254,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16291,6 +16351,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16402,6 +16463,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16537,6 +16599,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16767,6 +16830,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
@@ -16870,6 +16934,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
+            graph_detail_scroll_offset: 0,
             main_detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),

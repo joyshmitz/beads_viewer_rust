@@ -9,26 +9,26 @@ bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=3/3 | filter=al
 │                                        ││ │  o T A p0                              │             │
 │ Lanes (5) | 3 issues total             ││ │ Root                                   │             │
 │                                        ││ ├────────────────────────────────────────┤             │
-│ ▸ open         [  2] ██  clear         ││ │ Lane: open                             │             │
-│     ▶ oT P0 A          Root ↓1         ││ │ Assignee: alice                        │             │
-│       oT P0 B          Dependent ⊘1    ││ │ Top-level issue that unblocks downst…  │             │
-│                                        ││ └────────────────────────────────────────┘             │
-│   in_progress  [  0]   empty           ││                                                        │
-│     (no items in this lane)            ││ Unblocks (1)                                           │
-│                                        ││   o B                                                  │
-│   blocked      [  0]   empty           ││                                                        │
-│     (no items in this lane)            ││ Ready to advance to next lane.                         │
+│ ▸ ┌─ open [2] ██  clear                ││ │ Lane: open                             │             │
+│   ▶ oT P0 A Root↓1 @alice              ││ │ Assignee: alice                        │             │
+│   │ oT P0 B Dependent⊘1                ││ │ Top-level issue that unblocks downst…  │             │
+│   └────────────                        ││ └────────────────────────────────────────┘             │
 │                                        ││                                                        │
-│   closed       [  1] █  clear          ││                                                        │
-│       xT P0 C          Closed          ││                                                        │
+│   ┌─ in_progress [0]   empty           ││ Unblocks (1)                                           │
+│   │ (empty)                            ││   o B                                                  │
+│   └────────────                        ││                                                        │
+│                                        ││ Ready to advance to next lane.                         │
+│   ┌─ blocked [0]   empty               ││                                                        │
+│   │ (empty)                            ││                                                        │
+│   └────────────                        ││                                                        │
 │                                        ││                                                        │
-│   other        [  0]   empty           ││                                                        │
-│     (no items in this lane)            ││                                                        │
+│   ┌─ closed [1] █  clear               ││                                                        │
+│   │ xT P0 C Closed                     ││                                                        │
+│   └────────────                        ││                                                        │
 │                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
+│   ┌─ other [0]   empty                 ││                                                        │
+│   │ (empty)                            ││                                                        │
+│   └────────────                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
 Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles

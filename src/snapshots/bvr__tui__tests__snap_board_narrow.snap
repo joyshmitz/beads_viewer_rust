@@ -9,26 +9,26 @@ bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 │                   ││ │  o T A p0                         │
 │ Lanes (5) | 3 iss ││ │ Root                              │
 │                   ││ ├────────────────────────────────── │
-│ ▸ open         [  ││ │ Lane: open                        │
-│     ▶ oT P0 A     ││ │ Assignee: alice                   │
-│       oT P0 B     ││ │ Top-level issue that unblocks dow │
-│                   ││ └────────────────────────────────── │
-│   in_progress  [  ││                                     │
-│     (no items in  ││ Unblocks (1)                        │
-│                   ││   o B                               │
-│   blocked      [  ││                                     │
-│     (no items in  ││ Ready to advance to next lane.      │
+│ ▸ ┌─ open [2] ██  ││ │ Lane: open                        │
+│   ▶ oT P0 A Root↓ ││ │ Assignee: alice                   │
+│   │ oT P0 B Depen ││ │ Top-level issue that unblocks dow │
+│   └────────────   ││ └────────────────────────────────── │
 │                   ││                                     │
-│   closed       [  ││                                     │
-│       xT P0 C     ││                                     │
+│   ┌─ in_progress  ││ Unblocks (1)                        │
+│   │ (empty)       ││   o B                               │
+│   └────────────   ││                                     │
+│                   ││ Ready to advance to next lane.      │
+│   ┌─ blocked [0]  ││                                     │
+│   │ (empty)       ││                                     │
+│   └────────────   ││                                     │
 │                   ││                                     │
-│   other        [  ││                                     │
-│     (no items in  ││                                     │
+│   ┌─ closed [1] █ ││                                     │
+│   │ xT P0 C Close ││                                     │
+│   └────────────   ││                                     │
 │                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
-│                   ││                                     │
+│   ┌─ other [0]    ││                                     │
+│   │ (empty)       ││                                     │
+│   └────────────   ││                                     │
 │                   ││                                     │
 └───────────────────┘└─────────────────────────────────────┘
 Board mode: lane counts, queued IDs, and selected issue deli

@@ -1531,6 +1531,8 @@ enum ListSort {
     CreatedDesc,
     Priority,
     Updated,
+    PageRank,
+    Blockers,
 }
 
 impl ListSort {
@@ -1541,6 +1543,8 @@ impl ListSort {
             Self::CreatedDesc => "created-desc",
             Self::Priority => "priority",
             Self::Updated => "updated",
+            Self::PageRank => "pagerank",
+            Self::Blockers => "blockers",
         }
     }
 
@@ -1550,7 +1554,9 @@ impl ListSort {
             Self::CreatedAsc => Self::CreatedDesc,
             Self::CreatedDesc => Self::Priority,
             Self::Priority => Self::Updated,
-            Self::Updated => Self::Default,
+            Self::Updated => Self::PageRank,
+            Self::PageRank => Self::Blockers,
+            Self::Blockers => Self::Default,
         }
     }
 }
@@ -4537,7 +4543,11 @@ impl BvrApp {
             KeyCode::Char('x') if matches!(self.mode, ViewMode::Insights) => {
                 self.toggle_insights_calc_proof();
             }
-            KeyCode::Char('1') => self.mode = ViewMode::Main,
+            KeyCode::Char('1') => {
+                self.mode = ViewMode::Main;
+                self.focus = FocusPane::List;
+                self.sync_ranked_list_context();
+            }
             KeyCode::Char('b') => {
                 self.mode = if matches!(self.mode, ViewMode::Board) {
                     ViewMode::Main
@@ -5634,6 +5644,16 @@ impl BvrApp {
                         true,
                     )
                     .then_with(|| left_issue.id.cmp(&right_issue.id)),
+                    ListSort::PageRank => {
+                        let l = self.analyzer.metrics.pagerank.get(&left_issue.id).copied().unwrap_or_default();
+                        let r = self.analyzer.metrics.pagerank.get(&right_issue.id).copied().unwrap_or_default();
+                        r.total_cmp(&l).then_with(|| left_issue.id.cmp(&right_issue.id))
+                    }
+                    ListSort::Blockers => {
+                        let l = self.analyzer.metrics.blocks_count.get(&left_issue.id).copied().unwrap_or_default();
+                        let r = self.analyzer.metrics.blocks_count.get(&right_issue.id).copied().unwrap_or_default();
+                        r.cmp(&l).then_with(|| left_issue.id.cmp(&right_issue.id))
+                    }
                 }
             });
         }
@@ -6716,6 +6736,10 @@ impl BvrApp {
                         desc: "deps",
                     });
                 }
+                hints.push(CommandHint {
+                    key: "^j/k",
+                    desc: "scroll",
+                });
                 hints
             }
         };
@@ -7504,52 +7528,62 @@ impl BvrApp {
                 "clear".to_string()
             };
 
-            // Lane header with bar and health
+            // Lane header with box-drawing border
             let bar_len = count.min(20);
             let bar: String = std::iter::repeat_n('\u{2588}', bar_len).collect();
-            out.push(format!("{marker} {lane:<12} [{count:>3}] {bar}  {health}"));
+            out.push(format!(
+                "{marker} \u{250c}\u{2500} {lane} [{count}] {bar}  {health}"
+            ));
 
-            // Show card previews for each issue in lane
+            // Show card previews with box-drawing borders
             let preview_limit = 8;
             for &idx in lane_indices.iter().take(preview_limit) {
                 let issue = &self.analyzer.issues[idx];
-                let sel_mark = if idx == sel_index { "\u{25b6}" } else { " " };
+                let is_sel = idx == sel_index;
                 let s_icon = status_icon(&issue.status);
                 let t_icon = type_icon(&issue.issue_type);
-                let blocker_tag = {
-                    let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
-                    let blocks = self
-                        .analyzer
-                        .metrics
-                        .blocks_count
-                        .get(&issue.id)
-                        .copied()
-                        .unwrap_or(0);
-                    if open_bl > 0 {
-                        format!(" \u{2298}{open_bl}")
-                    } else if blocks > 0 {
-                        format!(" \u{2193}{blocks}")
-                    } else {
-                        String::new()
-                    }
+                let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
+                let blocks = self
+                    .analyzer
+                    .metrics
+                    .blocks_count
+                    .get(&issue.id)
+                    .copied()
+                    .unwrap_or(0);
+                let dep_tag = if open_bl > 0 {
+                    format!("\u{2298}{open_bl}")
+                } else if blocks > 0 {
+                    format!("\u{2193}{blocks}")
+                } else {
+                    String::new()
                 };
+                let assignee = if issue.assignee.is_empty() {
+                    String::new()
+                } else {
+                    format!(" @{}", truncate_str(&issue.assignee, 8))
+                };
+
+                // Card with box border
+                let sel_char = if is_sel { "\u{25b6}" } else { "\u{2502}" };
                 out.push(format!(
-                    "    {sel_mark} {s_icon}{t_icon} P{} {:<10} {}{}",
+                    "  {sel_char} {s_icon}{t_icon} P{} {} {}{dep_tag}{assignee}",
                     issue.priority.clamp(0, 4),
                     truncate_str(&issue.id, 10),
-                    truncate_str(&issue.title, 20),
-                    blocker_tag
+                    truncate_str(&issue.title, 18),
                 ));
             }
             if lane_indices.len() > preview_limit {
                 out.push(format!(
-                    "    ... +{} more",
+                    "  \u{2502} ... +{} more",
                     lane_indices.len() - preview_limit
                 ));
             }
             if lane_indices.is_empty() {
-                out.push("    (no items in this lane)".to_string());
+                out.push("  \u{2502} (empty)".to_string());
             }
+            out.push(format!(
+                "  \u{2514}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}"
+            ));
             out.push(String::new());
         }
 
@@ -14497,6 +14531,19 @@ mod tests {
     }
 
     #[test]
+    fn main_hotkey_from_graph_or_insights_resets_focus_to_list() {
+        for mode in [ViewMode::Graph, ViewMode::Insights] {
+            let mut app = new_app(mode, 1);
+            app.focus = FocusPane::Detail;
+
+            app.update(key(KeyCode::Char('1')));
+            assert!(matches!(app.mode, ViewMode::Main));
+            assert_eq!(app.focus, FocusPane::List);
+            assert_eq!(selected_issue_id(&app), "B");
+        }
+    }
+
+    #[test]
     fn history_toggle_and_escape_match_legacy_behavior() {
         let mut app = new_app(ViewMode::Main, 0);
 
@@ -19174,6 +19221,18 @@ mod tests {
         assert!(
             rendered.contains("y copy link"),
             "expected narrow graph footer to keep copy-link hint visible, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn graph_footer_shows_scroll_hint_when_detail_focused() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("^j/k scroll"),
+            "expected graph footer to advertise detail scrolling, got:\n{rendered}"
         );
     }
 

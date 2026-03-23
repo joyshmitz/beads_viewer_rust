@@ -37,7 +37,6 @@ use self::triage::{Recommendation, TriageComputation, TriageOptions, compute_tri
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct MetricStatusEntry {
     pub state: &'static str,
-    #[serde(skip_serializing_if = "str::is_empty")]
     pub reason: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ms: Option<f64>,

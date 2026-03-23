@@ -1500,6 +1500,8 @@ impl FocusPane {
 enum ListFilter {
     All,
     Open,
+    InProgress,
+    Blocked,
     Closed,
     Ready,
 }
@@ -1509,6 +1511,8 @@ impl ListFilter {
         match self {
             Self::All => "all",
             Self::Open => "open",
+            Self::InProgress => "in-progress",
+            Self::Blocked => "blocked",
             Self::Closed => "closed",
             Self::Ready => "ready",
         }
@@ -4286,6 +4290,8 @@ impl BvrApp {
                 self.file_tree_toggle_or_filter();
             }
             KeyCode::Char('o') => self.set_list_filter(ListFilter::Open),
+            KeyCode::Char('I') => self.set_list_filter(ListFilter::InProgress),
+            KeyCode::Char('B') => self.set_list_filter(ListFilter::Blocked),
             KeyCode::Char('c') => self.set_list_filter(ListFilter::Closed),
             KeyCode::Char('r') => self.set_list_filter(ListFilter::Ready),
             KeyCode::Char('a') if self.should_clear_filter_with_all_shortcut() => {
@@ -5444,6 +5450,8 @@ impl BvrApp {
         let base = match self.list_filter {
             ListFilter::All => true,
             ListFilter::Open => issue.is_open_like(),
+            ListFilter::InProgress => issue.status.eq_ignore_ascii_case("in_progress"),
+            ListFilter::Blocked => issue.status.eq_ignore_ascii_case("blocked"),
             ListFilter::Closed => issue.is_closed_like(),
             ListFilter::Ready => {
                 issue.is_open_like() && self.analyzer.graph.open_blockers(&issue.id).is_empty()
@@ -6940,9 +6948,9 @@ impl BvrApp {
         lines.push(RichLine::raw(format!("Scope: {}", scope.join(" | "))));
 
         let recovery = if !self.main_search_query.is_empty() {
-            "Recover: Esc keeps context | / edits search | n/N cycle hits | 0..3 switch filters"
+            "Recover: Esc keeps context | / edits search | n/N cycle hits | o/c/r/B/I switch filters"
         } else {
-            "Recover: 0 all | 1 open | 2 closed | 3 ready | L label filter | w repo filter"
+            "Recover: a all | o open | I in-progress | B blocked | c closed | r ready"
         };
         lines.push(RichLine::raw(recovery));
         lines
@@ -6953,7 +6961,7 @@ impl BvrApp {
         push_chip(
             &mut line,
             if matches!(self.focus, FocusPane::List) {
-                "Focus: list owns selection, / search, o/c/r filters, L label, w repo, Tab detail, Shift+Tab reverse"
+                "Focus: list owns selection, / search, o/c/r/B/I filters, L label, w repo, Tab detail, Shift+Tab reverse"
             } else {
                 "Focus: detail owns J/K deps, ^j/k scroll, o/y link actions, Tab returns to list, Shift+Tab reverse"
             },
@@ -7047,7 +7055,7 @@ impl BvrApp {
             }
         } else {
             lines.push(RichLine::raw(
-                "Guide: / search-as-you-type | o/c/r quick filters | Esc unwinds state | Tab/Shift+Tab focus",
+                "Guide: / search-as-you-type | o/c/r/B/I quick filters | Esc unwinds state | Tab/Shift+Tab focus",
             ));
         }
         lines.push(RichLine::raw(""));
@@ -14753,6 +14761,25 @@ mod tests {
         let cmd = app.update(key(KeyCode::Escape));
         assert!(matches!(cmd, Cmd::None));
         assert!(app.show_quit_confirm);
+    }
+
+    #[test]
+    fn filter_hotkeys_include_blocked_and_in_progress_slices() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, lane_issues());
+
+        app.update(key(KeyCode::Char('I')));
+        assert_eq!(app.list_filter, ListFilter::InProgress);
+        assert_eq!(selected_issue_id(&app), "IP-1");
+        assert_eq!(app.visible_issue_indices().len(), 1);
+
+        app.update(key(KeyCode::Char('B')));
+        assert_eq!(app.list_filter, ListFilter::Blocked);
+        assert_eq!(selected_issue_id(&app), "BLK-1");
+        assert_eq!(app.visible_issue_indices().len(), 1);
+
+        app.update(key(KeyCode::Escape));
+        assert_eq!(app.list_filter, ListFilter::All);
+        assert!(!app.show_quit_confirm);
     }
 
     #[test]

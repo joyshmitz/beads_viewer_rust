@@ -1093,6 +1093,8 @@ struct ScanLineContext {
     triage_rank: usize,
     pagerank_rank: usize,
     critical_depth: usize,
+    search_match_position: Option<usize>,
+    total_search_matches: usize,
     available_width: usize,
 }
 
@@ -1308,6 +1310,20 @@ fn issue_scan_line(
                 kind: ScanSegmentKind::Chip(SemanticTone::Accent),
             });
         }
+    }
+    if let Some(position) = context.search_match_position {
+        suffix.push(ScanSegment {
+            label: if is_selected {
+                format!("hit {position}/{}", context.total_search_matches)
+            } else {
+                "hit".to_string()
+            },
+            kind: ScanSegmentKind::Chip(if is_selected {
+                SemanticTone::Warning
+            } else {
+                SemanticTone::Accent
+            }),
+        });
     }
 
     let min_title_width = match variant {
@@ -3821,6 +3837,12 @@ impl BvrApp {
                 } else if !matches!(self.mode, ViewMode::Main) {
                     self.mode = ViewMode::Main;
                     self.focus = FocusPane::List;
+                } else if matches!(self.focus, FocusPane::Detail) {
+                    self.focus = FocusPane::List;
+                    self.status_msg = "Focus returned to list".into();
+                } else if !self.main_search_query.is_empty() {
+                    self.cancel_main_search();
+                    self.status_msg = "Main search cleared".into();
                 } else if self.has_active_filter() {
                     self.set_list_filter(ListFilter::All);
                 } else {
@@ -3869,27 +3891,42 @@ impl BvrApp {
             KeyCode::Left if modifiers.contains(Modifiers::CTRL) => {
                 self.adjust_active_pane_split(-4.0);
             }
-            KeyCode::Tab => {
+            KeyCode::Tab | KeyCode::BackTab => {
+                let reverse = matches!(code, KeyCode::BackTab);
                 if matches!(self.mode, ViewMode::History) && self.history_show_file_tree {
                     if self.history_file_tree_focus {
                         self.history_file_tree_focus = false;
-                        self.focus = FocusPane::List;
+                        self.focus = if reverse {
+                            FocusPane::Detail
+                        } else {
+                            FocusPane::List
+                        };
                     } else if self.history_has_middle_pane() {
-                        match self.focus {
-                            FocusPane::List => self.focus = FocusPane::Middle,
-                            FocusPane::Middle => self.focus = FocusPane::Detail,
-                            FocusPane::Detail => self.history_file_tree_focus = true,
+                        match (self.focus, reverse) {
+                            (FocusPane::List, false) => self.focus = FocusPane::Middle,
+                            (FocusPane::Middle, false) => self.focus = FocusPane::Detail,
+                            (FocusPane::Detail, false) => self.history_file_tree_focus = true,
+                            (FocusPane::List, true) => self.history_file_tree_focus = true,
+                            (FocusPane::Middle, true) => self.focus = FocusPane::List,
+                            (FocusPane::Detail, true) => self.focus = FocusPane::Middle,
                         }
+                    } else if reverse && self.focus == FocusPane::List {
+                        self.history_file_tree_focus = true;
                     } else if self.focus == FocusPane::Detail {
+                        self.focus = FocusPane::List;
+                    } else if !reverse {
                         self.history_file_tree_focus = true;
                     } else {
                         self.focus = FocusPane::Detail;
                     }
                 } else if self.history_has_middle_pane() {
-                    self.focus = match self.focus {
-                        FocusPane::List => FocusPane::Middle,
-                        FocusPane::Middle => FocusPane::Detail,
-                        FocusPane::Detail => FocusPane::List,
+                    self.focus = match (self.focus, reverse) {
+                        (FocusPane::List, false) => FocusPane::Middle,
+                        (FocusPane::Middle, false) => FocusPane::Detail,
+                        (FocusPane::Detail, false) => FocusPane::List,
+                        (FocusPane::List, true) => FocusPane::Detail,
+                        (FocusPane::Middle, true) => FocusPane::List,
+                        (FocusPane::Detail, true) => FocusPane::Middle,
                     };
                 } else {
                     self.focus = match self.focus {
@@ -6677,7 +6714,7 @@ impl BvrApp {
                     ("PgUp/PgDn", "Jump by 10"),
                     ("Home/End", "Jump to top/bottom"),
                     ("G", "Jump to bottom"),
-                    ("Tab", "Toggle list/detail focus"),
+                    ("Tab / Shift+Tab", "Toggle focus forward/back"),
                     ("J/K", "Navigate deps in detail"),
                     ("Enter", "Return to main / drill"),
                     ("scroll", "Mouse wheel scrolls list"),
@@ -6911,8 +6948,71 @@ impl BvrApp {
         lines
     }
 
+    fn main_focus_banner_line(&self) -> RichLine {
+        let mut line = RichLine::new();
+        push_chip(
+            &mut line,
+            if matches!(self.focus, FocusPane::List) {
+                "Focus: list owns selection, / search, o/c/r filters, L label, w repo, Tab detail, Shift+Tab reverse"
+            } else {
+                "Focus: detail owns J/K deps, ^j/k scroll, o/y link actions, Tab returns to list, Shift+Tab reverse"
+            },
+            if matches!(self.focus, FocusPane::List) {
+                SemanticTone::Accent
+            } else {
+                SemanticTone::Warning
+            },
+        );
+        line
+    }
+
+    fn main_scope_banner_line(&self) -> RichLine {
+        let selected = self
+            .selected_issue()
+            .map_or_else(|| "none".to_string(), |issue| issue.id.clone());
+        let mut line = RichLine::new();
+        push_metric_chip(
+            &mut line,
+            "scope",
+            self.list_filter.label(),
+            SemanticTone::Muted,
+        );
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(
+            &mut line,
+            "label",
+            self.modal_label_filter.as_deref().unwrap_or("any"),
+            SemanticTone::Neutral,
+        );
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(
+            &mut line,
+            "repo",
+            self.modal_repo_filter.as_deref().unwrap_or("any"),
+            SemanticTone::Neutral,
+        );
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(
+            &mut line,
+            "search",
+            if self.main_search_query.is_empty() {
+                "off"
+            } else {
+                self.main_search_query.as_str()
+            },
+            if self.main_search_query.is_empty() {
+                SemanticTone::Muted
+            } else {
+                SemanticTone::Accent
+            },
+        );
+        line.push_span(RichSpan::styled(" | ", tokens::dim()));
+        push_metric_chip(&mut line, "selected", &selected, SemanticTone::Warning);
+        line
+    }
+
     fn main_search_banner_lines(&self) -> Vec<RichLine> {
-        let mut lines = Vec::<RichLine>::new();
+        let mut lines = vec![self.main_focus_banner_line(), self.main_scope_banner_line()];
         if self.main_search_active {
             lines.push(RichLine::raw(format!(
                 "Search (active): /{}",
@@ -6941,9 +7041,16 @@ impl BvrApp {
                     "Matches: {position}/{}",
                     matches.len()
                 )));
+                lines.push(RichLine::raw(
+                    "Guide: n/N cycle hits | Enter keeps query | Esc clears | Tab keeps context",
+                ));
             }
-            lines.push(RichLine::raw(""));
+        } else {
+            lines.push(RichLine::raw(
+                "Guide: / search-as-you-type | o/c/r quick filters | Esc unwinds state | Tab/Shift+Tab focus",
+            ));
         }
+        lines.push(RichLine::raw(""));
         if visible.is_empty() {
             lines.extend(self.main_list_empty_state_lines());
         }
@@ -6958,6 +7065,12 @@ impl BvrApp {
         }
 
         let line_width = usize::from(width.saturating_sub(2)).max(24);
+        let search_matches = self.main_search_matches();
+        let search_positions = search_matches
+            .iter()
+            .enumerate()
+            .map(|(slot, index)| (*index, slot + 1))
+            .collect::<BTreeMap<usize, usize>>();
         for (slot, (index, issue)) in visible
             .into_iter()
             .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
@@ -6994,6 +7107,8 @@ impl BvrApp {
                     triage_rank: slot + 1,
                     pagerank_rank,
                     critical_depth,
+                    search_match_position: search_positions.get(&index).copied(),
+                    total_search_matches: search_matches.len(),
                     available_width: line_width,
                 },
             ));
@@ -13352,6 +13467,10 @@ mod tests {
         Msg::KeyPress(code, Modifiers::CTRL)
     }
 
+    fn key_backtab() -> Msg {
+        Msg::KeyPress(KeyCode::BackTab, Modifiers::SHIFT)
+    }
+
     fn mouse(kind: MouseEventKind, x: u16, y: u16) -> Msg {
         Msg::Mouse(MouseEvent::new(kind, x, y))
     }
@@ -14090,20 +14209,22 @@ mod tests {
 
         app.update(key(KeyCode::Char('d')));
         assert_eq!(app.main_search_query, "d");
-        assert_eq!(selected_issue_id(&app), "B");
+        assert_eq!(selected_issue_id(&app), "A");
+        assert!(app.list_panel_text().contains("hit 1/3"));
 
         app.update(key(KeyCode::Enter));
         assert!(!app.main_search_active);
         assert_eq!(app.main_search_query, "d");
-        assert!(app.list_panel_text().contains("Matches: 1/2"));
+        assert!(app.list_panel_text().contains("Matches: 1/3"));
 
         app.update(key(KeyCode::Char('n')));
-        assert_eq!(selected_issue_id(&app), "C");
-        assert!(app.list_panel_text().contains("Matches: 2/2"));
+        assert_eq!(selected_issue_id(&app), "B");
+        assert!(app.list_panel_text().contains("Matches: 2/3"));
+        assert!(app.list_panel_text().contains("hit 2/3"));
 
         app.update(key(KeyCode::Char('N')));
-        assert_eq!(selected_issue_id(&app), "B");
-        assert!(app.list_panel_text().contains("Matches: 1/2"));
+        assert_eq!(selected_issue_id(&app), "A");
+        assert!(app.list_panel_text().contains("Matches: 1/3"));
 
         app.update(key(KeyCode::Char('/')));
         app.update(key(KeyCode::Char('z')));
@@ -14143,6 +14264,85 @@ mod tests {
         assert_eq!(app.focus, FocusPane::List);
         app.update(key(KeyCode::Char('/')));
         assert!(app.main_search_active);
+    }
+
+    #[test]
+    fn keyflow_main_escape_unwinds_focus_search_and_filter() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key(KeyCode::Tab));
+        assert_eq!(app.focus, FocusPane::Detail);
+        app.update(key(KeyCode::Escape));
+        assert_eq!(app.focus, FocusPane::List);
+        assert_eq!(app.status_msg, "Focus returned to list");
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('d')));
+        app.update(key(KeyCode::Enter));
+        assert_eq!(app.main_search_query, "d");
+        app.update(key(KeyCode::Escape));
+        assert!(app.main_search_query.is_empty());
+        assert_eq!(app.status_msg, "Main search cleared");
+
+        app.update(key(KeyCode::Char('o')));
+        assert_eq!(app.list_filter, ListFilter::Open);
+        app.update(key(KeyCode::Escape));
+        assert_eq!(app.list_filter, ListFilter::All);
+    }
+
+    #[test]
+    fn backtab_reverses_main_focus_cycle() {
+        let mut app = new_app(ViewMode::Main, 0);
+        assert_eq!(app.focus, FocusPane::List);
+
+        app.update(key_backtab());
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        app.update(key_backtab());
+        assert_eq!(app.focus, FocusPane::List);
+    }
+
+    #[test]
+    fn backtab_reverses_history_focus_cycle_with_file_tree() {
+        let mut app = new_app(ViewMode::History, 0);
+        app.history_show_file_tree = true;
+
+        app.update(key_backtab());
+        assert!(app.history_file_tree_focus);
+        assert_eq!(app.focus, FocusPane::List);
+
+        app.update(key_backtab());
+        assert!(!app.history_file_tree_focus);
+        assert_eq!(app.focus, FocusPane::Detail);
+
+        app.update(key_backtab());
+        assert_eq!(app.focus, FocusPane::List);
+    }
+
+    #[test]
+    fn main_list_focus_banner_tracks_active_pane() {
+        let mut app = new_app(ViewMode::Main, 0);
+        let list_focus = app.main_list_render_text(90).to_plain_text();
+        assert!(list_focus.contains("Focus: list owns selection"));
+        assert!(list_focus.contains("scope=all"));
+
+        app.focus = FocusPane::Detail;
+        let detail_focus = app.main_list_render_text(90).to_plain_text();
+        assert!(detail_focus.contains("Focus: detail owns J/K deps"));
+        assert!(detail_focus.contains("selected=A"));
+    }
+
+    #[test]
+    fn main_list_scope_banner_surfaces_label_repo_and_search_state() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.modal_label_filter = Some("core".to_string());
+        app.modal_repo_filter = Some("viewer".to_string());
+        app.main_search_query = "root".to_string();
+
+        let text = app.main_list_render_text(100).to_plain_text();
+        assert!(text.contains("label=core"), "label scope missing: {text}");
+        assert!(text.contains("repo=viewer"), "repo scope missing: {text}");
+        assert!(text.contains("search=root"), "search scope missing: {text}");
     }
 
     #[test]
@@ -21999,6 +22199,57 @@ mod tests {
     }
 
     #[test]
+    fn e2e_journey_main_search_focus_recovery() {
+        let mut app = new_app(ViewMode::Main, 0);
+        let (w, h) = (120, 35);
+        let mut caps: Vec<(String, String)> = Vec::new();
+
+        let text = journey_capture(&app, w, h, "main_start", &mut caps);
+        assert!(text.contains("Focus: list owns selection"));
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('d')));
+        let text = journey_capture(&app, w, h, "search_active", &mut caps);
+        assert!(text.contains("Search (active): /d"));
+
+        app.update(key(KeyCode::Enter));
+        let text = journey_capture(&app, w, h, "search_committed", &mut caps);
+        assert!(text.contains("Matches: 1/3"));
+        assert!(text.contains("hit 1/3"), "search committed frame: {text}");
+
+        app.update(key(KeyCode::Char('n')));
+        let text = journey_capture(&app, w, h, "search_cycle_second_hit", &mut caps);
+        assert!(text.contains("Matches: 2/3"));
+        assert!(text.contains("hit 2/3"), "search cycled frame: {text}");
+
+        app.update(key(KeyCode::Tab));
+        let text = journey_capture(&app, w, h, "detail_focus", &mut caps);
+        assert!(text.contains("Focus: detail owns J/K deps"));
+
+        app.update(key(KeyCode::Escape));
+        let text = journey_capture(&app, w, h, "focus_recovered", &mut caps);
+        assert!(text.contains("Focus returned to list"));
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('z')));
+        app.update(key(KeyCode::Enter));
+        let text = journey_capture(&app, w, h, "search_no_hit", &mut caps);
+        assert!(text.contains("Matches: none in visible issues"));
+
+        app.update(key(KeyCode::Escape));
+        let text = journey_capture(&app, w, h, "search_cleared", &mut caps);
+        assert!(text.contains("Main search cleared"));
+
+        app.update(key(KeyCode::Char('o')));
+        let text = journey_capture(&app, w, h, "open_filter", &mut caps);
+        assert!(text.contains("scope=open"));
+
+        app.update(key(KeyCode::Escape));
+        let text = journey_capture(&app, w, h, "filter_cleared", &mut caps);
+        assert!(text.contains("scope=all"));
+    }
+
+    #[test]
     fn e2e_journey_narrow_geometry_stress() {
         // Exercises the same multi-mode flow at narrow terminal width
         let mut app = new_app(ViewMode::Main, 0);
@@ -22253,6 +22504,8 @@ mod tests {
                 triage_rank: 3,
                 pagerank_rank: 2,
                 critical_depth: 1,
+                search_match_position: None,
+                total_search_matches: 0,
                 available_width: 80,
             },
         )
@@ -22282,6 +22535,8 @@ mod tests {
                     triage_rank: 1,
                     pagerank_rank: 1,
                     critical_depth: 0,
+                    search_match_position: None,
+                    total_search_matches: 0,
                     available_width: 60,
                 },
             )
@@ -22308,6 +22563,8 @@ mod tests {
                 triage_rank: 4,
                 pagerank_rank: 3,
                 critical_depth: 2,
+                search_match_position: None,
+                total_search_matches: 0,
                 available_width: 80,
             },
         )

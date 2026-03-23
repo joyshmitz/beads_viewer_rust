@@ -5696,7 +5696,15 @@ impl BvrApp {
     }
 
     fn reselect_ranked_list_context(&mut self) {
-        self.select_first_visible();
+        match self.mode {
+            ViewMode::Graph if !self.graph_search_query.trim().is_empty() => {
+                self.select_current_graph_search_match();
+            }
+            ViewMode::Insights if !self.insights_search_query.trim().is_empty() => {
+                self.select_current_insights_search_match();
+            }
+            _ => self.select_first_visible(),
+        }
         self.sync_insights_heatmap_selection();
     }
 
@@ -14871,6 +14879,44 @@ mod tests {
     }
 
     #[test]
+    fn graph_mode_toggle_preserves_search_match_selection() {
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "Alpha dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Graph, 0, issues);
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('a')));
+        app.update(key(KeyCode::Enter));
+        assert_eq!(selected_issue_id(&app), "B");
+
+        app.update(key(KeyCode::Char('g')));
+        assert_eq!(app.mode, ViewMode::Main);
+        app.update(key(KeyCode::Char('g')));
+        assert_eq!(app.mode, ViewMode::Graph);
+        assert_eq!(selected_issue_id(&app), "B");
+    }
+
+    #[test]
     fn insights_mode_search_query_and_match_cycling_work() {
         let mut app = new_app(ViewMode::Main, 0);
         app.update(key(KeyCode::Char('i')));
@@ -15009,6 +15055,49 @@ mod tests {
             .map(|index| app.analyzer.issues[*index].id.clone())
             .expect("keystone ranked issue");
         assert_eq!(selected_issue_id(&app), keystone_expected);
+    }
+
+    #[test]
+    fn insights_panel_cycle_preserves_search_match_selection() {
+        let issues = vec![
+            Issue {
+                id: "C".to_string(),
+                title: "Closed unrelated".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Alpha dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root bottleneck".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Insights, 0, issues);
+
+        app.update(key(KeyCode::Char('/')));
+        app.update(key(KeyCode::Char('a')));
+        app.update(key(KeyCode::Enter));
+        assert_eq!(selected_issue_id(&app), "B");
+
+        app.update(key(KeyCode::Char('s')));
+        assert_eq!(app.insights_panel, InsightsPanel::Keystones);
+        assert_eq!(selected_issue_id(&app), "B");
     }
 
     #[test]

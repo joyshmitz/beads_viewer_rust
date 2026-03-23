@@ -1108,42 +1108,41 @@ enum ScanSegmentKind {
     Type,
 }
 
-fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment) {
-    let span = match segment.kind {
-        ScanSegmentKind::Marker { selected } => RichSpan::styled(
-            segment.label.clone(),
+fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: bool) {
+    let base_style = match segment.kind {
+        ScanSegmentKind::Marker { selected } => {
             if selected {
                 tokens::selected()
             } else {
                 tokens::dim()
-            },
-        ),
-        ScanSegmentKind::Chip(tone) => {
-            RichSpan::styled(segment.label.clone(), tokens::chip_style(tone))
+            }
         }
-        ScanSegmentKind::Dim => RichSpan::styled(segment.label.clone(), tokens::dim()),
-        ScanSegmentKind::Title { selected } => RichSpan::styled(
-            segment.label.clone(),
+        ScanSegmentKind::Chip(tone) => tokens::chip_style(tone),
+        ScanSegmentKind::Dim => tokens::dim(),
+        ScanSegmentKind::Title { selected } => {
             if selected {
                 tokens::panel_title()
             } else {
                 tokens::help_desc()
-            },
-        ),
+            }
+        }
         ScanSegmentKind::Priority => {
             let prio = segment
                 .label
                 .trim_start_matches('P')
                 .parse::<i32>()
                 .unwrap_or_default();
-            RichSpan::styled(
-                segment.label.clone(),
-                tokens::priority_style(prio as u8).bold(),
-            )
+            tokens::priority_style(prio as u8).bold()
         }
-        ScanSegmentKind::Type => RichSpan::styled(segment.label.clone(), tokens::dim()),
+        ScanSegmentKind::Type => tokens::dim(),
     };
-    line.push_span(span);
+    // Apply highlight background to entire row when selected
+    let style = if row_selected {
+        base_style.bg(tokens::BG_HIGHLIGHT)
+    } else {
+        base_style
+    };
+    line.push_span(RichSpan::styled(segment.label.clone(), style));
 }
 
 fn scan_segments_width(segments: &[ScanSegment]) -> usize {
@@ -1353,14 +1352,19 @@ fn issue_scan_line(
     let title = truncate_display(&issue.title, title_width);
 
     let mut line = RichLine::new();
+    let sep = if is_selected {
+        RichSpan::styled(" ", tokens::selected())
+    } else {
+        RichSpan::raw(" ")
+    };
     for (index, segment) in prefix.iter().enumerate() {
         if index > 0 {
-            line.push_span(RichSpan::raw(" "));
+            line.push_span(sep.clone());
         }
-        push_scan_segment(&mut line, segment);
+        push_scan_segment(&mut line, segment, is_selected);
     }
     if !prefix.is_empty() {
-        line.push_span(RichSpan::raw(" "));
+        line.push_span(sep.clone());
     }
     push_scan_segment(
         &mut line,
@@ -1370,15 +1374,16 @@ fn issue_scan_line(
                 selected: is_selected,
             },
         },
+        is_selected,
     );
     if !suffix.is_empty() {
-        line.push_span(RichSpan::raw(" "));
+        line.push_span(sep.clone());
     }
     for (index, segment) in suffix.iter().enumerate() {
         if index > 0 {
-            line.push_span(RichSpan::raw(" "));
+            line.push_span(sep.clone());
         }
-        push_scan_segment(&mut line, segment);
+        push_scan_segment(&mut line, segment, is_selected);
     }
 
     line
@@ -3168,7 +3173,9 @@ impl BvrApp {
             self.select_issue_by_id(id);
         }
 
-        self.ensure_selected_visible();
+        if !self.preserve_off_queue_insights_context() {
+            self.ensure_selected_visible();
+        }
         self.sync_insights_heatmap_selection();
     }
 
@@ -3657,7 +3664,9 @@ impl BvrApp {
             return Cmd::None;
         }
 
-        self.ensure_selected_visible();
+        if !self.preserve_off_queue_insights_context() {
+            self.ensure_selected_visible();
+        }
 
         if matches!(self.mode, ViewMode::Main)
             && self.focus == FocusPane::List
@@ -4482,13 +4491,13 @@ impl BvrApp {
                 if matches!(self.mode, ViewMode::Insights) && self.insights_heatmap.is_none() =>
             {
                 self.insights_panel = self.insights_panel.next();
-                self.reselect_ranked_list_context();
+                self.reselect_insights_panel_context();
             }
             KeyCode::Char('S')
                 if matches!(self.mode, ViewMode::Insights) && self.insights_heatmap.is_none() =>
             {
                 self.insights_panel = self.insights_panel.prev();
-                self.reselect_ranked_list_context();
+                self.reselect_insights_panel_context();
             }
             KeyCode::Char('e') if matches!(self.mode, ViewMode::Insights) => {
                 self.toggle_insights_explanations();
@@ -4507,6 +4516,8 @@ impl BvrApp {
             }
             KeyCode::Char('i') => {
                 let entering_insights = !matches!(self.mode, ViewMode::Insights);
+                let previous_mode = self.mode;
+                let previous_selected = self.selected;
                 self.mode = if entering_insights {
                     ViewMode::Insights
                 } else {
@@ -4514,7 +4525,14 @@ impl BvrApp {
                 };
                 self.focus = FocusPane::List;
                 if entering_insights {
-                    self.reselect_ranked_list_context();
+                    if matches!(previous_mode, ViewMode::Main) {
+                        self.reselect_ranked_list_context();
+                    } else {
+                        self.sync_insights_heatmap_selection();
+                        if self.insights_heatmap.is_none() {
+                            self.set_selected_index(previous_selected);
+                        }
+                    }
                 } else {
                     self.sync_ranked_list_context();
                 }
@@ -4534,6 +4552,7 @@ impl BvrApp {
             }
             KeyCode::Char('g') => {
                 let entering_graph = !matches!(self.mode, ViewMode::Graph);
+                let previous_mode = self.mode;
                 self.mode = if entering_graph {
                     ViewMode::Graph
                 } else {
@@ -4541,7 +4560,11 @@ impl BvrApp {
                 };
                 self.focus = FocusPane::List;
                 if entering_graph {
-                    self.reselect_ranked_list_context();
+                    if matches!(previous_mode, ViewMode::Main) {
+                        self.reselect_ranked_list_context();
+                    } else {
+                        self.sync_ranked_list_context();
+                    }
                 } else {
                     self.sync_ranked_list_context();
                 }
@@ -5679,6 +5702,15 @@ impl BvrApp {
         visible.iter().position(|index| *index == self.selected)
     }
 
+    fn preserve_off_queue_insights_context(&self) -> bool {
+        matches!(self.mode, ViewMode::Insights)
+            && self.insights_heatmap.is_none()
+            && self.insights_search_query.trim().is_empty()
+            && !self
+                .insights_visible_issue_indices_for_list_nav()
+                .contains(&self.selected)
+    }
+
     fn ensure_selected_visible(&mut self) {
         let visible = self.visible_issue_indices_for_list_nav();
         if visible.is_empty() {
@@ -5693,6 +5725,21 @@ impl BvrApp {
     fn sync_ranked_list_context(&mut self) {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
+    }
+
+    fn reselect_insights_panel_context(&mut self) {
+        if !self.insights_search_query.trim().is_empty() {
+            self.select_current_insights_search_match();
+            self.sync_insights_heatmap_selection();
+            return;
+        }
+
+        let visible = self.insights_visible_issue_indices_for_list_nav();
+        if visible.contains(&self.selected) {
+            self.select_first_visible();
+        } else {
+            self.sync_insights_heatmap_selection();
+        }
     }
 
     fn reselect_ranked_list_context(&mut self) {
@@ -6177,6 +6224,12 @@ impl BvrApp {
             return;
         }
 
+        if let Some(current) = matches.iter().position(|&index| index == self.selected) {
+            self.graph_search_match_cursor = current;
+            self.set_selected_index(matches[current]);
+            return;
+        }
+
         self.graph_search_match_cursor = self
             .graph_search_match_cursor
             .min(matches.len().saturating_sub(1));
@@ -6342,6 +6395,12 @@ impl BvrApp {
     fn select_current_insights_search_match(&mut self) {
         let matches = self.insights_search_matches();
         if matches.is_empty() {
+            return;
+        }
+
+        if let Some(current) = matches.iter().position(|&index| index == self.selected) {
+            self.insights_search_match_cursor = current;
+            self.set_selected_index(matches[current]);
             return;
         }
 
@@ -14903,6 +14962,7 @@ mod tests {
             },
         ];
         let mut app = new_app_with_issues(ViewMode::Graph, 0, issues);
+        app.set_selected_index(app.issue_index_for_id("B").expect("issue B should exist"));
 
         app.update(key(KeyCode::Char('/')));
         app.update(key(KeyCode::Char('a')));
@@ -15089,6 +15149,7 @@ mod tests {
             },
         ];
         let mut app = new_app_with_issues(ViewMode::Insights, 0, issues);
+        app.set_selected_index(app.issue_index_for_id("B").expect("issue B should exist"));
 
         app.update(key(KeyCode::Char('/')));
         app.update(key(KeyCode::Char('a')));
@@ -15098,6 +15159,57 @@ mod tests {
         app.update(key(KeyCode::Char('s')));
         assert_eq!(app.insights_panel, InsightsPanel::Keystones);
         assert_eq!(selected_issue_id(&app), "B");
+    }
+
+    #[test]
+    fn insights_entry_from_graph_preserves_external_context_issue() {
+        let issues = vec![
+            Issue {
+                id: "C".to_string(),
+                title: "Closed unrelated".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root bottleneck".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Board, 0, issues);
+        app.set_selected_index(app.issue_index_for_id("C").expect("issue C should exist"));
+
+        app.update(key(KeyCode::Char('g')));
+        assert_eq!(app.mode, ViewMode::Graph);
+        assert_eq!(selected_issue_id(&app), "C");
+
+        app.update(key(KeyCode::Char('i')));
+        assert_eq!(app.mode, ViewMode::Insights);
+        assert_eq!(selected_issue_id(&app), "C");
+
+        app.update(key(KeyCode::Char('s')));
+        assert_eq!(app.insights_panel, InsightsPanel::Keystones);
+        assert_eq!(selected_issue_id(&app), "C");
+
+        app.update(key(KeyCode::Escape));
+        assert_eq!(app.mode, ViewMode::Main);
+        assert_eq!(selected_issue_id(&app), "C");
     }
 
     #[test]

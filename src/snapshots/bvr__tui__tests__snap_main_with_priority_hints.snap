@@ -6,7 +6,7 @@ bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=3/3 | filter=all
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ Focus: list owns selection, / s…       ││ ────────────────────────────────────────────────       │
-│ scope=all | label=any | repo=any | sea ││ Summary  ready to execute                              │
+│ scope=all | label=any | repo=any | pos ││ Summary  ready to execute                              │
 │ Guide: / search-as-you-type | o/c/r/B/ ││ F A  Feature work  (C copy id)                         │
 │                                        ││ Status: open | Priority: p1 | Type: feature | State: r │
 │ ▸ #01 ready P1 A Feature work          ││ Action: Pull now | Downstream impact: 0 | Critical dep │

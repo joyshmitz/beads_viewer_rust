@@ -5,10 +5,10 @@ expression: text
 bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all
 ┌Commits [focus]─────────────┐┌Related Beads────────────────────┐┌Commit Details───────────────────┐
 │                            ││                                 ││                                 │
-│ Git commits (1/250 correla ││ 1 related bead(s) for d50d5c0   ││ Commit 1/1 | confidence >= 0%   │
+│ Git commits (1/267 correla ││ 1 related bead(s) for d50d5c0   ││ Commit 1/1 | confidence >= 0%   │
 │ Min confidence: >= 0%      ││                                 ││                                 │
 │                            ││   [o] B        Dependent        ││ COMMIT DETAILS:                 │
-│ > d50d5c0 B        feat(tu ││                                 ││   SHA: d50d5c0d32fec65f6a66b954 │
+│ > F d50d5c0 B        feat( ││                                 ││   SHA: d50d5c0d32fec65f6a66b954 │
 │                            ││                                 ││   [D] Dicklesworthstone <jeff14 │
 │                            ││                                 ││   Date: 2026-03-23T06:14:45Z    │
 │                            ││                                 ││   F feat(tui): add InProgress a │
@@ -18,14 +18,14 @@ bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | is
 │                            ││                                 ││ RELATED BEADS:                  │
 │                            ││                                 ││   [o] B (75%) Dependent         │
 │                            ││                                 ││                                 │
+│                            ││                                 ││ SELECTED BEAD CHANGE (B):       │
+│                            ││                                 ││   (no field-level bead changes  │
+│                            ││                                 ││                                 │
 │                            ││                                 ││ Enter: jump to related bead | J │
 │                            ││                                 ││ v: switch to bead timeline | c: │
 │                            ││                                 ││ y: copy SHA | o: open in browse │
 │                            ││                                 ││                                 │
 │                            ││                                 ││ Browser Link: open selected com │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │

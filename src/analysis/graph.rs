@@ -1924,28 +1924,40 @@ mod tests {
     fn config_serializes_to_json() {
         let config = AnalysisConfig::full();
         let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains("\"enable_pagerank\":true"));
-        assert!(json.contains("\"betweenness_max_nodes\":10000"));
+        assert!(json.contains("\"ComputePageRank\":true"));
+        assert!(json.contains("\"BetweennessSampleSize\":10000"));
     }
 
     #[test]
     fn config_deserializes_from_json() {
         let json = r#"{
-            "enable_pagerank": false,
-            "enable_betweenness": true,
-            "enable_eigenvector": true,
-            "enable_hits": true,
-            "enable_cycles": true,
-            "enable_critical_path": true,
-            "enable_k_core": true,
-            "enable_articulation": true,
-            "enable_slack": true,
-            "betweenness_max_nodes": 5000,
-            "eigenvector_max_nodes": 5000
+            "ComputePageRank": false,
+            "ComputeBetweenness": true,
+            "ComputeEigenvector": true,
+            "ComputeHITS": true,
+            "ComputeCycles": true,
+            "ComputeCriticalPath": true,
+            "ComputeKCore": true,
+            "ComputeArticulation": true,
+            "ComputeSlack": true,
+            "BetweennessSampleSize": 5000,
+            "eigenvector_max_nodes": 5000,
+            "BetweennessIsApproximate": false,
+            "BetweennessMode": "exact",
+            "BetweennessSkipReason": "",
+            "BetweennessTimeout": 2000000000,
+            "PageRankSkipReason": "",
+            "PageRankTimeout": 2000000000,
+            "HITSSkipReason": "",
+            "HITSTimeout": 2000000000,
+            "CyclesSkipReason": "",
+            "CyclesTimeout": 2000000000,
+            "MaxCyclesToStore": 50
         }"#;
         let config: AnalysisConfig = serde_json::from_str(json).unwrap();
         assert!(!config.enable_pagerank);
         assert_eq!(config.betweenness_max_nodes, 5000);
+        assert_eq!(config.max_cycles_to_store, 50);
     }
 
     #[test]

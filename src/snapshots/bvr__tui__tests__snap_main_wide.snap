@@ -6,7 +6,7 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 ┌Issues [focus]─────────────────────────────────────┐┌Details──────────────────────────────────────────────────────────────────────────────┐
 │                                                   ││                                                                                     │
 │ Focus: list owns selection, / s…                  ││ ────────────────────────────────────────────────                                    │
-│ scope=all | label=any | repo=any | search=off | s ││ Summary  ready to execute                                                           │
+│ scope=all | label=any | repo=any | pos=1/3 | sear ││ Summary  ready to execute                                                           │
 │ Guide: / search-as-you-type | o/c/r/B/I quick fil ││ T A  Root  (C copy id)                                                              │
 │                                                   ││ Status: open | Priority: p0 | Type: task | State: ready                             │
 │ ▸ #01 ready P0 A Root @alice                      ││ Action: Pull now | Downstream impact: 1 | Critical depth: 2                         │

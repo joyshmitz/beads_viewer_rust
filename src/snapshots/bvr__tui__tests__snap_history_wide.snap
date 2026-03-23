@@ -7,16 +7,16 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 │                                        ││                                               ││                                               │
 │ Bead history list (3 beads) | v toggle ││ No commits correlated with A.                 ││ History Summary: beads=3 closed-like=1 select │
 │                                        ││                                               ││                                               │
-│ > A            events: 2 open          ││                                               ││ Issue: A (Root)                               │
-│   B            events: 3 open          ││                                               ││ Status: open                                  │
-│   C            events: 3 closed        ││                                               ││ Min confidence filter: >= 0%                  │
+│ ▸ oT A             2▪ open             ││                                               ││ Issue: A (Root)                               │
+│   oT B             3▪ open             ││                                               ││ Status: open                                  │
+│   xT C             3▪ closed           ││                                               ││ Min confidence filter: >= 0%                  │
 │                                        ││                                               ││ Created/Updated/Closed: 2026-01-01 / 2026-01- │
 │                                        ││                                               ││                                               │
 │                                        ││                                               ││ LIFECYCLE:                                    │
 │                                        ││                                               ││   │ + created    2026-01-01T00:00:00Z  Issue  │
 │                                        ││                                               ││   └ . updated    2026-01-02T00:00:00Z  Curren │
 │                                        ││                                               ││                                               │
-│                                        ││                                               ││ v: switch to git timeline | J/K: cycle commit │
+│                                        ││                                               ││ Enter: backtrace selected commit | v: switch  │
 │                                        ││                                               ││ y: copy bead ID | f: file tree                │
 │                                        ││                                               ││                                               │
 │                                        ││                                               ││                                               │

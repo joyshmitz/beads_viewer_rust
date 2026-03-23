@@ -79,11 +79,11 @@ bvr 1 Main b Board i In  | 3/3 | all
 │ [Bottlenec ││ Analytics Cockpit      │
 │            ││ System Radar | bottlen │
 │ Signal Til ││                        │
-│ [Flow ] op ││ Focus: C (Closed)      │
-│ [Risk ] bo ││ Status: closed | Prior │
+│ [Flow ] op ││ Focus: A (Root)        │
+│ [Risk ] bo ││ Status: open | Priorit │
 │            ││                        │
 │ Outlier Ra ││ Metric Strip           │
-│ [Lead ] bo ││ [Rank ] pagerank=0.259 │
+│ [Lead ] bo ││ [Rank ] pagerank=0.480 │
 │ [Rank ] in ││ [HITS ] hub=0.0000 aut │
 │            ││                        │
 └────────────┘└────────────────────────┘
@@ -96,11 +96,11 @@ bvr 1 Main b Board i In  | 3/3 | all
 │ [Keystones ││ Analytics Cockpit      │
 │            ││ System Radar | bottlen │
 │ Signal Til ││                        │
-│ [Flow ] op ││ Focus: C (Closed)      │
-│ [Risk ] bo ││ Status: closed | Prior │
+│ [Flow ] op ││ Focus: A (Root)        │
+│ [Risk ] bo ││ Status: open | Priorit │
 │            ││                        │
 │ Outlier Ra ││ Metric Strip           │
-│ [Lead ] bo ││ [Rank ] pagerank=0.259 │
+│ [Lead ] bo ││ [Rank ] pagerank=0.480 │
 │ [Rank ] in ││ [HITS ] hub=0.0000 aut │
 │            ││                        │
 └────────────┘└────────────────────────┘
@@ -145,12 +145,12 @@ bvr 1 Main b Board i In  | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
 │ Focus: lis ││ ────────────────────── │
-│ scope=all  ││ Summary  reference sta │
-│ Guide: / s ││ T C  Closed  (C copy i │
-│            ││ Status: closed | Prior │
-│   #01 read ││ Action: Closed work it │
-│   #02 bloc ││ Assignee: unassigned | │
-│ ▸ #03 clos ││ Closed: 2026-01-06 | L │
+│ scope=all  ││ Summary  ready to exec │
+│ Guide: / s ││ T A  Root  (C copy id) │
+│            ││ Status: open | Priorit │
+│ ▸ #01 read ││ Action: Pull now | Dow │
+│   #02 bloc ││ Assignee: alice | Repo │
+│   #03 clos ││ Closed: n/a | Labels:  │
 │            ││ Created: 2026-01-01 |  │
 │            ││                        │
 │            ││                        │

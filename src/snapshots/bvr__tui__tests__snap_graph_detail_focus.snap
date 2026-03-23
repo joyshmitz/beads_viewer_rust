@@ -7,9 +7,9 @@ bvr 1 Main b Board i Insights g Graph | mode=Graph | focus=detail | issues=3/3 |
 │                                        ││                                                        │
 │ Nodes  3 by critical-path score | h/l  ││ Graph: nodes=3 edges=1 cycles=0 actionable=1           │
 │ ────────────────────────────────────── ││ Focus: node 2/3 -> B (Dependent)                       │
-│   A PR ██████ 0.48 in: 0 out: 1 Root   ││ Focused edge: depends on [1/1] B -> A (Root)           │
-│ ▸ B PR ███░░░ 0.26 in: 1 out: 0 Depend ││                                                        │
-│   C PR ███░░░ 0.26 in: 0 out: 0 Closed ││                   ▲ BLOCKED BY (must complete first) ▲ │
+│   A PR ██████ 0.48 ↓1 Root             ││ Focused edge: depends on [1/1] B -> A (Root)           │
+│ ▸ B PR ███░░░ 0.26 ⊘1 Depende…         ││                                                        │
+│   C PR ███░░░ 0.26 Closed              ││                   ▲ BLOCKED BY (must complete first) ▲ │
 │                                        ││                           ╔══════════════════╗         │
 │                                        ││                           ║>[o] A            ║         │
 │                                        ││                           ║Root              ║         │

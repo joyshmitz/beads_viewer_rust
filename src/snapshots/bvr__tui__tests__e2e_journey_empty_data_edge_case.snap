@@ -9,7 +9,7 @@ bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=0/0 | filter=all
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ Focus: list owns selection, / s…       ││ No issues to display. Create or load a .beads/*.jsonl  │
-│ scope=all | label=any | repo=any | sea ││                                                        │
+│ scope=all | label=any | repo=any | pos ││                                                        │
 │ Guide: / search-as-you-type | o/c/r/B/ ││                                                        │
 │                                        ││                                                        │
 │ No issues in the current triage slice  ││                                                        │
@@ -201,7 +201,7 @@ bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=0/0 | filter=all
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
 │ Focus: list owns selection, / s…       ││ No issues to display. Create or load a .beads/*.jsonl  │
-│ scope=all | label=any | repo=any | sea ││                                                        │
+│ scope=all | label=any | repo=any | pos ││                                                        │
 │ Guide: / search-as-you-type | o/c/r/B/ ││                                                        │
 │                                        ││                                                        │
 │ No issues in the current triage slice  ││                                                        │

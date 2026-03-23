@@ -9,33 +9,33 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issue
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Focus: list owns selection, / s…           ││ ────────────────────────────────────────────────                       │
-│ scope=all | label=any | repo=any | search= ││ Summary  ready to execute                                              │
-│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T A  Root  (C copy id)                                                 │
-│                                            ││ Status: open | Priority: p0 | Type: task | State: ready                │
-│ ▸ #01 ready P0 A Root @alice               ││ Action: Pull now | Downstream impact: 1 | Critical depth: 2            │
-│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
-│   #03 closed P0 C Closed                   ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                │
-│                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)  │
+│ scope=all | label=any | repo=any | pos=3/3 ││ Summary  reference state                                               │
+│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T C  Closed  (C copy id)                                               │
+│                                            ││ Status: closed | Priority: p0 | Type: task | State: closed             │
+│   #01 ready P0 A Root @alice               ││ Action: Closed work item | Downstream still watching: 0                │
+│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: unassigned | Repo: local | Estimate: n/a  (w repo filter)    │
+│ ▸ #03 closed P0 C Closed                   ││ Closed: 2026-01-06 | Labels: none  (L label filter)                    │
+│                                            ││ Created: 2026-01-01 | Updated: 2026-01-06 | Due: n/a  (t time-travel)  │
 │                                            ││                                                                        │
 │                                            ││ ────────────────────────────────────────────────                       │
 │                                            ││ Signals  rank and graph pressure                                       │
-│                                            ││ Depth 2 | k-core 1 | slack 0.0000 | cut-point no                       │
-│                                            ││ PR ██████ 0.48  BW ░░░░░░ 0.00                                         │
-│                                            ││ EV ██████ 1.00  blockers=0 | unblocks=1                                │
+│                                            ││ Depth 1 | k-core 0 | slack 1.0000 | cut-point no                       │
+│                                            ││ PR ███░░░ 0.26  BW ░░░░░░ 0.00                                         │
+│                                            ││ EV ░░░░░░ 0.00  blockers=0 | unblocks=0                                │
 │                                            ││                                                                        │
 │                                            ││ ────────────────────────────────────────────────                       │
 │                                            ││ Dependencies  upstream, gates, downstream                              │
 │                                            ││ Upstream: none                                                         │
 │                                            ││ Open Gate: none                                                        │
-│                                            ││ Downstream: B                                                          │
+│                                            ││ Downstream: none                                                       │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││ ────────────────────────────────────────────────                       │
-│                                            ││ Description                                                            │
-│                                            ││   Top-level issue that unblocks downstream work once the shared baseli │
-│                                            ││                                                                        │
+│                                            ││ History Summary (3 events)                                             │
+│                                            ││   + 2026-01-01 Issue C created                                         │
+│                                            ││   . 2026-01-06 Current status: closed                                  │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
@@ -46,7 +46,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=detail | iss
 ┌Issues──────────────────────────────────────┐┌Details [focus]─────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Focus: detail owns J/K deps, ^j…           ││ ────────────────────────────────────────────────                       │
-│ scope=all | label=any | repo=any | search= ││ Summary  waiting on blockers                                           │
+│ scope=all | label=any | repo=any | pos=2/3 ││ Summary  waiting on blockers                                           │
 │ Guide: / search-as-you-type | o/c/r/B/I qu ││ T B  Dependent  (C copy id)                                            │
 │                                            ││ Status: open | Priority: p0 | Type: task | State: blocked              │
 │   #01 ready P0 A Root @alice               ││ Action: Unblock first via A | Open blockers: 1 | Downstream impact: 0  │
@@ -158,9 +158,9 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Graph | focus=list | issu
 │                                            ││                                                                        │
 │ Nodes  3 by critical-path score | h/l nav  ││ Graph: nodes=3 edges=1 cycles=0 actionable=1                           │
 │ ────────────────────────────────────────── ││ Focus: node 3/3 -> C (Closed)                                          │
-│   A PR ██████ 0.48 in: 0 out: 1 Root       ││ Focused edge: list focus (Tab to inspect relationships)                │
-│   B PR ███░░░ 0.26 in: 1 out: 0 Dependent  ││                                                                        │
-│ ▸ C PR ███░░░ 0.26 in: 0 out: 0 Closed     ││                   ╔══════════════════════════════════╗                 │
+│   A PR ██████ 0.48 ↓1 Root                 ││ Focused edge: list focus (Tab to inspect relationships)                │
+│   B PR ███░░░ 0.26 ⊘1 Depende…             ││                                                                        │
+│ ▸ C PR ███░░░ 0.26 Closed                  ││                   ╔══════════════════════════════════╗                 │
 │                                            ││                   ║[x T p0] C                        ║                 │
 │                                            ││                   ║Closed                            ║                 │
 │                                            ││                   ║up:0 down:0                       ║                 │
@@ -195,9 +195,9 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Graph | focus=detail | is
 │                                            ││                                                                        │
 │ Nodes  3 by critical-path score | h/l nav  ││ Graph: nodes=3 edges=1 cycles=0 actionable=1                           │
 │ ────────────────────────────────────────── ││ Focus: node 3/3 -> C (Closed)                                          │
-│   A PR ██████ 0.48 in: 0 out: 1 Root       ││ Focused edge: none (isolated node)                                     │
-│   B PR ███░░░ 0.26 in: 1 out: 0 Dependent  ││                                                                        │
-│ ▸ C PR ███░░░ 0.26 in: 0 out: 0 Closed     ││                   ╔══════════════════════════════════╗                 │
+│   A PR ██████ 0.48 ↓1 Root                 ││ Focused edge: none (isolated node)                                     │
+│   B PR ███░░░ 0.26 ⊘1 Depende…             ││                                                                        │
+│ ▸ C PR ███░░░ 0.26 Closed                  ││                   ╔══════════════════════════════════╗                 │
 │                                            ││                   ║[x T p0] C                        ║                 │
 │                                            ││                   ║Closed                            ║                 │
 │                                            ││                   ║up:0 down:0                       ║                 │
@@ -233,25 +233,25 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Insights | focus=list | i
 │ [Bottlenecks] s/S cycles panel | e explana ││ Analytics Cockpit                                                      │
 │                                            ││ System Radar | bottlenecks=2 crit-path=3 cycles=0 cut-pts=0 k-core-max │
 │ Signal Tiles                               ││                                                                        │
-│ [Flow ] open=2 blocked=1 crit-path=3 cycle ││ Focus: C (Closed)                                                      │
-│ [Risk ] bottlenecks=2 cut-points=0 zero-sl ││ Status: closed | Priority: p0                                          │
+│ [Flow ] open=2 blocked=1 crit-path=3 cycle ││ Focus: A (Root)                                                        │
+│ [Risk ] bottlenecks=2 cut-points=0 zero-sl ││ Status: open | Priority: p0                                            │
 │                                            ││                                                                        │
 │ Outlier Radar                              ││ Metric Strip                                                           │
-│ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.2597 betweenness=0.0000 eigenvector=0.0000          │
-│ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=0.0000 k-core=0                           │
-│ [Act  ] next-priority=A score=0.695 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
-│                                            ││ [Flow ] blockers=0 dependents=0 crit-path=yes cycle=no                 │
-│ Panel Focus | Bottlenecks | blocking press ││ [Lead ] top-bottleneck=no                                              │
+│ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.4805 betweenness=0.0000 eigenvector=1.0000          │
+│ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=1.0000 k-core=1                           │
+│ [Act  ] next-priority=A score=0.695 p0     ││ [Risk ] crit-depth=2 slack=0.0000 cut-point=no                         │
+│                                            ││ [Flow ] blockers=0 dependents=1 crit-path=yes cycle=no                 │
+│ Panel Focus | Bottlenecks | blocking press ││ [Lead ] top-bottleneck=yes                                             │
 │                                            ││                                                                        │
 │  1. A            score=0.481 blocks=1      ││ All Metrics:                                                           │
-│  2. B            score=0.260 blocks=0      ││   PageRank:     0.2597                                                 │
+│  2. B            score=0.260 blocks=0      ││   PageRank:     0.4805                                                 │
 │                                            ││   Betweenness:  0.0000                                                 │
-│                                            ││   Eigenvector:  0.0000                                                 │
+│                                            ││   Eigenvector:  1.0000                                                 │
 │                                            ││   Hub (HITS):   0.0000                                                 │
-│                                            ││   Auth (HITS):  0.0000                                                 │
-│                                            ││   K-core:       0                                                      │
-│                                            ││   Crit depth:   1                                                      │
-│                                            ││   Slack:        1.0000                                                 │
+│                                            ││   Auth (HITS):  1.0000                                                 │
+│                                            ││   K-core:       1                                                      │
+│                                            ││   Crit depth:   2                                                      │
+│                                            ││   Slack:        0.0000                                                 │
 │                                            ││   Cut point:    no                                                     │
 │                                            ││                                                                        │
 │                                            ││ Critical Path Head:                                                    │
@@ -270,25 +270,25 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Insights | focus=list | i
 │ [Keystones] s/S cycles panel | e explanati ││ Analytics Cockpit                                                      │
 │                                            ││ System Radar | bottlenecks=2 crit-path=3 cycles=0 cut-pts=0 k-core-max │
 │ Signal Tiles                               ││                                                                        │
-│ [Flow ] open=2 blocked=1 crit-path=3 cycle ││ Focus: C (Closed)                                                      │
-│ [Risk ] bottlenecks=2 cut-points=0 zero-sl ││ Status: closed | Priority: p0                                          │
+│ [Flow ] open=2 blocked=1 crit-path=3 cycle ││ Focus: A (Root)                                                        │
+│ [Risk ] bottlenecks=2 cut-points=0 zero-sl ││ Status: open | Priority: p0                                            │
 │                                            ││                                                                        │
 │ Outlier Radar                              ││ Metric Strip                                                           │
-│ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.2597 betweenness=0.0000 eigenvector=0.0000          │
-│ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=0.0000 k-core=0                           │
-│ [Act  ] next-priority=A score=0.695 p0     ││ [Risk ] crit-depth=1 slack=1.0000 cut-point=no                         │
-│                                            ││ [Flow ] blockers=0 dependents=0 crit-path=yes cycle=no                 │
-│ Panel Focus | Keystones | foundational cha ││ [Lead ] top-bottleneck=no                                              │
+│ [Lead ] bottleneck=A score=0.481 blocks=1  ││ [Rank ] pagerank=0.4805 betweenness=0.0000 eigenvector=1.0000          │
+│ [Rank ] influencer=A pr=0.4805             ││ [HITS ] hub=0.0000 authority=1.0000 k-core=1                           │
+│ [Act  ] next-priority=A score=0.695 p0     ││ [Risk ] crit-depth=2 slack=0.0000 cut-point=no                         │
+│                                            ││ [Flow ] blockers=0 dependents=1 crit-path=yes cycle=no                 │
+│ Panel Focus | Keystones | foundational cha ││ [Lead ] top-bottleneck=yes                                             │
 │                                            ││                                                                        │
 │  1. A            depth=2 unblocks=1        ││ All Metrics:                                                           │
-│  2. B            depth=1 unblocks=0        ││   PageRank:     0.2597                                                 │
+│  2. B            depth=1 unblocks=0        ││   PageRank:     0.4805                                                 │
 │                                            ││   Betweenness:  0.0000                                                 │
-│                                            ││   Eigenvector:  0.0000                                                 │
+│                                            ││   Eigenvector:  1.0000                                                 │
 │                                            ││   Hub (HITS):   0.0000                                                 │
-│                                            ││   Auth (HITS):  0.0000                                                 │
-│                                            ││   K-core:       0                                                      │
-│                                            ││   Crit depth:   1                                                      │
-│                                            ││   Slack:        1.0000                                                 │
+│                                            ││   Auth (HITS):  1.0000                                                 │
+│                                            ││   K-core:       1                                                      │
+│                                            ││   Crit depth:   2                                                      │
+│                                            ││   Slack:        0.0000                                                 │
 │                                            ││   Cut point:    no                                                     │
 │                                            ││                                                                        │
 │                                            ││ Critical Path Head:                                                    │
@@ -305,34 +305,34 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issue
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
 │ Focus: list owns selection, / s…           ││ ────────────────────────────────────────────────                       │
-│ scope=all | label=any | repo=any | search= ││ Summary  reference state                                               │
-│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T C  Closed  (C copy id)                                               │
-│                                            ││ Status: closed | Priority: p0 | Type: task | State: closed             │
-│   #01 ready P0 A Root @alice               ││ Action: Closed work item | Downstream still watching: 0                │
-│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: unassigned | Repo: local | Estimate: n/a  (w repo filter)    │
-│ ▸ #03 closed P0 C Closed                   ││ Closed: 2026-01-06 | Labels: none  (L label filter)                    │
-│                                            ││ Created: 2026-01-01 | Updated: 2026-01-06 | Due: n/a  (t time-travel)  │
+│ scope=all | label=any | repo=any | pos=1/3 ││ Summary  ready to execute                                              │
+│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T A  Root  (C copy id)                                                 │
+│                                            ││ Status: open | Priority: p0 | Type: task | State: ready                │
+│ ▸ #01 ready P0 A Root @alice               ││ Action: Pull now | Downstream impact: 1 | Critical depth: 2            │
+│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│   #03 closed P0 C Closed                   ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                │
+│                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)  │
 │                                            ││                                                                        │
 │                                            ││ ────────────────────────────────────────────────                       │
 │                                            ││ Signals  rank and graph pressure                                       │
-│                                            ││ Depth 1 | k-core 0 | slack 1.0000 | cut-point no                       │
-│                                            ││ PR ███░░░ 0.26  BW ░░░░░░ 0.00                                         │
-│                                            ││ EV ░░░░░░ 0.00  blockers=0 | unblocks=0                                │
+│                                            ││ Depth 2 | k-core 1 | slack 0.0000 | cut-point no                       │
+│                                            ││ PR ██████ 0.48  BW ░░░░░░ 0.00                                         │
+│                                            ││ EV ██████ 1.00  blockers=0 | unblocks=1                                │
 │                                            ││                                                                        │
 │                                            ││ ────────────────────────────────────────────────                       │
 │                                            ││ Dependencies  upstream, gates, downstream                              │
 │                                            ││ Upstream: none                                                         │
 │                                            ││ Open Gate: none                                                        │
-│                                            ││ Downstream: none                                                       │
-│                                            ││                                                                        │
+│                                            ││ Downstream: B                                                          │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││ ────────────────────────────────────────────────                       │
-│                                            ││ History Summary (3 events)                                             │
-│                                            ││   + 2026-01-01 Issue C created                                         │
-│                                            ││   . 2026-01-06 Current status: closed                                  │
+│                                            ││ Description                                                            │
+│                                            ││   Top-level issue that unblocks downstream work once the shared baseli │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split

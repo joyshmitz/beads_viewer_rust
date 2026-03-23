@@ -280,7 +280,7 @@ pub fn compare_snapshots_with_metadata(
     }
 }
 
-fn detect_changes(from: &Issue, to: &Issue) -> Vec<FieldChange> {
+pub(crate) fn detect_changes(from: &Issue, to: &Issue) -> Vec<FieldChange> {
     let mut changes = Vec::<FieldChange>::new();
 
     if from.title != to.title {

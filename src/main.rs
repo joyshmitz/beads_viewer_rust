@@ -5961,6 +5961,8 @@ mod tests {
             method: "explicit_id".to_string(),
             confidence: 1.0,
             reason: "test".to_string(),
+            field_changes: vec![],
+            bead_diff_lines: vec![],
         }];
 
         HistoryBeadCompat {

@@ -1150,6 +1150,8 @@ mod tests {
                         method: "message".to_string(),
                         confidence: 0.9,
                         reason: "test".to_string(),
+                        field_changes: vec![],
+                        bead_diff_lines: vec![],
                     })
                     .collect(),
             ),

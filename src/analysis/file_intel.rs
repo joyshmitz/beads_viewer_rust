@@ -994,6 +994,8 @@ mod tests {
                 method: "explicit_id".to_string(),
                 confidence: 0.85,
                 reason: "test".to_string(),
+                field_changes: vec![],
+                bead_diff_lines: vec![],
             })
             .collect();
 
@@ -1304,6 +1306,8 @@ mod tests {
                 method: "explicit_id".to_string(),
                 confidence: 0.85,
                 reason: "test".to_string(),
+                field_changes: vec![],
+                bead_diff_lines: vec![],
             })
             .collect();
 

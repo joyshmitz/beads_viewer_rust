@@ -5,7 +5,8 @@ use std::process::Command;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
-use crate::{BvrError, Result};
+use super::diff::{FieldChange, detect_changes};
+use crate::{BvrError, Result, model::Issue};
 
 #[derive(Debug, Clone)]
 pub struct GitCommitRecord {
@@ -67,6 +68,10 @@ pub struct HistoryCommitCompat {
     pub method: String,
     pub confidence: f64,
     pub reason: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub field_changes: Vec<FieldChange>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub bead_diff_lines: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -239,9 +244,14 @@ pub fn correlate_histories_with_git(
 
     for commit in commits {
         let mut bead_ids = extract_ids_from_message(&commit.message, &known_ids);
+        let mut bead_change_details = BTreeMap::<String, (Vec<FieldChange>, Vec<String>)>::new();
         if bead_ids.is_empty() && commit.changed_beads {
             let from_diff = extract_ids_from_beads_diffs(repo_root, commit, &known_ids);
             bead_ids.extend(from_diff);
+        }
+        if commit.changed_beads {
+            bead_change_details = extract_bead_change_details(repo_root, commit, &known_ids);
+            bead_ids.extend(bead_change_details.keys().cloned());
         }
         if bead_ids.is_empty() {
             continue;
@@ -288,6 +298,14 @@ pub fn correlate_histories_with_git(
                 method: method.to_string(),
                 confidence,
                 reason: reason.clone(),
+                field_changes: bead_change_details
+                    .get(&bead_id)
+                    .map(|(changes, _)| changes.clone())
+                    .unwrap_or_default(),
+                bead_diff_lines: bead_change_details
+                    .get(&bead_id)
+                    .map(|(_, diff_lines)| diff_lines.clone())
+                    .unwrap_or_default(),
             });
 
             let ids = commit_index.entry(commit.sha.clone()).or_default();
@@ -400,6 +418,135 @@ fn extract_ids_from_beads_diffs(
     }
 
     ids
+}
+
+fn extract_bead_change_details(
+    repo_root: &Path,
+    commit: &GitCommitRecord,
+    known_ids: &BTreeMap<String, String>,
+) -> BTreeMap<String, (Vec<FieldChange>, Vec<String>)> {
+    let mut before = BTreeMap::<String, serde_json::Value>::new();
+    let mut after = BTreeMap::<String, serde_json::Value>::new();
+
+    for file in &commit.files {
+        if !is_beads_jsonl_path(&file.path) {
+            continue;
+        }
+
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo_root)
+            .arg("show")
+            .arg("--format=")
+            .arg("--unified=0")
+            .arg(&commit.sha)
+            .arg("--")
+            .arg(&file.path)
+            .output();
+
+        let Ok(output) = output else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        for raw_line in text.lines() {
+            let line = raw_line.trim();
+            if !(line.starts_with('+') || line.starts_with('-'))
+                || line.starts_with("+++")
+                || line.starts_with("---")
+            {
+                continue;
+            }
+
+            let content = line.trim_start_matches(['+', '-']).trim();
+            if !(content.starts_with('{') && content.ends_with('}')) {
+                continue;
+            }
+
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+                continue;
+            };
+            let Some(raw_id) = value.get("id").and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            let Some(canonical) = known_ids.get(&raw_id.to_ascii_lowercase()) else {
+                continue;
+            };
+
+            if line.starts_with('-') {
+                before.insert(canonical.clone(), value);
+            } else {
+                after.insert(canonical.clone(), value);
+            }
+        }
+    }
+
+    let mut details = BTreeMap::<String, (Vec<FieldChange>, Vec<String>)>::new();
+    let bead_ids = before
+        .keys()
+        .chain(after.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    for bead_id in bead_ids {
+        let field_changes = match (before.get(&bead_id), after.get(&bead_id)) {
+            (Some(old_value), Some(new_value)) => {
+                match (
+                    serde_json::from_value::<Issue>(old_value.clone()),
+                    serde_json::from_value::<Issue>(new_value.clone()),
+                ) {
+                    (Ok(old_issue), Ok(new_issue)) => detect_changes(&old_issue, &new_issue),
+                    _ => Vec::new(),
+                }
+            }
+            _ => Vec::new(),
+        };
+
+        let mut diff_lines = field_changes
+            .iter()
+            .flat_map(|change| {
+                [
+                    format!("- {}: {}", change.field, change.old_value),
+                    format!("+ {}: {}", change.field, change.new_value),
+                ]
+            })
+            .collect::<Vec<_>>();
+
+        if diff_lines.is_empty() {
+            if let Some(old_value) = before.get(&bead_id) {
+                diff_lines.push(format!("- issue: {}", summarize_bead_snapshot(old_value)));
+            }
+            if let Some(new_value) = after.get(&bead_id) {
+                diff_lines.push(format!("+ issue: {}", summarize_bead_snapshot(new_value)));
+            }
+        }
+
+        details.insert(bead_id, (field_changes, diff_lines));
+    }
+
+    details
+}
+
+fn summarize_bead_snapshot(value: &serde_json::Value) -> String {
+    let id = value
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("?");
+    let status = value
+        .get("status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("?");
+    let title = value
+        .get("title")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    if title.is_empty() {
+        format!("{id} [{status}]")
+    } else {
+        format!("{id} [{status}] {title}")
+    }
 }
 
 fn is_beads_jsonl_path(path: &str) -> bool {
@@ -742,6 +889,8 @@ mod tests {
                 method: "log".to_string(),
                 confidence: 1.0,
                 reason: "test".to_string(),
+                field_changes: vec![],
+                bead_diff_lines: vec![],
             }]),
             cycle_time: None,
             last_author: String::new(),

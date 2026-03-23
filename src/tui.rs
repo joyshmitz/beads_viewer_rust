@@ -3808,6 +3808,13 @@ impl BvrApp {
                 self.enter_insights_heatmap_drill();
             }
             KeyCode::Enter
+                if matches!(self.mode, ViewMode::History)
+                    && matches!(self.history_view_mode, HistoryViewMode::Bead)
+                    && matches!(self.focus, FocusPane::Middle) =>
+            {
+                self.jump_from_history_bead_commit_to_git();
+            }
+            KeyCode::Enter
                 if !(matches!(self.mode, ViewMode::History) && self.history_file_tree_focus)
                     && !matches!(self.mode, ViewMode::Tree) =>
             {
@@ -4662,6 +4669,34 @@ impl BvrApp {
         self.refresh_history_search_selection();
     }
 
+    fn jump_from_history_bead_commit_to_git(&mut self) {
+        let Some(commit) = self.selected_history_bead_commit() else {
+            self.history_status_msg = "No correlated commit selected".to_string();
+            return;
+        };
+
+        self.ensure_git_history_loaded();
+        self.history_view_mode = HistoryViewMode::Git;
+        self.focus = FocusPane::List;
+        self.history_related_bead_cursor = 0;
+        self.history_bead_commit_cursor = 0;
+
+        let visible = self.history_git_visible_commit_indices();
+        let Some(target_slot) = visible.iter().position(|index| {
+            self.history_git_cache
+                .as_ref()
+                .and_then(|cache| cache.commits.get(*index))
+                .is_some_and(|entry| entry.sha == commit.sha)
+        }) else {
+            self.history_status_msg =
+                format!("Commit {} not visible in git view", commit.short_sha);
+            return;
+        };
+
+        self.history_event_cursor = target_slot;
+        self.history_status_msg = format!("Backtraced to commit {}", commit.short_sha);
+    }
+
     fn start_history_search(&mut self) {
         if !matches!(self.mode, ViewMode::History) || self.focus != FocusPane::List {
             return;
@@ -4909,6 +4944,21 @@ impl BvrApp {
     fn history_selected_commit_url(&self) -> Option<String> {
         self.history_selected_commit_sha()
             .and_then(|sha| self.history_commit_url_for_sha(&sha))
+    }
+
+    fn history_commit_for_bead(&self, bead_id: &str, sha: &str) -> Option<HistoryCommitCompat> {
+        self.history_git_cache
+            .as_ref()
+            .and_then(|cache| cache.histories.get(bead_id))
+            .and_then(|history| history.commits.as_deref())
+            .and_then(|commits| commits.iter().find(|commit| commit.sha == sha))
+            .cloned()
+    }
+
+    fn selected_history_git_bead_commit(&self) -> Option<HistoryCommitCompat> {
+        let commit = self.selected_history_git_commit()?;
+        let bead_id = self.selected_history_git_related_bead_id()?;
+        self.history_commit_for_bead(&bead_id, &commit.sha)
     }
 
     fn history_commit_url_for_sha(&self, sha: &str) -> Option<String> {
@@ -8089,7 +8139,11 @@ impl BvrApp {
                 .into_iter()
                 .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
                 .map(|(index, issue)| {
-                    let marker = if index == self.selected { "\u{25b8}" } else { " " };
+                    let marker = if index == self.selected {
+                        "\u{25b8}"
+                    } else {
+                        " "
+                    };
                     let event_count = histories
                         .iter()
                         .find(|entry| entry.id == issue.id)
@@ -11525,6 +11579,37 @@ impl BvrApp {
                 }
             }
 
+            if let Some(bead_commit) = self.selected_history_git_bead_commit() {
+                lines.push(String::new());
+                lines.push(format!(
+                    "SELECTED BEAD CHANGE ({}):",
+                    self.selected_history_git_related_bead_id()
+                        .unwrap_or_default()
+                ));
+                if bead_commit.field_changes.is_empty() {
+                    lines.push("  (no field-level bead changes detected)".to_string());
+                } else {
+                    let fields = bead_commit
+                        .field_changes
+                        .iter()
+                        .map(|change| change.field.as_str())
+                        .collect::<Vec<_>>();
+                    lines.push(format!("  Fields: {}", fields.join(", ")));
+                }
+                if !bead_commit.bead_diff_lines.is_empty() {
+                    lines.push("  Diff:".to_string());
+                    for line in bead_commit.bead_diff_lines.iter().take(8) {
+                        lines.push(format!("    {line}"));
+                    }
+                    if bead_commit.bead_diff_lines.len() > 8 {
+                        lines.push(format!(
+                            "    +{} more diff lines...",
+                            bead_commit.bead_diff_lines.len() - 8
+                        ));
+                    }
+                }
+            }
+
             // Append file tree panel inline when toggled on
             if self.history_show_file_tree {
                 lines.push(String::new());
@@ -11537,7 +11622,10 @@ impl BvrApp {
                 "y: copy SHA | f: file tree"
             };
             lines.push(String::new());
-            lines.push("Enter: jump to related bead | J/K: cycle related beads".to_string());
+            lines.push(
+                "Enter: jump to related bead | J/K: cycle related beads | diff follows cursor"
+                    .to_string(),
+            );
             lines.push("v: switch to bead timeline | c: cycle confidence".to_string());
             lines.push(action_line.to_string());
             if !self.history_status_msg.is_empty() {
@@ -11732,6 +11820,26 @@ impl BvrApp {
                     lines.push(format!("    +{} more files...", commit.files.len() - 5));
                 }
             }
+            if !commit.field_changes.is_empty() {
+                let fields = commit
+                    .field_changes
+                    .iter()
+                    .map(|change| change.field.as_str())
+                    .collect::<Vec<_>>();
+                lines.push(format!("  Fields changed: {}", fields.join(", ")));
+            }
+            if !commit.bead_diff_lines.is_empty() {
+                lines.push("  Bead diff:".to_string());
+                for line in commit.bead_diff_lines.iter().take(8) {
+                    lines.push(format!("    {line}"));
+                }
+                if commit.bead_diff_lines.len() > 8 {
+                    lines.push(format!(
+                        "    +{} more diff lines...",
+                        commit.bead_diff_lines.len() - 8
+                    ));
+                }
+            }
         }
 
         let action_line = if self.history_selected_commit_url().is_some() {
@@ -11740,7 +11848,10 @@ impl BvrApp {
             "y: copy bead ID | f: file tree"
         };
         lines.push(String::new());
-        lines.push("v: switch to git timeline | J/K: cycle commits".to_string());
+        lines.push(
+            "Enter: backtrace selected commit | v: switch to git timeline | J/K: cycle commits"
+                .to_string(),
+        );
         lines.push(action_line.to_string());
         if !self.history_status_msg.is_empty() {
             lines.push(String::new());
@@ -13072,6 +13183,7 @@ mod tests {
         styled_detail_summary_line, truncate_display, type_badge, wrap_command_hints,
     };
     use crate::analysis::Analyzer;
+    use crate::analysis::diff::FieldChange;
     use crate::analysis::git_history::{
         HistoryCycleCompat, HistoryEventCompat, HistoryFileChangeCompat,
     };
@@ -13474,6 +13586,8 @@ mod tests {
             method: "co_committed".to_string(),
             confidence,
             reason: "fixture".to_string(),
+            field_changes: vec![],
+            bead_diff_lines: vec![],
         }
     }
 
@@ -18147,6 +18261,88 @@ mod tests {
         assert!(
             url.ends_with("/bbbb2222"),
             "expected selected cursor to drive bead commit URL, got {url}"
+        );
+    }
+
+    #[test]
+    fn history_bead_middle_enter_backtraces_to_git_commit() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        app.focus = FocusPane::Middle;
+        app.history_bead_commit_cursor = 1;
+
+        let cmd = app.update(key(KeyCode::Enter));
+
+        assert!(matches!(cmd, Cmd::None));
+        assert_eq!(app.mode, ViewMode::History);
+        assert_eq!(app.history_view_mode, HistoryViewMode::Git);
+        assert_eq!(app.focus, FocusPane::List);
+        assert_eq!(app.history_event_cursor, 1);
+        assert!(
+            app.history_status_msg
+                .contains("Backtraced to commit bbbb222")
+        );
+    }
+
+    #[test]
+    fn history_bead_detail_shows_field_level_diff_lines() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Bead, 0);
+        app.mode = ViewMode::History;
+        if let Some(cache) = app.history_git_cache.as_mut()
+            && let Some(history) = cache.histories.get_mut("A")
+            && let Some(commit) = history
+                .commits
+                .as_mut()
+                .and_then(|commits| commits.get_mut(0))
+        {
+            commit.field_changes = vec![FieldChange {
+                field: "status".to_string(),
+                old_value: "open".to_string(),
+                new_value: "blocked".to_string(),
+            }];
+            commit.bead_diff_lines = vec![
+                "- status: open".to_string(),
+                "+ status: blocked".to_string(),
+            ];
+        }
+
+        let detail = app.history_detail_text();
+        assert!(detail.contains("Fields changed: status"), "got:\n{detail}");
+        assert!(detail.contains("- status: open"), "got:\n{detail}");
+        assert!(detail.contains("+ status: blocked"), "got:\n{detail}");
+    }
+
+    #[test]
+    fn history_git_detail_shows_selected_related_bead_change_summary() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.mode = ViewMode::History;
+        if let Some(cache) = app.history_git_cache.as_mut()
+            && let Some(history) = cache.histories.get_mut("A")
+            && let Some(commit) = history
+                .commits
+                .as_mut()
+                .and_then(|commits| commits.get_mut(0))
+        {
+            commit.field_changes = vec![FieldChange {
+                field: "labels".to_string(),
+                old_value: "backend".to_string(),
+                new_value: "backend,urgent".to_string(),
+            }];
+            commit.bead_diff_lines = vec![
+                "- labels: backend".to_string(),
+                "+ labels: backend,urgent".to_string(),
+            ];
+        }
+
+        let detail = app.history_detail_text();
+        assert!(
+            detail.contains("SELECTED BEAD CHANGE (A):"),
+            "got:\n{detail}"
+        );
+        assert!(detail.contains("Fields: labels"), "got:\n{detail}");
+        assert!(
+            detail.contains("+ labels: backend,urgent"),
+            "got:\n{detail}"
         );
     }
 

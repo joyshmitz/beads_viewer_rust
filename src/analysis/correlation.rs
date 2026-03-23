@@ -458,6 +458,8 @@ mod tests {
             method: method.to_string(),
             confidence,
             reason: "test reason".to_string(),
+            field_changes: vec![],
+            bead_diff_lines: vec![],
         }
     }
 

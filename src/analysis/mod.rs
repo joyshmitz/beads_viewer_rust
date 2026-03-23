@@ -356,7 +356,13 @@ impl Analyzer {
         let edge_count: usize = self
             .issues
             .iter()
-            .map(|issue| issue.dependencies.iter().filter(|d| d.is_blocking()).count())
+            .map(|issue| {
+                issue
+                    .dependencies
+                    .iter()
+                    .filter(|d| d.is_blocking())
+                    .count()
+            })
             .sum();
         let cluster_density = if n > 1 {
             edge_count as f64 / (n * (n - 1)) as f64
@@ -369,11 +375,7 @@ impl Analyzer {
         let closed_7 = self
             .issues
             .iter()
-            .filter(|issue| {
-                issue
-                    .closed_at
-                    .is_some_and(|dt| (now - dt).num_days() <= 7)
-            })
+            .filter(|issue| issue.closed_at.is_some_and(|dt| (now - dt).num_days() <= 7))
             .count();
         let closed_30 = self
             .issues

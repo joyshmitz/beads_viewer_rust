@@ -1871,9 +1871,7 @@ fn stress_insights_detects_both_cycle_components() {
         &["--robot-insights"],
         "tests/testdata/stress_complex_89.jsonl",
     );
-    let cycles = actual["Cycles"]
-        .as_array()
-        .expect("cycles array");
+    let cycles = actual["Cycles"].as_array().expect("cycles array");
     // Two independent cycle components: (026,027,028) and (084,085,086,087,088,089)
     assert_eq!(cycles.len(), 2);
 
@@ -1890,9 +1888,7 @@ fn stress_insights_detects_both_cycle_components() {
     assert!(members.contains(&"ST-026".to_string()));
     assert!(members.contains(&"ST-086".to_string()));
 
-    let bottlenecks = actual["Bottlenecks"]
-        .as_array()
-        .expect("bottlenecks");
+    let bottlenecks = actual["Bottlenecks"].as_array().expect("bottlenecks");
     assert!(bottlenecks.len() >= 10);
 }
 

@@ -547,9 +547,7 @@ fn robot_insights_complex_has_bottlenecks() {
         "tests/testdata/synthetic_complex.jsonl",
     );
     test_utils::assert_valid_envelope(&output);
-    let bottlenecks = output["Bottlenecks"]
-        .as_array()
-        .expect("bottlenecks array");
+    let bottlenecks = output["Bottlenecks"].as_array().expect("bottlenecks array");
     assert!(
         !bottlenecks.is_empty(),
         "complex fixture must produce bottleneck insights"

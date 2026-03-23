@@ -7163,38 +7163,77 @@ impl BvrApp {
         for (lane, lane_indices) in &lanes {
             let count = lane_indices.len();
             // Mark current lane
-            let marker = if sel_id.as_ref().is_some_and(|sid| {
+            let is_current_lane = sel_id.as_ref().is_some_and(|sid| {
                 lane_indices
                     .iter()
                     .any(|&i| self.analyzer.issues[i].id == *sid)
-            }) {
-                ">"
+            });
+            let marker = if is_current_lane { "▸" } else { " " };
+
+            // Lane health signals
+            let blocked_count = lane_indices
+                .iter()
+                .filter(|&&i| {
+                    self.analyzer.issues[i]
+                        .normalized_status()
+                        .eq_ignore_ascii_case("blocked")
+                })
+                .count();
+            let health = if count == 0 {
+                "empty".to_string()
+            } else if blocked_count > 0 {
+                format!("{blocked_count} blocked")
             } else {
-                " "
+                "clear".to_string()
             };
 
-            // Lane header with bar
+            // Lane header with bar and health
             let bar_len = count.min(20);
             let bar: String = std::iter::repeat_n('\u{2588}', bar_len).collect();
-            out.push(format!("{marker} {lane:<12} [{count:>3}] {bar}"));
+            out.push(format!(
+                "{marker} {lane:<12} [{count:>3}] {bar}  {health}"
+            ));
 
             // Show card previews for each issue in lane
-            for &idx in lane_indices.iter().take(6) {
+            let preview_limit = 8;
+            for &idx in lane_indices.iter().take(preview_limit) {
                 let issue = &self.analyzer.issues[idx];
                 let sel_mark = if idx == sel_index { "\u{25b6}" } else { " " };
-                let icon = status_icon(&issue.status);
+                let s_icon = status_icon(&issue.status);
+                let t_icon = type_icon(&issue.issue_type);
+                let blocker_tag = {
+                    let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
+                    let blocks = self
+                        .analyzer
+                        .metrics
+                        .blocks_count
+                        .get(&issue.id)
+                        .copied()
+                        .unwrap_or(0);
+                    if open_bl > 0 {
+                        format!(" \u{2298}{open_bl}")
+                    } else if blocks > 0 {
+                        format!(" \u{2193}{blocks}")
+                    } else {
+                        String::new()
+                    }
+                };
                 out.push(format!(
-                    "    {sel_mark} {icon} {:<10} p{} {}",
-                    issue.id,
-                    issue.priority,
-                    truncate_str(&issue.title, 22)
+                    "    {sel_mark} {s_icon}{t_icon} P{} {:<10} {}{}",
+                    issue.priority.clamp(0, 4),
+                    truncate_str(&issue.id, 10),
+                    truncate_str(&issue.title, 20),
+                    blocker_tag
                 ));
             }
-            if lane_indices.len() > 6 {
-                out.push(format!("    ... +{} more", lane_indices.len() - 6));
+            if lane_indices.len() > preview_limit {
+                out.push(format!(
+                    "    ... +{} more",
+                    lane_indices.len() - preview_limit
+                ));
             }
             if lane_indices.is_empty() {
-                out.push("    (empty)".to_string());
+                out.push("    (no items in this lane)".to_string());
             }
             out.push(String::new());
         }

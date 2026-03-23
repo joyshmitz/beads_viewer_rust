@@ -8,13 +8,13 @@ expression: artifact
 bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=0/0 | filter=all |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ (no issues match filter: all)          ││ No issues to display. Create or load a .beads/*.jsonl  │
+│ Focus: list owns selection, / s…       ││ No issues to display. Create or load a .beads/*.jsonl  │
+│ scope=all | label=any | repo=any | sea ││                                                        │
+│ Guide: / search-as-you-type | o/c/r/B/ ││                                                        │
 │                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
+│ No issues in the current triage slice  ││                                                        │
+│ Scope: filter=all                      ││                                                        │
+│ Recover: a all | o open | I in-progres ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │
@@ -200,13 +200,13 @@ Tree: 0 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
 bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=0/0 | filter=all |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ (no issues match filter: all)          ││ No issues to display. Create or load a .beads/*.jsonl  │
+│ Focus: list owns selection, / s…       ││ No issues to display. Create or load a .beads/*.jsonl  │
+│ scope=all | label=any | repo=any | sea ││                                                        │
+│ Guide: / search-as-you-type | o/c/r/B/ ││                                                        │
 │                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
+│ No issues in the current triage slice  ││                                                        │
+│ Scope: filter=all                      ││                                                        │
+│ Recover: a all | o open | I in-progres ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │

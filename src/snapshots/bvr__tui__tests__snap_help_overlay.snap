@@ -16,7 +16,7 @@ bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=3/3 | filter=all
 │   PgUp/PgDn    Jump by 10                        |   p            Toggle priority hints          │
 │   Home/End     Jump to top/bottom                |   C            Copy issue ID                  │
 │   G            Jump to bottom                    |   x            Export issue markdown          │
-│   Tab          Toggle list/detail focus          |   O            Open in editor                 │
+│   Tab / Shift+Tab Toggle focus forward/back      |   O            Open in editor                 │
 │   J/K          Navigate deps in detail           |   Ctrl+R/F5    Refresh from disk              │
 │   Enter        Return to main / drill            |                                               │
 │   scroll       Mouse wheel scrolls list          | [History]                                     │

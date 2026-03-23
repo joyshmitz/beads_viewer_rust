@@ -5,29 +5,29 @@ expression: text
 bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 ┌Issues [focus]─────┐┌Details──────────────────────────────┐
 │                   ││                                     │
-│ ▸ T ●open P0 A ↓1 ││ T A  Root  (C copy id)              │
-│   T ●open P0 B ⊘1 ││ Status: open | Priority: p0 | Type: │
-│   T ✔done P0 C Cl ││ Assignee: alice | Repo: viewer | Es │
+│ Focus: list owns  ││ ─────────────────────────────────── │
+│ scope=all | label ││ Summary  ready to execute           │
+│ Guide: / search-a ││ T A  Root  (C copy id)              │
+│                   ││ Status: open | Priority: p0 | Type: │
+│ ▸ #01 ready P0 A  ││ Action: Pull now | Downstream impac │
+│   #02 blocked P0  ││ Assignee: alice | Repo: viewer | Es │
+│   #03 closed P0 C ││ Closed: n/a | Labels: [core] [parit │
 │                   ││ Created: 2026-01-01 | Updated: 2026 │
-│                   ││ Closed: n/a | Labels: [core] [parit │
 │                   ││                                     │
-│                   ││ Triage Snapshot:                    │
-│                   ││   open blockers: 0 (none)           │
-│                   ││   unblocks: 1 (B)                   │
-│                   ││   dependency pressure: 0 upstream | │
+│                   ││ ─────────────────────────────────── │
+│                   ││ Signals  rank and graph pressure    │
+│                   ││ Depth 2 | k-core 1 | slack 0.0000 | │
+│                   ││ PR ██████ 0.48  BW ░░░░░░ 0.00      │
+│                   ││ EV ██████ 1.00  blockers=0 | unbloc │
 │                   ││                                     │
-│                   ││ Graph Signals:                      │
-│                   ││   Critical depth: 2 | k-core: 1 | s │
-│                   ││   PageRank:       0.4805  ██████  # │
-│                   ││   Betweenness:    0.0000  ░░░░░░  # │
-│                   ││   Eigenvector:    1.0000  ██████  # │
-│                   ││   HITS: hub 0.0000 ░░░░░░ #2 | auth │
+│                   ││ ─────────────────────────────────── │
+│                   ││ Dependencies  upstream, gates, down │
+│                   ││ Upstream: none                      │
+│                   ││ Open Gate: none                     │
+│                   ││ Downstream: B                       │
 │                   ││                                     │
-│                   ││ Description:                        │
-│                   ││   Top-level issue that unblocks dow │
 │                   ││                                     │
-│                   ││ Design Notes:                       │
-│                   ││   Keep the main flow lean, surface  │
+│                   ││                                     │
 │                   ││                                     │
 │                   ││                                     │
 └───────────────────┘└─────────────────────────────────────┘

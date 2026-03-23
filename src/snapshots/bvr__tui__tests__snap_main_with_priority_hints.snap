@@ -5,30 +5,30 @@ expression: text
 bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=3/3 | filter=all |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ ▸ F ●open P1 A Feature w…              ││ F A  Feature work  (C copy id)                         │
-│   B ●open P2 B Bug fix                 ││ Status: open | Priority: p1 | Type: feature | State: r │
-│   T ●open P3 C UI polish               ││ Assignee: unassigned | Repo: local | Estimate: n/a     │
+│ Focus: list owns selection, / s…       ││ ────────────────────────────────────────────────       │
+│ scope=all | label=any | repo=any | sea ││ Summary  ready to execute                              │
+│ Guide: / search-as-you-type | o/c/r/B/ ││ F A  Feature work  (C copy id)                         │
+│                                        ││ Status: open | Priority: p1 | Type: feature | State: r │
+│ ▸ #01 ready P1 A Feature work          ││ Action: Pull now | Downstream impact: 0 | Critical dep │
+│   #02 ready P2 B Bug fix               ││ Assignee: unassigned | Repo: local | Estimate: n/a  (w │
+│   #03 ready P3 C UI polish             ││ Closed: n/a | Labels: [backend] [urgent]  (L label fil │
 │                                        ││ Created: n/a | Updated: n/a | Due: n/a  (t time-travel │
-│                                        ││ Closed: n/a | Labels: [backend] [urgent]  (L label fil │
 │                                        ││                                                        │
-│                                        ││ Triage Snapshot:                                       │
-│                                        ││   open blockers: 0 (none)                              │
-│                                        ││   unblocks: 0 (none)                                   │
-│                                        ││   dependency pressure: 0 upstream | 0 downstream       │
+│                                        ││ ────────────────────────────────────────────────       │
+│                                        ││ Signals  rank and graph pressure                       │
+│                                        ││ Depth 1 | k-core 0 | slack 0.0000 | cut-point no       │
+│                                        ││ PR ██████ 0.33  BW ░░░░░░ 0.00                         │
+│                                        ││ EV ██████ 0.58  blockers=0 | unblocks=0                │
 │                                        ││                                                        │
-│                                        ││ Graph Signals:                                         │
-│                                        ││   Critical depth: 1 | k-core: 0 | slack: 0.0000 | cut- │
-│                                        ││   PageRank:       0.3333  ██████  #1                   │
-│                                        ││   Betweenness:    0.0000  ░░░░░░  #1                   │
-│                                        ││   Eigenvector:    0.5774  ██████  #1                   │
-│                                        ││   HITS: hub 0.0000 ░░░░░░ #1 | auth 0.0000 ░░░░░░ #1   │
+│                                        ││ ────────────────────────────────────────────────       │
+│                                        ││ Dependencies  upstream, gates, downstream              │
+│                                        ││ Upstream: none                                         │
+│                                        ││ Open Gate: none                                        │
+│                                        ││ Downstream: none                                       │
 │                                        ││                                                        │
-│                                        ││ Dependency Map:                                        │
-│                                        ││   upstream: none                                       │
-│                                        ││   open gate: none                                      │
-│                                        ││   downstream: none                                     │
+│                                        ││ ────────────────────────────────────────────────       │
+│                                        ││ Priority Hints  scoring rationale                      │
 │                                        ││                                                        │
-│                                        ││ Priority Hints (p to hide):                            │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
 b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize

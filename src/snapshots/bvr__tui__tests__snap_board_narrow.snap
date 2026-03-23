@@ -9,21 +9,21 @@ bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 │                   ││ │  o T A p0                         │
 │ Lanes (5) | 3 iss ││ │ Root                              │
 │                   ││ ├────────────────────────────────── │
-│ > open         [  ││ │ Lane: open                        │
-│     ▶ o A         ││ │ Assignee: alice                   │
-│       o B         ││ │ Top-level issue that unblocks dow │
+│ ▸ open         [  ││ │ Lane: open                        │
+│     ▶ oT P0 A     ││ │ Assignee: alice                   │
+│       oT P0 B     ││ │ Top-level issue that unblocks dow │
 │                   ││ └────────────────────────────────── │
 │   in_progress  [  ││                                     │
-│     (empty)       ││ Unblocks (1)                        │
+│     (no items in  ││ Unblocks (1)                        │
 │                   ││   o B                               │
 │   blocked      [  ││                                     │
-│     (empty)       ││ Ready to advance to next lane.      │
+│     (no items in  ││ Ready to advance to next lane.      │
 │                   ││                                     │
 │   closed       [  ││                                     │
-│       x C         ││                                     │
+│       xT P0 C     ││                                     │
 │                   ││                                     │
 │   other        [  ││                                     │
-│     (empty)       ││                                     │
+│     (no items in  ││                                     │
 │                   ││                                     │
 │                   ││                                     │
 │                   ││                                     │

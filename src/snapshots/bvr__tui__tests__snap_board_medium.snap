@@ -9,21 +9,21 @@ bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=3/3 | filter=al
 │                                        ││ │  o T A p0                              │             │
 │ Lanes (5) | 3 issues total             ││ │ Root                                   │             │
 │                                        ││ ├────────────────────────────────────────┤             │
-│ > open         [  2] ██                ││ │ Lane: open                             │             │
-│     ▶ o A          p0 Root             ││ │ Assignee: alice                        │             │
-│       o B          p0 Dependent        ││ │ Top-level issue that unblocks downst…  │             │
+│ ▸ open         [  2] ██  clear         ││ │ Lane: open                             │             │
+│     ▶ oT P0 A          Root ↓1         ││ │ Assignee: alice                        │             │
+│       oT P0 B          Dependent ⊘1    ││ │ Top-level issue that unblocks downst…  │             │
 │                                        ││ └────────────────────────────────────────┘             │
-│   in_progress  [  0]                   ││                                                        │
-│     (empty)                            ││ Unblocks (1)                                           │
+│   in_progress  [  0]   empty           ││                                                        │
+│     (no items in this lane)            ││ Unblocks (1)                                           │
 │                                        ││   o B                                                  │
-│   blocked      [  0]                   ││                                                        │
-│     (empty)                            ││ Ready to advance to next lane.                         │
+│   blocked      [  0]   empty           ││                                                        │
+│     (no items in this lane)            ││ Ready to advance to next lane.                         │
 │                                        ││                                                        │
-│   closed       [  1] █                 ││                                                        │
-│       x C          p0 Closed           ││                                                        │
+│   closed       [  1] █  clear          ││                                                        │
+│       xT P0 C          Closed          ││                                                        │
 │                                        ││                                                        │
-│   other        [  0]                   ││                                                        │
-│     (empty)                            ││                                                        │
+│   other        [  0]   empty           ││                                                        │
+│     (no items in this lane)            ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │

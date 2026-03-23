@@ -5,29 +5,29 @@ expression: text
 bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=2/3 | filter=open |
 ┌Issues [focus]──────────────────────────┐┌Details─────────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ ▸ T ●open P0 A ↓1 Root                 ││ T A  Root  (C copy id)                                 │
-│   T ●open P0 B ⊘1 Dependent            ││ Status: open | Priority: p0 | Type: task | State: read │
-│                                        ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w rep │
-│                                        ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a   │
+│ Focus: list owns selection, / s…       ││ ────────────────────────────────────────────────       │
+│ scope=open | label=any | repo=any | se ││ Summary  ready to execute                              │
+│ Guide: / search-as-you-type | o/c/r/B/ ││ T A  Root  (C copy id)                                 │
+│                                        ││ Status: open | Priority: p0 | Type: task | State: read │
+│ ▸ #01 ready P0 A Root @alice           ││ Action: Pull now | Downstream impact: 1 | Critical dep │
+│   #02 blocked P0 B Dependent ⊘1        ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w rep │
 │                                        ││ Closed: n/a | Labels: [core] [parity]  (L label filter │
+│                                        ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a   │
 │                                        ││                                                        │
-│                                        ││ Triage Snapshot:                                       │
-│                                        ││   open blockers: 0 (none)                              │
-│                                        ││   unblocks: 1 (B)                                      │
-│                                        ││   dependency pressure: 0 upstream | 1 downstream       │
+│                                        ││ ────────────────────────────────────────────────       │
+│                                        ││ Signals  rank and graph pressure                       │
+│                                        ││ Depth 2 | k-core 1 | slack 0.0000 | cut-point no       │
+│                                        ││ PR ██████ 0.48  BW ░░░░░░ 0.00                         │
+│                                        ││ EV ██████ 1.00  blockers=0 | unblocks=1                │
 │                                        ││                                                        │
-│                                        ││ Graph Signals:                                         │
-│                                        ││   Critical depth: 2 | k-core: 1 | slack: 0.0000 | cut- │
-│                                        ││   PageRank:       0.4805  ██████  #1                   │
-│                                        ││   Betweenness:    0.0000  ░░░░░░  #1                   │
-│                                        ││   Eigenvector:    1.0000  ██████  #1                   │
-│                                        ││   HITS: hub 0.0000 ░░░░░░ #2 | auth 1.0000 ██████ #1   │
+│                                        ││ ────────────────────────────────────────────────       │
+│                                        ││ Dependencies  upstream, gates, downstream              │
+│                                        ││ Upstream: none                                         │
+│                                        ││ Open Gate: none                                        │
+│                                        ││ Downstream: B                                          │
 │                                        ││                                                        │
-│                                        ││ Description:                                           │
-│                                        ││   Top-level issue that unblocks downstream work once t │
 │                                        ││                                                        │
-│                                        ││ Design Notes:                                          │
-│                                        ││   Keep the main flow lean, surface the most important  │
+│                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘

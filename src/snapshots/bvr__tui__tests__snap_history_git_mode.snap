@@ -5,24 +5,24 @@ expression: text
 bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all
 ┌Commits [focus]─────────────┐┌Related Beads────────────────────┐┌Commit Details───────────────────┐
 │                            ││                                 ││                                 │
-│ No git commits correlated  ││ Select a commit to view related ││ No correlated git commits avail │
-│ (ensure repo has commits r ││                                 ││                                 │
+│ Git commits (1/250 correla ││ 1 related bead(s) for d50d5c0   ││ Commit 1/1 | confidence >= 0%   │
+│ Min confidence: >= 0%      ││                                 ││                                 │
+│                            ││   [o] B        Dependent        ││ COMMIT DETAILS:                 │
+│ > d50d5c0 B        feat(tu ││                                 ││   SHA: d50d5c0d32fec65f6a66b954 │
+│                            ││                                 ││   [D] Dicklesworthstone <jeff14 │
+│                            ││                                 ││   Date: 2026-03-23T06:14:45Z    │
+│                            ││                                 ││   F feat(tui): add InProgress a │
+│                            ││                                 ││   Files: 1 changed +0/-0        │
+│                            ││                                 ││     ~ src/tui.rs                │
+│                            ││                                 ││                                 │
+│                            ││                                 ││ RELATED BEADS:                  │
+│                            ││                                 ││   [o] B (75%) Dependent         │
+│                            ││                                 ││                                 │
+│                            ││                                 ││ Enter: jump to related bead | J │
+│                            ││                                 ││ v: switch to bead timeline | c: │
+│                            ││                                 ││ y: copy SHA | o: open in browse │
+│                            ││                                 ││                                 │
 │                            ││                                 ││ Browser Link: open selected com │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
-│                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │

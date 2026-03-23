@@ -8,15 +8,15 @@ expression: artifact
 bvr 1 Main b Board i In  | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
-│ ▸ T ●open  ││ T A  Root  (C copy id) │
-│   T ●open  ││ Status: open | Priorit │
-│   T ✔done  ││ Assignee: alice | Repo │
+│ Focus: lis ││ ────────────────────── │
+│ scope=all  ││ Summary  ready to exec │
+│ Guide: / s ││ T A  Root  (C copy id) │
+│            ││ Status: open | Priorit │
+│ ▸ #01 read ││ Action: Pull now | Dow │
+│   #02 bloc ││ Assignee: alice | Repo │
+│   #03 clos ││ Closed: n/a | Labels:  │
 │            ││ Created: 2026-01-01 |  │
-│            ││ Closed: n/a | Labels:  │
 │            ││                        │
-│            ││ Triage Snapshot:       │
-│            ││   open blockers: 0 (no │
-│            ││   unblocks: 1 (B)      │
 │            ││                        │
 └────────────┘└────────────────────────┘
 b/i/g/h modes | / search | s default
@@ -29,9 +29,9 @@ bvr 1 Main b Board i In  | 3/3 | all
 │            ││ │  o T A p0            │
 │ Lanes (5)  ││ │ Root                 │
 │            ││ ├───────────────────── │
-│ > open     ││ │ Lane: open           │
-│     ▶ o A  ││ │ Assignee: alice      │
-│       o B  ││ │ Top-level issue that │
+│ ▸ open     ││ │ Lane: open           │
+│     ▶ oT P ││ │ Assignee: alice      │
+│       oT P ││ │ Top-level issue that │
 │            ││ └───────────────────── │
 │   in_progr ││                        │
 │            ││                        │
@@ -43,14 +43,14 @@ bvr 1 Main b Board i In  | 3/3 | all
 ┌Board Lanes ┐┌Board Focus─────────────┐
 │            ││                        │
 │   open     ││ ┌───────────────────── │
-│       o A  ││ │  x T C p0            │
-│       o B  ││ │ Closed               │
+│       oT P ││ │  x T C p0            │
+│       oT P ││ │ Closed               │
 │            ││ ├───────────────────── │
 │   in_progr ││ │ Lane: closed         │
-│     (empty ││ │ Assignee:            │
+│     (no it ││ │ Assignee:            │
 │            ││ └───────────────────── │
 │   blocked  ││                        │
-│     (empty ││                        │
+│     (no it ││                        │
 │            ││                        │
 └────────────┘└────────────────────────┘
 Board mode: lane counts, queued IDs, and
@@ -144,15 +144,15 @@ Tree: 3 nodes | j/k navigate | Enter exp
 bvr 1 Main b Board i In  | 3/3 | all
 ┌Issues [focu┐┌Details─────────────────┐
 │            ││                        │
-│   T ●open  ││ T C  Closed  (C copy i │
-│   T ●open  ││ Status: closed | Prior │
-│ ▸ T ✔done  ││ Assignee: unassigned | │
+│ Focus: lis ││ ────────────────────── │
+│ scope=all  ││ Summary  reference sta │
+│ Guide: / s ││ T C  Closed  (C copy i │
+│            ││ Status: closed | Prior │
+│   #01 read ││ Action: Closed work it │
+│   #02 bloc ││ Assignee: unassigned | │
+│ ▸ #03 clos ││ Closed: 2026-01-06 | L │
 │            ││ Created: 2026-01-01 |  │
-│            ││ Closed: 2026-01-06 | L │
 │            ││                        │
-│            ││ Triage Snapshot:       │
-│            ││   open blockers: 0 (no │
-│            ││   unblocks: 0 (none)   │
 │            ││                        │
 └────────────┘└────────────────────────┘
 b/i/g/h modes | / search | s default

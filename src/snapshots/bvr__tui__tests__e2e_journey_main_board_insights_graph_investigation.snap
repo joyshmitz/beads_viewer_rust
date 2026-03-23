@@ -8,35 +8,35 @@ expression: artifact
 bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ ▸ T ●open P0 A ↓1 Root                     ││ T A  Root  (C copy id)                                                 │
-│   T ●open P0 B ⊘1 Dependent                ││ Status: open | Priority: p0 | Type: task | State: ready                │
-│   T ✔done P0 C Closed                      ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│ Focus: list owns selection, / s…           ││ ────────────────────────────────────────────────                       │
+│ scope=all | label=any | repo=any | search= ││ Summary  ready to execute                                              │
+│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T A  Root  (C copy id)                                                 │
+│                                            ││ Status: open | Priority: p0 | Type: task | State: ready                │
+│ ▸ #01 ready P0 A Root @alice               ││ Action: Pull now | Downstream impact: 1 | Critical depth: 2            │
+│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│   #03 closed P0 C Closed                   ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                │
 │                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)  │
-│                                            ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                │
 │                                            ││                                                                        │
-│                                            ││ Triage Snapshot:                                                       │
-│                                            ││   open blockers: 0 (none)                                              │
-│                                            ││   unblocks: 1 (B)                                                      │
-│                                            ││   dependency pressure: 0 upstream | 1 downstream                       │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Signals  rank and graph pressure                                       │
+│                                            ││ Depth 2 | k-core 1 | slack 0.0000 | cut-point no                       │
+│                                            ││ PR ██████ 0.48  BW ░░░░░░ 0.00                                         │
+│                                            ││ EV ██████ 1.00  blockers=0 | unblocks=1                                │
 │                                            ││                                                                        │
-│                                            ││ Graph Signals:                                                         │
-│                                            ││   Critical depth: 2 | k-core: 1 | slack: 0.0000 | cut-point: no        │
-│                                            ││   PageRank:       0.4805  ██████  #1                                   │
-│                                            ││   Betweenness:    0.0000  ░░░░░░  #1                                   │
-│                                            ││   Eigenvector:    1.0000  ██████  #1                                   │
-│                                            ││   HITS: hub 0.0000 ░░░░░░ #2 | auth 1.0000 ██████ #1                   │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Dependencies  upstream, gates, downstream                              │
+│                                            ││ Upstream: none                                                         │
+│                                            ││ Open Gate: none                                                        │
+│                                            ││ Downstream: B                                                          │
 │                                            ││                                                                        │
-│                                            ││ Description:                                                           │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Description                                                            │
 │                                            ││   Top-level issue that unblocks downstream work once the shared baseli │
 │                                            ││                                                                        │
-│                                            ││ Design Notes:                                                          │
-│                                            ││   Keep the main flow lean, surface the most important context first, a │
 │                                            ││                                                                        │
-│                                            ││ Acceptance Criteria:                                                   │
-│                                            ││   - Detail summary shows triage and graph context.                     │
-│                                            ││   - Rich body sections stay readable across narrow and wide panes.     │
-│                                            ││                                                                        │
-│                                            ││ Notes:                                                                 │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split
@@ -45,35 +45,35 @@ b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^�
 bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=detail | issues=3/3 | filter=all | sort=default |
 ┌Issues──────────────────────────────────────┐┌Details [focus]─────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│   T ●open P0 A ↓1 Root                     ││ T B  Dependent  (C copy id)                                            │
-│ ▸ T ●open P0 B ⊘1 Dependent                ││ Status: open | Priority: p0 | Type: task | State: blocked              │
-│   T ✔done P0 C Closed                      ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
+│ Focus: detail owns J/K deps, ^j…           ││ ────────────────────────────────────────────────                       │
+│ scope=all | label=any | repo=any | search= ││ Summary  waiting on blockers                                           │
+│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T B  Dependent  (C copy id)                                            │
+│                                            ││ Status: open | Priority: p0 | Type: task | State: blocked              │
+│   #01 ready P0 A Root @alice               ││ Action: Unblock first via A | Open blockers: 1 | Downstream impact: 0  │
+│ ▸ #02 blocked P0 B Dependent ⊘1            ││ Assignee: unassigned | Repo: local | Estimate: n/a  (w repo filter)    │
+│   #03 closed P0 C Closed                   ││ Closed: n/a | Labels: none  (L label filter)                           │
 │                                            ││ Created: 2026-01-03 | Updated: 2026-01-04 | Due: n/a  (t time-travel)  │
-│                                            ││ Closed: n/a | Labels: none                                             │
 │                                            ││                                                                        │
-│                                            ││ Triage Snapshot:                                                       │
-│                                            ││   open blockers: 1 (A)                                                 │
-│                                            ││   unblocks: 0 (none)                                                   │
-│                                            ││   dependency pressure: 1 upstream | 0 downstream                       │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Signals  rank and graph pressure                                       │
+│                                            ││ Depth 1 | k-core 1 | slack 0.0000 | cut-point no                       │
+│                                            ││ PR ███░░░ 0.26  BW ░░░░░░ 0.00                                         │
+│                                            ││ EV ░░░░░░ 0.00  blockers=1 | unblocks=0                                │
 │                                            ││                                                                        │
-│                                            ││ Graph Signals:                                                         │
-│                                            ││   Critical depth: 1 | k-core: 1 | slack: 0.0000 | cut-point: no        │
-│                                            ││   PageRank:       0.2597  ███░░░  #2                                   │
-│                                            ││   Betweenness:    0.0000  ░░░░░░  #1                                   │
-│                                            ││   Eigenvector:    0.0000  ░░░░░░  #2                                   │
-│                                            ││   HITS: hub 1.0000 ██████ #1 | auth 0.0000 ░░░░░░ #2                   │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Dependencies  upstream, gates, downstream                              │
+│                                            ││ Upstream: A                                                            │
+│                                            ││ Open Gate: A                                                           │
+│                                            ││ Downstream: none                                                       │
 │                                            ││                                                                        │
-│                                            ││ Description:                                                           │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Description                                                            │
 │                                            ││   Depends on A and should report blocked state clearly.                │
 │                                            ││                                                                        │
-│                                            ││ Dependency Map:                                                        │
-│                                            ││   upstream: A                                                          │
-│                                            ││   open gate: A                                                         │
-│                                            ││   downstream: none                                                     │
 │                                            ││                                                                        │
-│                                            ││ History Summary (3 events):                                            │
-│                                            ││   - n/a Blocked by A                                                   │
-│                                            ││   + 2026-01-03 Issue B created                                         │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 b/i/g/h modes | / search | s default | p hints | C copy | ^j/k scroll | x export | O edit | ^←/→ resize
@@ -86,21 +86,21 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││ │  o T B p0                              │                             │
 │ Lanes (5) | 3 issues total                 ││ │ Dependent                              │                             │
 │                                            ││ ├────────────────────────────────────────┤                             │
-│ > open         [  2] ██                    ││ │ Lane: open                             │                             │
-│       o A          p0 Root                 ││ │ Assignee:                              │                             │
-│     ▶ o B          p0 Dependent            ││ │ Depends on A and should report block…  │                             │
+│ ▸ open         [  2] ██  clear             ││ │ Lane: open                             │                             │
+│       oT P0 A          Root ↓1             ││ │ Assignee:                              │                             │
+│     ▶ oT P0 B          Dependent ⊘1        ││ │ Depends on A and should report block…  │                             │
 │                                            ││ └────────────────────────────────────────┘                             │
-│   in_progress  [  0]                       ││                                                                        │
-│     (empty)                                ││ Depends on (1)                                                         │
+│   in_progress  [  0]   empty               ││                                                                        │
+│     (no items in this lane)                ││ Depends on (1)                                                         │
 │                                            ││   o A [OPEN]                                                           │
-│   blocked      [  0]                       ││                                                                        │
-│     (empty)                                ││ Blocked by 1 open issue(s).                                            │
+│   blocked      [  0]   empty               ││                                                                        │
+│     (no items in this lane)                ││ Blocked by 1 open issue(s).                                            │
 │                                            ││                                                                        │
-│   closed       [  1] █                     ││                                                                        │
-│       x C          p0 Closed               ││                                                                        │
+│   closed       [  1] █  clear              ││                                                                        │
+│       xT P0 C          Closed              ││                                                                        │
 │                                            ││                                                                        │
-│   other        [  0]                       ││                                                                        │
-│     (empty)                                ││                                                                        │
+│   other        [  0]   empty               ││                                                                        │
+│     (no items in this lane)                ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
@@ -123,21 +123,21 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││ │  x T C p0                              │                             │
 │ Lanes (5) | 3 issues total                 ││ │ Closed                                 │                             │
 │                                            ││ ├────────────────────────────────────────┤                             │
-│   open         [  2] ██                    ││ │ Lane: closed                           │                             │
-│       o A          p0 Root                 ││ │ Assignee:                              │                             │
-│       o B          p0 Dependent            ││ └────────────────────────────────────────┘                             │
+│   open         [  2] ██  clear             ││ │ Lane: closed                           │                             │
+│       oT P0 A          Root ↓1             ││ │ Assignee:                              │                             │
+│       oT P0 B          Dependent ⊘1        ││ └────────────────────────────────────────┘                             │
 │                                            ││                                                                        │
-│   in_progress  [  0]                       ││                                                                        │
-│     (empty)                                ││ Ready to advance to next lane.                                         │
+│   in_progress  [  0]   empty               ││                                                                        │
+│     (no items in this lane)                ││ Ready to advance to next lane.                                         │
 │                                            ││                                                                        │
-│   blocked      [  0]                       ││                                                                        │
-│     (empty)                                ││                                                                        │
+│   blocked      [  0]   empty               ││                                                                        │
+│     (no items in this lane)                ││                                                                        │
 │                                            ││                                                                        │
-│ > closed       [  1] █                     ││                                                                        │
-│     ▶ x C          p0 Closed               ││                                                                        │
+│ ▸ closed       [  1] █  clear              ││                                                                        │
+│     ▶ xT P0 C          Closed              ││                                                                        │
 │                                            ││                                                                        │
-│   other        [  0]                       ││                                                                        │
-│     (empty)                                ││                                                                        │
+│   other        [  0]   empty               ││                                                                        │
+│     (no items in this lane)                ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 │                                            ││                                                                        │
@@ -304,35 +304,35 @@ Insights [keystones] | s/S panel | e explanations=on | x proof=off
 bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│   T ●open P0 A ↓1 Root                     ││ T C  Closed  (C copy id)                                               │
-│   T ●open P0 B ⊘1 Dependent                ││ Status: closed | Priority: p0 | Type: task | State: closed             │
-│ ▸ T ✔done P0 C Closed                      ││ Assignee: unassigned | Repo: local | Estimate: n/a                     │
+│ Focus: list owns selection, / s…           ││ ────────────────────────────────────────────────                       │
+│ scope=all | label=any | repo=any | search= ││ Summary  reference state                                               │
+│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T C  Closed  (C copy id)                                               │
+│                                            ││ Status: closed | Priority: p0 | Type: task | State: closed             │
+│   #01 ready P0 A Root @alice               ││ Action: Closed work item | Downstream still watching: 0                │
+│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: unassigned | Repo: local | Estimate: n/a  (w repo filter)    │
+│ ▸ #03 closed P0 C Closed                   ││ Closed: 2026-01-06 | Labels: none  (L label filter)                    │
 │                                            ││ Created: 2026-01-01 | Updated: 2026-01-06 | Due: n/a  (t time-travel)  │
-│                                            ││ Closed: 2026-01-06 | Labels: none                                      │
 │                                            ││                                                                        │
-│                                            ││ Triage Snapshot:                                                       │
-│                                            ││   open blockers: 0 (none)                                              │
-│                                            ││   unblocks: 0 (none)                                                   │
-│                                            ││   dependency pressure: 0 upstream | 0 downstream                       │
-│                                            ││   cycle time: 5d 0h                                                    │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Signals  rank and graph pressure                                       │
+│                                            ││ Depth 1 | k-core 0 | slack 1.0000 | cut-point no                       │
+│                                            ││ PR ███░░░ 0.26  BW ░░░░░░ 0.00                                         │
+│                                            ││ EV ░░░░░░ 0.00  blockers=0 | unblocks=0                                │
 │                                            ││                                                                        │
-│                                            ││ Graph Signals:                                                         │
-│                                            ││   Critical depth: 1 | k-core: 0 | slack: 1.0000 | cut-point: no        │
-│                                            ││   PageRank:       0.2597  ███░░░  #2                                   │
-│                                            ││   Betweenness:    0.0000  ░░░░░░  #1                                   │
-│                                            ││   Eigenvector:    0.0000  ░░░░░░  #2                                   │
-│                                            ││   HITS: hub 0.0000 ░░░░░░ #2 | auth 0.0000 ░░░░░░ #2                   │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Dependencies  upstream, gates, downstream                              │
+│                                            ││ Upstream: none                                                         │
+│                                            ││ Open Gate: none                                                        │
+│                                            ││ Downstream: none                                                       │
 │                                            ││                                                                        │
-│                                            ││ Dependency Map:                                                        │
-│                                            ││   upstream: none                                                       │
-│                                            ││   open gate: none                                                      │
-│                                            ││   downstream: none                                                     │
 │                                            ││                                                                        │
-│                                            ││ History Summary (3 events):                                            │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ History Summary (3 events)                                             │
 │                                            ││   + 2026-01-01 Issue C created                                         │
 │                                            ││   . 2026-01-06 Current status: closed                                  │
-│                                            ││   x 2026-01-06 Issue C is in closed-like status                        │
-│                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split

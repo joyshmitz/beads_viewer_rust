@@ -45,61 +45,61 @@ c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def
 ┌Beads With History [focus]────────┐┌Commits─────────────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
-│ Bead history list (3 beads) | v  ││ No commits correlated with B.          ││ History Summary: beads=3 closed-like=1 │
+│ Bead history list (3 beads) | v  ││ 1 commit(s) for B                      ││ History Summary: beads=3 closed-like=1 │
 │                                  ││                                        ││                                        │
-│   A            events: 2 open    ││                                        ││ Issue: B (Dependent)                   │
+│   A            events: 2 open    ││   d50d5c0  75% feat(tui): add InPr…    ││ Issue: B (Dependent)                   │
 │ > B            events: 3 open    ││                                        ││ Status: open                           │
 │   C            events: 3 closed  ││                                        ││ Min confidence filter: >= 0%           │
 │                                  ││                                        ││ Created/Updated/Closed: 2026-01-03 / 2 │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Timeline:                              │
-│                                  ││                                        ││   (no timeline data)                   │
+│                                  ││                                        ││   ○──├  1 commit                       │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││ LIFECYCLE:                             │
-│                                  ││                                        ││   (no events)                          │
+│                                  ││                                        ││ Milestones:                            │
+│                                  ││                                        ││   Created:  2026-03-23T06:14:45Z by Di │
+│                                  ││                                        ││ Last author: Dicklesworthstone         │
+│                                  ││                                        ││                                        │
+│                                  ││                                        ││ LIFECYCLE (1)                          │
+│                                  ││                                        ││   └ 🆕 2m ago  DI                      │
+│                                  ││                                        ││                                        │
+│                                  ││                                        ││ COMMIT DETAILS (1/1):                  │
+│                                  ││                                        ││   F d50d5c0  2026-03-23T06:14:45Z      │
+│                                  ││                                        ││   [D] Dicklesworthstone <jeff141421@gm │
+│                                  ││                                        ││   feat(tui): add InProgress and Blocke │
+│                                  ││                                        ││   75% confidence (explicit_id)         │
+│                                  ││                                        ││   Reason: Commit message references be │
+│                                  ││                                        ││   1 file(s) +0/-0                      │
+│                                  ││                                        ││     ~ src/tui.rs                       │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ v: switch to git timeline | J/K: cycle │
-│                                  ││                                        ││ y: copy bead ID | f: file tree         │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
+│                                  ││                                        ││ y: copy bead ID | o: open commit | f:  │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 3: history_git_mode ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
 ┌Commits [focus]───────────────────┐┌Related Beads───────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
-│ No git commits correlated with b ││ Select a commit to view related beads. ││ No correlated git commits available.   │
-│ (ensure repo has commits referen ││                                        ││                                        │
+│ Git commits (1/250 correlated) | ││ 1 related bead(s) for d50d5c0          ││ Commit 1/1 | confidence >= 0%          │
+│ Min confidence: >= 0%            ││                                        ││                                        │
+│                                  ││   [o] B        Dependent               ││ COMMIT DETAILS:                        │
+│ > d50d5c0 B        feat(tui): ad ││                                        ││   SHA: d50d5c0d32fec65f6a66b9547eef6ee │
+│                                  ││                                        ││   [D] Dicklesworthstone <jeff141421@gm │
+│                                  ││                                        ││   Date: 2026-03-23T06:14:45Z           │
+│                                  ││                                        ││   F feat(tui): add InProgress and Bloc │
+│                                  ││                                        ││   Files: 1 changed +0/-0               │
+│                                  ││                                        ││     ~ src/tui.rs                       │
+│                                  ││                                        ││                                        │
+│                                  ││                                        ││ RELATED BEADS:                         │
+│                                  ││                                        ││   [o] B (75%) Dependent                │
+│                                  ││                                        ││                                        │
+│                                  ││                                        ││ Enter: jump to related bead | J/K: cyc │
+│                                  ││                                        ││ v: switch to bead timeline | c: cycle  │
+│                                  ││                                        ││ y: copy SHA | o: open in browser | f:  │
+│                                  ││                                        ││                                        │
 │                                  ││                                        ││ Browser Link: open selected commit (o  │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -267,35 +267,35 @@ c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h
 bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |
 ┌Issues [focus]──────────────────────────────┐┌Details─────────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ ▸ T ●open P0 A ↓1 Root                     ││ T A  Root  (C copy id)                                                 │
-│   T ●open P0 B ⊘1 Dependent                ││ Status: open | Priority: p0 | Type: task | State: ready                │
-│   T ✔done P0 C Closed                      ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│ Focus: list owns selection, / s…           ││ ────────────────────────────────────────────────                       │
+│ scope=all | label=any | repo=any | search= ││ Summary  ready to execute                                              │
+│ Guide: / search-as-you-type | o/c/r/B/I qu ││ T A  Root  (C copy id)                                                 │
+│                                            ││ Status: open | Priority: p0 | Type: task | State: ready                │
+│ ▸ #01 ready P0 A Root @alice               ││ Action: Pull now | Downstream impact: 1 | Critical depth: 2            │
+│   #02 blocked P0 B Dependent ⊘1            ││ Assignee: alice | Repo: viewer | Estimate: 90m  (w repo filter)        │
+│   #03 closed P0 C Closed                   ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                │
 │                                            ││ Created: 2026-01-01 | Updated: 2026-01-02 | Due: n/a  (t time-travel)  │
-│                                            ││ Closed: n/a | Labels: [core] [parity]  (L label filter)                │
 │                                            ││                                                                        │
-│                                            ││ Triage Snapshot:                                                       │
-│                                            ││   open blockers: 0 (none)                                              │
-│                                            ││   unblocks: 1 (B)                                                      │
-│                                            ││   dependency pressure: 0 upstream | 1 downstream                       │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Signals  rank and graph pressure                                       │
+│                                            ││ Depth 2 | k-core 1 | slack 0.0000 | cut-point no                       │
+│                                            ││ PR ██████ 0.48  BW ░░░░░░ 0.00                                         │
+│                                            ││ EV ██████ 1.00  blockers=0 | unblocks=1                                │
 │                                            ││                                                                        │
-│                                            ││ Graph Signals:                                                         │
-│                                            ││   Critical depth: 2 | k-core: 1 | slack: 0.0000 | cut-point: no        │
-│                                            ││   PageRank:       0.4805  ██████  #1                                   │
-│                                            ││   Betweenness:    0.0000  ░░░░░░  #1                                   │
-│                                            ││   Eigenvector:    1.0000  ██████  #1                                   │
-│                                            ││   HITS: hub 0.0000 ░░░░░░ #2 | auth 1.0000 ██████ #1                   │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Dependencies  upstream, gates, downstream                              │
+│                                            ││ Upstream: none                                                         │
+│                                            ││ Open Gate: none                                                        │
+│                                            ││ Downstream: B                                                          │
 │                                            ││                                                                        │
-│                                            ││ Description:                                                           │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││                                                                        │
+│                                            ││ ────────────────────────────────────────────────                       │
+│                                            ││ Description                                                            │
 │                                            ││   Top-level issue that unblocks downstream work once the shared baseli │
 │                                            ││                                                                        │
-│                                            ││ Design Notes:                                                          │
-│                                            ││   Keep the main flow lean, surface the most important context first, a │
 │                                            ││                                                                        │
-│                                            ││ Acceptance Criteria:                                                   │
-│                                            ││   - Detail summary shows triage and graph context.                     │
-│                                            ││   - Rich body sections stay readable across narrow and wide panes.     │
-│                                            ││                                                                        │
-│                                            ││ Notes:                                                                 │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
 b/i/g/h modes | / search | s default | p hints | C copy | x export | O edit | ^←/→ resize | ^0 reset split

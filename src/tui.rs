@@ -7190,9 +7190,7 @@ impl BvrApp {
             // Lane header with bar and health
             let bar_len = count.min(20);
             let bar: String = std::iter::repeat_n('\u{2588}', bar_len).collect();
-            out.push(format!(
-                "{marker} {lane:<12} [{count:>3}] {bar}  {health}"
-            ));
+            out.push(format!("{marker} {lane:<12} [{count:>3}] {bar}  {health}"));
 
             // Show card previews for each issue in lane
             let preview_limit = 8;

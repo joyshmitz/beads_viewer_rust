@@ -2631,20 +2631,26 @@ impl Model for BvrApp {
                     detail_hint,
                 )))
             }
-            ViewMode::Insights => Some(RichText::raw(format!(
-                "Insights [{}] | s/S panel | e explanations={} | x proof={}",
-                self.insights_panel.short_label(),
-                if self.insights_show_explanations {
-                    "on"
+            ViewMode::Insights => {
+                if self.status_msg.is_empty() {
+                    Some(RichText::raw(format!(
+                        "Insights [{}] | s/S panel | e explanations={} | x proof={}",
+                        self.insights_panel.short_label(),
+                        if self.insights_show_explanations {
+                            "on"
+                        } else {
+                            "off"
+                        },
+                        if self.insights_show_calc_proof {
+                            "on"
+                        } else {
+                            "off"
+                        }
+                    )))
                 } else {
-                    "off"
-                },
-                if self.insights_show_calc_proof {
-                    "on"
-                } else {
-                    "off"
+                    Some(RichText::raw(self.status_msg.clone()))
                 }
-            ))),
+            }
             ViewMode::Graph => {
                 if self.status_msg.is_empty() {
                     None
@@ -6771,13 +6777,13 @@ impl BvrApp {
     }
 
     fn should_open_selected_issue_external_ref(&self) -> bool {
-        matches!(self.mode, ViewMode::Main | ViewMode::Graph)
+        matches!(self.mode, ViewMode::Main | ViewMode::Insights | ViewMode::Graph)
             && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
 
     fn should_copy_selected_issue_external_ref(&self) -> bool {
-        matches!(self.mode, ViewMode::Main | ViewMode::Graph)
+        matches!(self.mode, ViewMode::Main | ViewMode::Insights | ViewMode::Graph)
             && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
@@ -6827,6 +6833,15 @@ impl BvrApp {
                     line_index,
                     usize::from(saturating_scroll_offset(self.main_detail_scroll_offset)),
                 )
+            }
+            ViewMode::Insights => {
+                let detail_text = self.insights_detail_render_text();
+                let line_index = detail_text.lines().iter().position(|line| {
+                    ftui::text::Line::spans(line)
+                        .iter()
+                        .any(|span| span.link.is_some())
+                })?;
+                (detail_text, line_index, 0)
             }
             ViewMode::Graph => {
                 let detail_text = self.graph_detail_render_text();
@@ -6881,7 +6896,9 @@ impl BvrApp {
         }
 
         match self.mode {
-            ViewMode::Main | ViewMode::Graph => self.selected_issue_external_ref_url().is_some(),
+            ViewMode::Main | ViewMode::Insights | ViewMode::Graph => {
+                self.selected_issue_external_ref_url().is_some()
+            }
             ViewMode::History => self.history_selected_commit_url().is_some(),
             _ => false,
         }
@@ -6893,7 +6910,9 @@ impl BvrApp {
         }
 
         match self.mode {
-            ViewMode::Main | ViewMode::Graph => self.open_selected_issue_external_ref(),
+            ViewMode::Main | ViewMode::Insights | ViewMode::Graph => {
+                self.open_selected_issue_external_ref();
+            }
             ViewMode::History => self.history_open_in_browser(),
             _ => return false,
         }
@@ -6907,7 +6926,7 @@ impl BvrApp {
         }
 
         match self.mode {
-            ViewMode::Main | ViewMode::Graph => {
+            ViewMode::Main | ViewMode::Insights | ViewMode::Graph => {
                 self.copy_selected_issue_external_ref();
                 true
             }
@@ -8779,14 +8798,23 @@ impl BvrApp {
                     "└─"
                 };
                 let title = truncate_str(&item.title, 42);
-                let unblocks = if item.unblocks.is_empty() {
+                let unblocks_str = if item.unblocks.is_empty() {
                     String::new()
+                } else if item.unblocks.len() <= 2 {
+                    format!(" \u{2192} {}", item.unblocks.join(", "))
                 } else {
-                    format!(" -> {}", item.unblocks.len())
+                    format!(
+                        " \u{2192} {}, +{}",
+                        item.unblocks[..2].join(", "),
+                        item.unblocks.len() - 2
+                    )
                 };
                 lines.push(format!(
-                    "{item_marker}{tree} {:<12} {:>5.2}  {}{}",
-                    item.id, item.score, title, unblocks
+                    "{item_marker}{tree} P{} {:<12} {:>5.2}  {}{unblocks_str}",
+                    item.priority.clamp(0, 4),
+                    item.id,
+                    item.score,
+                    title
                 ));
             }
             lines.push(String::new());
@@ -9238,18 +9266,27 @@ impl BvrApp {
                 "    "
             };
 
-            let status_icon = if issue.is_closed() {
-                "x"
-            } else if issue.is_open_like() {
-                "o"
+            let si = status_icon(&issue.status);
+            let blocks = self.analyzer.metrics.blocks_count.get(&issue.id).copied().unwrap_or(0);
+            let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
+            let dep_tag = if open_bl > 0 {
+                format!(" \u{2298}{open_bl}")
+            } else if blocks > 0 {
+                format!(" \u{2193}{blocks}")
             } else {
-                "-"
+                String::new()
+            };
+            let cycle_tag = if self.analyzer.metrics.cycles.iter().any(|c| c.contains(&issue.id)) {
+                " \u{27f3}"
+            } else {
+                ""
             };
 
             lines.push(format!(
-                "{marker} {prefix}{collapse_indicator}({status_icon}) {} {}",
+                "{marker} {prefix}{collapse_indicator}{si} P{} {} {}{dep_tag}{cycle_tag}",
+                issue.priority.clamp(0, 4),
                 issue.id,
-                truncate_str(&issue.title, 40)
+                truncate_str(&issue.title, 30)
             ));
         }
 
@@ -10283,6 +10320,7 @@ impl BvrApp {
     fn detail_panel_render_text(&self) -> RichText {
         match self.mode {
             ViewMode::Main => self.issue_detail_render_text(),
+            ViewMode::Insights => self.insights_detail_render_text(),
             ViewMode::Graph => self.graph_detail_render_text(),
             ViewMode::History => self.history_detail_render_text(),
             _ => RichText::raw(self.detail_panel_text()),
@@ -10973,13 +11011,62 @@ impl BvrApp {
             issue.assignee,
             w = box_width - 11
         ));
-        if !issue.description.is_empty() {
-            let desc_trunc = truncate_str(&issue.description, box_width - 3);
+        // Labels
+        if !issue.labels.is_empty() {
+            let labels_str = issue.labels.iter().take(4).cloned().collect::<Vec<_>>().join(", ");
+            let labels_display = if issue.labels.len() > 4 {
+                format!("{labels_str} +{}", issue.labels.len() - 4)
+            } else {
+                labels_str
+            };
             out.push(format!(
-                "\u{2502} {:<w$}\u{2502}",
-                desc_trunc,
-                w = box_width - 1
+                "\u{2502} Labels: {:<w$}\u{2502}",
+                truncate_str(&labels_display, box_width - 9),
+                w = box_width - 9
             ));
+        }
+        // Dates
+        if let Some(created) = issue.created_at {
+            let age = (chrono::Utc::now() - created).num_days();
+            let updated_age = issue.updated_at.map_or_else(
+                || "never".to_string(),
+                |u| format!("{}d ago", (chrono::Utc::now() - u).num_days()),
+            );
+            out.push(format!(
+                "\u{2502} Age: {age}d | Updated: {:<w$}\u{2502}",
+                updated_age,
+                w = box_width - 21
+            ));
+        }
+        // Graph metrics
+        let pr = self.analyzer.metrics.pagerank.get(&issue.id).copied().unwrap_or(0.0);
+        let depth = self.analyzer.metrics.critical_depth.get(&issue.id).copied().unwrap_or(0);
+        if pr > 0.0 || depth > 0 {
+            out.push(format!(
+                "\u{2502} PR:{:.3} Depth:{} {:<w$}\u{2502}",
+                pr, depth,
+                if self.analyzer.metrics.articulation_points.contains(&issue.id) { "\u{25c6}cut" } else { "" },
+                w = box_width - 18
+            ));
+        }
+        // Description
+        if !issue.description.is_empty() {
+            out.push(format!("\u{251c}{hrule}\u{2524}"));
+            // Wrap description across multiple lines
+            for line in issue.description.lines().take(3) {
+                out.push(format!(
+                    "\u{2502} {:<w$}\u{2502}",
+                    truncate_str(line.trim(), box_width - 3),
+                    w = box_width - 1
+                ));
+            }
+            if issue.description.lines().count() > 3 {
+                out.push(format!(
+                    "\u{2502} {:<w$}\u{2502}",
+                    "...",
+                    w = box_width - 1
+                ));
+            }
         }
         out.push(format!("\u{2514}{hrule}\u{2518}"));
 
@@ -11319,6 +11406,39 @@ impl BvrApp {
         }
 
         lines.join("\n")
+    }
+
+    fn insights_detail_render_text(&self) -> RichText {
+        let external_ref = self.selected_issue_external_ref_url();
+        let insights_link_insert_after = 4usize;
+        let mut lines = Vec::new();
+        let mut inserted_link = false;
+        for (index, line) in self.insights_detail_text().lines().enumerate() {
+            if let Some(url) = external_ref && index == insights_link_insert_after {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw("External Link: "),
+                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(o open, y copy)", tokens::dim()),
+                ]));
+                lines.push(RichLine::raw(""));
+                inserted_link = true;
+            }
+
+            lines.push(RichLine::raw(line));
+        }
+
+        if let Some(url) = external_ref && !inserted_link {
+            lines.push(RichLine::raw(""));
+            lines.push(RichLine::from_spans([
+                RichSpan::raw("External Link: "),
+                RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                RichSpan::styled("  ", tokens::dim()),
+                RichSpan::styled("(o open, y copy)", tokens::dim()),
+            ]));
+        }
+
+        RichText::from_lines(lines)
     }
 
     fn graph_relationship_box_width(&self, width: usize, count: usize) -> usize {
@@ -19107,6 +19227,44 @@ mod tests {
     }
 
     #[test]
+    fn insights_detail_open_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("mailto:test@example.com".into());
+        }
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+        assert!(app.should_open_selected_issue_external_ref());
+    }
+
+    #[test]
+    fn insights_detail_copy_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("mailto:test@example.com".into());
+        }
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+        assert!(app.should_copy_selected_issue_external_ref());
+    }
+
+    #[test]
     fn main_mode_o_keeps_open_filter_shortcut_without_external_ref() {
         let mut app = new_app(ViewMode::Main, 0);
         app.focus = FocusPane::Detail;
@@ -19168,6 +19326,46 @@ mod tests {
         assert!(
             rendered.contains("y copy link"),
             "expected graph footer to advertise copy-link hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn insights_detail_render_shows_external_ref_link_actions() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let detail = app.insights_detail_render_text();
+        let urls = detail
+            .lines()
+            .iter()
+            .flat_map(ftui::text::Line::spans)
+            .filter_map(|span| span.link.as_deref())
+            .collect::<Vec<_>>();
+        assert!(
+            urls.iter()
+                .any(|url| *url == "https://github.com/org/repo/issues/42"),
+            "expected insights detail hyperlink span to be rendered, got {urls:?}"
+        );
+
+        let rendered = detail.to_plain_text();
+        assert!(
+            rendered.contains("(o open, y copy)"),
+            "expected insights detail inline external-ref action hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn insights_footer_shows_status_message_when_present() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.status_msg = "Copied external issue reference to clipboard".into();
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("Copied external issue reference to clipboard"),
+            "expected insights footer to surface status message, got:\n{rendered}"
         );
     }
 
@@ -19510,6 +19708,38 @@ mod tests {
     }
 
     #[test]
+    fn current_detail_link_row_area_matches_insights_hyperlink_row() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let _ = render_app(&app, 120, 40);
+        let link_area = app
+            .current_detail_link_row_area()
+            .expect("insights detail link row area");
+        let detail_area = cached_detail_content_area();
+        let detail = app.insights_detail_render_text();
+        let expected_row = detail
+            .lines()
+            .iter()
+            .position(|line| {
+                ftui::text::Line::spans(line)
+                    .iter()
+                    .any(|span| span.link.is_some())
+            })
+            .expect("insights detail hyperlink row");
+
+        assert_eq!(
+            link_area.y,
+            detail_area
+                .y
+                .saturating_add(saturating_scroll_offset(expected_row)),
+        );
+    }
+
+    #[test]
     fn mouse_right_click_copies_graph_detail_external_link() {
         let mut app = new_app(ViewMode::Graph, 0);
         app.focus = FocusPane::Detail;
@@ -19523,6 +19753,24 @@ mod tests {
         assert!(
             !app.status_msg.is_empty(),
             "expected click to trigger copy-link status"
+        );
+        assert_ne!(app.status_msg, "No external issue reference");
+    }
+
+    #[test]
+    fn mouse_left_click_opens_insights_detail_external_link() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+        let (x, y) = detail_link_click_point(&app, 120, 40).expect("detail link point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert!(
+            !app.status_msg.is_empty(),
+            "expected click to trigger open-link status"
         );
         assert_ne!(app.status_msg, "No external issue reference");
     }

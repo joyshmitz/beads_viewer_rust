@@ -1569,8 +1569,8 @@ mod tests {
         .expect("parse");
 
         assert!(
-            insights.get("bottlenecks").is_some(),
-            "insights.json must contain bottlenecks key"
+            insights.get("Bottlenecks").is_some(),
+            "insights.json must contain Bottlenecks key"
         );
     }
 

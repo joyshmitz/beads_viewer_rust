@@ -34,9 +34,13 @@ use self::plan::ExecutionPlan;
 use self::suggest::{RobotSuggestOutput, SuggestOptions};
 use self::triage::{Recommendation, TriageComputation, TriageOptions, compute_triage};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct MetricStatusEntry {
     pub state: &'static str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub reason: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -63,16 +67,21 @@ pub struct MetricStatus {
 
 impl MetricStatus {
     pub const fn computed() -> Self {
+        let entry = MetricStatusEntry {
+            state: "computed",
+            reason: "",
+            ms: None,
+        };
         Self {
-            page_rank: MetricStatusEntry { state: "computed" },
-            betweenness: MetricStatusEntry { state: "computed" },
-            eigenvector: MetricStatusEntry { state: "computed" },
-            hits: MetricStatusEntry { state: "computed" },
-            critical: MetricStatusEntry { state: "computed" },
-            cycles: MetricStatusEntry { state: "computed" },
-            k_core: MetricStatusEntry { state: "computed" },
-            articulation: MetricStatusEntry { state: "computed" },
-            slack: MetricStatusEntry { state: "computed" },
+            page_rank: entry,
+            betweenness: entry,
+            eigenvector: entry,
+            hits: entry,
+            critical: entry,
+            cycles: entry,
+            k_core: entry,
+            articulation: entry,
+            slack: entry,
         }
     }
 }
@@ -985,6 +994,17 @@ mod tests {
             enable_slack: false,
             betweenness_max_nodes: 10_000,
             eigenvector_max_nodes: 10_000,
+            betweenness_is_approximate: false,
+            betweenness_mode: "exact",
+            betweenness_skip_reason: "",
+            betweenness_timeout_ns: 2_000_000_000,
+            pagerank_skip_reason: "",
+            pagerank_timeout_ns: 2_000_000_000,
+            hits_skip_reason: "",
+            hits_timeout_ns: 2_000_000_000,
+            cycles_skip_reason: "",
+            cycles_timeout_ns: 2_000_000_000,
+            max_cycles_to_store: 100,
         };
         let analyzer = Analyzer::new_with_config(sample_issues(), &config);
         assert!(

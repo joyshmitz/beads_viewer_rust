@@ -93,6 +93,7 @@ struct ExportDependencyRow {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ExportCommentRow {
     id: String,
+    comment_id: i64,
     issue_id: String,
     author: String,
     text: String,
@@ -521,6 +522,7 @@ fn collect_comment_rows(issues: &[Issue]) -> Vec<ExportCommentRow> {
         for comment in &issue.comments {
             rows.push(ExportCommentRow {
                 id: format!("{}:{}", issue.id, comment.id),
+                comment_id: comment.id,
                 issue_id: issue.id.clone(),
                 author: comment.author.clone(),
                 text: comment.text.clone(),
@@ -534,7 +536,8 @@ fn collect_comment_rows(issues: &[Issue]) -> Vec<ExportCommentRow> {
     rows.sort_by(|left, right| {
         left.issue_id
             .cmp(&right.issue_id)
-            .then_with(|| left.id.cmp(&right.id))
+            .then_with(|| left.created_at.cmp(&right.created_at))
+            .then_with(|| left.comment_id.cmp(&right.comment_id))
     });
     rows
 }
@@ -1704,11 +1707,10 @@ mod tests {
 
         let rows = collect_comment_rows(&issues);
         assert_eq!(rows.len(), 2);
-        // Sorted by (issue_id, composite id) — lexicographic: "ISSUE-1:10" < "ISSUE-1:5"
-        assert_eq!(rows[0].id, "ISSUE-1:10");
-        assert_eq!(rows[1].id, "ISSUE-1:5");
-        assert_eq!(rows[0].author, "bob");
-        assert_eq!(rows[1].author, "alice");
+        assert_eq!(rows[0].id, "ISSUE-1:5");
+        assert_eq!(rows[1].id, "ISSUE-1:10");
+        assert_eq!(rows[0].author, "alice");
+        assert_eq!(rows[1].author, "bob");
     }
 
     #[test]
@@ -1745,6 +1747,43 @@ mod tests {
         let rows = collect_comment_rows(&issues);
         assert_eq!(rows[0].issue_id, "A");
         assert_eq!(rows[1].issue_id, "Z");
+    }
+
+    #[test]
+    fn collect_comment_rows_prefers_created_at_then_numeric_id() {
+        let issues = vec![Issue {
+            id: "ISSUE-1".to_string(),
+            title: "Test".to_string(),
+            issue_type: "task".to_string(),
+            comments: vec![
+                Comment {
+                    id: 10,
+                    issue_id: "ISSUE-1".to_string(),
+                    author: "later-id-earlier-time".to_string(),
+                    text: "First chronologically".to_string(),
+                    created_at: ts("2026-03-08T18:00:00Z"),
+                },
+                Comment {
+                    id: 5,
+                    issue_id: "ISSUE-1".to_string(),
+                    author: "earlier-id-later-time".to_string(),
+                    text: "Second chronologically".to_string(),
+                    created_at: ts("2026-03-08T18:05:00Z"),
+                },
+                Comment {
+                    id: 20,
+                    issue_id: "ISSUE-1".to_string(),
+                    author: "same-time-higher-id".to_string(),
+                    text: "Third chronologically".to_string(),
+                    created_at: ts("2026-03-08T18:05:00Z"),
+                },
+            ],
+            ..Issue::default()
+        }];
+
+        let rows = collect_comment_rows(&issues);
+        let ordered_ids = rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ordered_ids, vec!["ISSUE-1:10", "ISSUE-1:5", "ISSUE-1:20"]);
     }
 
     #[test]

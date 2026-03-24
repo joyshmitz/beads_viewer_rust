@@ -2028,8 +2028,8 @@ struct BvrApp {
     board_search_query: String,
     board_search_match_cursor: usize,
     board_detail_scroll_offset: usize,
-    main_detail_scroll_offset: usize,
-    graph_detail_scroll_offset: usize,
+    /// Universal detail pane scroll offset — works in all modes when focus is Detail.
+    detail_scroll_offset: usize,
     main_search_active: bool,
     main_search_query: String,
     main_search_match_cursor: usize,
@@ -2587,13 +2587,7 @@ impl Model for BvrApp {
                     SemanticTone::Accent,
                 ))
                 .scroll((
-                    match self.mode {
-                        ViewMode::Main => saturating_scroll_offset(self.main_detail_scroll_offset),
-                        ViewMode::Graph => {
-                            saturating_scroll_offset(self.graph_detail_scroll_offset)
-                        }
-                        _ => 0,
-                    },
+                    saturating_scroll_offset(self.detail_scroll_offset),
                     0,
                 ))
                 .render(panes[1], frame);
@@ -3181,15 +3175,14 @@ impl BvrApp {
         self.history_git_cache = None;
         self.detail_dep_cursor = 0;
         self.board_detail_scroll_offset = 0;
-        self.main_detail_scroll_offset = 0;
-        self.graph_detail_scroll_offset = 0;
+        self.detail_scroll_offset = 0;
         self.selected = 0;
 
         if let Some(id) = selected_id.as_deref() {
             self.select_issue_by_id(id);
         }
 
-        if !self.preserve_off_queue_insights_context() {
+        if !self.preserve_off_queue_ranked_context() {
             self.ensure_selected_visible();
         }
         self.sync_insights_heatmap_selection();
@@ -3680,7 +3673,7 @@ impl BvrApp {
             return Cmd::None;
         }
 
-        if !self.preserve_off_queue_insights_context() {
+        if !self.preserve_off_queue_ranked_context() {
             self.ensure_selected_visible();
         }
 
@@ -3986,33 +3979,20 @@ impl BvrApp {
             {
                 self.scroll_board_detail(-3);
             }
+            // Universal detail pane scroll — works in any mode with Detail focus
             KeyCode::Char('j')
                 if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Main)
+                    && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::Detail =>
             {
-                self.scroll_main_detail(3);
+                self.scroll_detail(3);
             }
             KeyCode::Char('k')
                 if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Main)
+                    && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::Detail =>
             {
-                self.scroll_main_detail(-3);
-            }
-            KeyCode::Char('j')
-                if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Graph)
-                    && self.focus == FocusPane::Detail =>
-            {
-                self.scroll_graph_detail(3);
-            }
-            KeyCode::Char('k')
-                if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Graph)
-                    && self.focus == FocusPane::Detail =>
-            {
-                self.scroll_graph_detail(-3);
+                self.scroll_detail(-3);
             }
             KeyCode::Char('h') if self.board_shortcut_focus() => {
                 self.move_board_lane_relative(-1);
@@ -4222,33 +4202,20 @@ impl BvrApp {
             {
                 self.scroll_board_detail(-10);
             }
+            // Universal detail pane page scroll — works in any non-Board mode
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Main)
+                    && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::Detail =>
             {
-                self.scroll_main_detail(10);
+                self.scroll_detail(10);
             }
             KeyCode::Char('u')
                 if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Main)
+                    && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::Detail =>
             {
-                self.scroll_main_detail(-10);
-            }
-            KeyCode::Char('d')
-                if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Graph)
-                    && self.focus == FocusPane::Detail =>
-            {
-                self.scroll_graph_detail(10);
-            }
-            KeyCode::Char('u')
-                if modifiers.contains(Modifiers::CTRL)
-                    && matches!(self.mode, ViewMode::Graph)
-                    && self.focus == FocusPane::Detail =>
-            {
-                self.scroll_graph_detail(-10);
+                self.scroll_detail(-10);
             }
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
@@ -4601,6 +4568,7 @@ impl BvrApp {
             KeyCode::Char('g') => {
                 let entering_graph = !matches!(self.mode, ViewMode::Graph);
                 let previous_mode = self.mode;
+                let previous_selected = self.selected;
                 self.mode = if entering_graph {
                     ViewMode::Graph
                 } else {
@@ -4610,8 +4578,11 @@ impl BvrApp {
                 if entering_graph {
                     if matches!(previous_mode, ViewMode::Main) {
                         self.reselect_ranked_list_context();
+                    } else if !self.graph_search_query.trim().is_empty() {
+                        self.select_current_graph_search_match();
                     } else {
-                        self.sync_ranked_list_context();
+                        self.set_selected_index(previous_selected);
+                        self.sync_insights_heatmap_selection();
                     }
                 } else {
                     self.sync_ranked_list_context();
@@ -5785,13 +5756,21 @@ impl BvrApp {
         visible.iter().position(|index| *index == self.selected)
     }
 
-    fn preserve_off_queue_insights_context(&self) -> bool {
-        matches!(self.mode, ViewMode::Insights)
-            && self.insights_heatmap.is_none()
-            && self.insights_search_query.trim().is_empty()
-            && !self
-                .insights_visible_issue_indices_for_list_nav()
-                .contains(&self.selected)
+    fn preserve_off_queue_ranked_context(&self) -> bool {
+        match self.mode {
+            ViewMode::Insights => {
+                self.insights_heatmap.is_none()
+                    && self.insights_search_query.trim().is_empty()
+                    && !self
+                        .insights_visible_issue_indices_for_list_nav()
+                        .contains(&self.selected)
+            }
+            ViewMode::Graph => {
+                self.graph_search_query.trim().is_empty()
+                    && !self.graph_visible_issue_indices().contains(&self.selected)
+            }
+            _ => false,
+        }
     }
 
     fn ensure_selected_visible(&mut self) {
@@ -5937,34 +5916,19 @@ impl BvrApp {
         }
     }
 
-    fn scroll_main_detail(&mut self, delta: isize) {
-        if delta == 0 || !matches!(self.mode, ViewMode::Main) || self.focus != FocusPane::Detail {
+    /// Universal detail pane scroll — works in any mode when focus is Detail.
+    fn scroll_detail(&mut self, delta: isize) {
+        if delta == 0 || self.focus != FocusPane::Detail {
             return;
         }
 
         if delta > 0 {
-            self.main_detail_scroll_offset = self
-                .main_detail_scroll_offset
+            self.detail_scroll_offset = self
+                .detail_scroll_offset
                 .saturating_add(delta.unsigned_abs());
         } else {
-            self.main_detail_scroll_offset = self
-                .main_detail_scroll_offset
-                .saturating_sub(delta.unsigned_abs());
-        }
-    }
-
-    fn scroll_graph_detail(&mut self, delta: isize) {
-        if delta == 0 || !matches!(self.mode, ViewMode::Graph) || self.focus != FocusPane::Detail {
-            return;
-        }
-
-        if delta > 0 {
-            self.graph_detail_scroll_offset = self
-                .graph_detail_scroll_offset
-                .saturating_add(delta.unsigned_abs());
-        } else {
-            self.graph_detail_scroll_offset = self
-                .graph_detail_scroll_offset
+            self.detail_scroll_offset = self
+                .detail_scroll_offset
                 .saturating_sub(delta.unsigned_abs());
         }
     }
@@ -5974,14 +5938,9 @@ impl BvrApp {
         self.selected = index;
         if changed {
             self.detail_dep_cursor = 0;
+            self.detail_scroll_offset = 0;
             if matches!(self.mode, ViewMode::Board) {
                 self.board_detail_scroll_offset = 0;
-            }
-            if matches!(self.mode, ViewMode::Main) {
-                self.main_detail_scroll_offset = 0;
-            }
-            if matches!(self.mode, ViewMode::Graph) {
-                self.graph_detail_scroll_offset = 0;
             }
         }
     }
@@ -6860,7 +6819,7 @@ impl BvrApp {
                 (
                     detail_text,
                     line_index,
-                    usize::from(saturating_scroll_offset(self.main_detail_scroll_offset)),
+                    usize::from(saturating_scroll_offset(self.detail_scroll_offset)),
                 )
             }
             ViewMode::Insights => {
@@ -13280,8 +13239,7 @@ fn new_app_with_background(
         board_search_query: String::new(),
         board_search_match_cursor: 0,
         board_detail_scroll_offset: 0,
-        graph_detail_scroll_offset: 0,
-        main_detail_scroll_offset: 0,
+        detail_scroll_offset: 0,
         main_search_active: false,
         main_search_query: String::new(),
         main_search_match_cursor: 0,
@@ -13975,8 +13933,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -15502,6 +15459,53 @@ mod tests {
     }
 
     #[test]
+    fn graph_entry_from_insights_preserves_external_context_issue() {
+        let issues = vec![
+            Issue {
+                id: "C".to_string(),
+                title: "Closed unrelated".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "Dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Root bottleneck".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Board, 0, issues);
+        app.set_selected_index(app.issue_index_for_id("C").expect("issue C should exist"));
+
+        app.update(key(KeyCode::Char('i')));
+        assert_eq!(app.mode, ViewMode::Insights);
+        assert_eq!(selected_issue_id(&app), "C");
+
+        app.update(key(KeyCode::Char('g')));
+        assert_eq!(app.mode, ViewMode::Graph);
+        assert_eq!(selected_issue_id(&app), "C");
+
+        app.update(key(KeyCode::Escape));
+        assert_eq!(app.mode, ViewMode::Main);
+        assert_eq!(selected_issue_id(&app), "C");
+    }
+
+    #[test]
     fn insights_list_header_shows_search_hint() {
         let mut app = new_app(ViewMode::Main, 0);
         app.update(key(KeyCode::Char('i')));
@@ -15869,8 +15873,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -15973,8 +15976,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16071,8 +16073,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16187,8 +16188,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16287,8 +16287,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16388,8 +16387,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16490,8 +16488,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16587,8 +16584,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16699,8 +16695,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16835,8 +16830,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -16964,16 +16958,16 @@ mod tests {
         app.focus = FocusPane::Detail;
 
         app.update(key_ctrl(KeyCode::Char('j')));
-        assert_eq!(app.main_detail_scroll_offset, 3);
+        assert_eq!(app.detail_scroll_offset, 3);
 
         app.update(key_ctrl(KeyCode::Char('d')));
-        assert_eq!(app.main_detail_scroll_offset, 13);
+        assert_eq!(app.detail_scroll_offset, 13);
 
         app.update(key_ctrl(KeyCode::Char('k')));
-        assert_eq!(app.main_detail_scroll_offset, 10);
+        assert_eq!(app.detail_scroll_offset, 10);
 
         app.update(key_ctrl(KeyCode::Char('u')));
-        assert_eq!(app.main_detail_scroll_offset, 0);
+        assert_eq!(app.detail_scroll_offset, 0);
     }
 
     #[test]
@@ -16982,12 +16976,12 @@ mod tests {
         app.focus = FocusPane::Detail;
 
         app.update(key_ctrl(KeyCode::Char('j')));
-        assert_eq!(app.main_detail_scroll_offset, 3);
+        assert_eq!(app.detail_scroll_offset, 3);
 
         app.focus = FocusPane::List;
         app.update(key(KeyCode::Char('j')));
         assert_eq!(selected_issue_id(&app), "B");
-        assert_eq!(app.main_detail_scroll_offset, 0);
+        assert_eq!(app.detail_scroll_offset, 0);
     }
 
     #[test]
@@ -16996,16 +16990,21 @@ mod tests {
         assert_eq!(app.focus, FocusPane::List);
 
         app.update(key_ctrl(KeyCode::Char('j')));
-        assert_eq!(app.main_detail_scroll_offset, 0);
+        assert_eq!(app.detail_scroll_offset, 0);
     }
 
     #[test]
-    fn main_detail_scroll_ignored_in_board_mode() {
-        let mut app = new_app(ViewMode::Board, 0);
-        app.focus = FocusPane::Detail;
-
-        app.scroll_main_detail(5);
-        assert_eq!(app.main_detail_scroll_offset, 0);
+    fn detail_scroll_works_in_all_modes() {
+        // Universal detail scroll works in every mode, not just Main
+        for mode in [ViewMode::Main, ViewMode::Graph, ViewMode::Insights, ViewMode::History] {
+            let mut app = new_app(mode, 0);
+            app.focus = FocusPane::Detail;
+            app.scroll_detail(5);
+            assert_eq!(
+                app.detail_scroll_offset, 5,
+                "scroll_detail should work in {mode:?}"
+            );
+        }
     }
 
     #[test]
@@ -17066,8 +17065,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -17170,8 +17168,7 @@ mod tests {
             board_search_query: String::new(),
             board_search_match_cursor: 0,
             board_detail_scroll_offset: 0,
-            graph_detail_scroll_offset: 0,
-            main_detail_scroll_offset: 0,
+            detail_scroll_offset: 0,
             main_search_active: false,
             main_search_query: String::new(),
             main_search_match_cursor: 0,
@@ -19733,7 +19730,7 @@ mod tests {
             .current_detail_link_row_area()
             .expect("initial main detail link row area");
 
-        app.main_detail_scroll_offset = 1;
+        app.detail_scroll_offset = 1;
         let _ = render_app(&app, 120, 40);
         let scrolled = app
             .current_detail_link_row_area()

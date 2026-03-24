@@ -1095,7 +1095,16 @@ struct ScanLineContext {
     critical_depth: usize,
     search_match_position: Option<usize>,
     total_search_matches: usize,
+    diff_tag: Option<DiffTag>,
     available_width: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiffTag {
+    New,
+    Modified,
+    Closed,
+    Reopened,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1322,6 +1331,20 @@ fn issue_scan_line(
             } else {
                 SemanticTone::Accent
             }),
+        });
+    }
+
+    // Time-travel diff marker
+    if let Some(tag) = context.diff_tag {
+        let (label, tone) = match tag {
+            DiffTag::New => ("NEW", SemanticTone::Success),
+            DiffTag::Modified => ("MOD", SemanticTone::Warning),
+            DiffTag::Closed => ("CLO", SemanticTone::Muted),
+            DiffTag::Reopened => ("RE!", SemanticTone::Danger),
+        };
+        suffix.push(ScanSegment {
+            label: label.to_string(),
+            kind: ScanSegmentKind::Chip(tone),
         });
     }
 
@@ -6712,6 +6735,39 @@ impl BvrApp {
             .collect()
     }
 
+    fn issue_diff_tag(&self, issue_id: &str) -> Option<DiffTag> {
+        let diff = self.time_travel_diff.as_ref()?;
+        if diff
+            .new_issues
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|d| d.id == issue_id))
+        {
+            return Some(DiffTag::New);
+        }
+        if diff
+            .reopened_issues
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|d| d.id == issue_id))
+        {
+            return Some(DiffTag::Reopened);
+        }
+        if diff
+            .modified_issues
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|m| m.issue_id == issue_id))
+        {
+            return Some(DiffTag::Modified);
+        }
+        if diff
+            .closed_issues
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|d| d.id == issue_id))
+        {
+            return Some(DiffTag::Closed);
+        }
+        None
+    }
+
     fn selected_issue(&self) -> Option<&Issue> {
         let visible = self.visible_issue_indices_for_list_nav();
         if visible.is_empty() {
@@ -6946,7 +7002,11 @@ impl BvrApp {
                         .iter()
                         .any(|span| span.link.is_some())
                 })?;
-                (detail_text, line_index, 0)
+                (
+                    detail_text,
+                    line_index,
+                    usize::from(saturating_scroll_offset(self.detail_scroll_offset)),
+                )
             }
             ViewMode::History => {
                 self.history_selected_commit_url()?;
@@ -7573,6 +7633,7 @@ impl BvrApp {
                     critical_depth,
                     search_match_position: search_positions.get(&index).copied(),
                     total_search_matches: search_matches.len(),
+                    diff_tag: self.issue_diff_tag(&issue.id),
                     available_width: line_width,
                 },
             ));
@@ -20114,6 +20175,30 @@ mod tests {
     }
 
     #[test]
+    fn current_detail_link_row_area_tracks_graph_detail_scroll_offset() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let _ = render_app(&app, 120, 40);
+        let initial = app
+            .current_detail_link_row_area()
+            .expect("initial graph detail link row area");
+
+        app.detail_scroll_offset = 1;
+        let _ = render_app(&app, 120, 40);
+        let scrolled = app
+            .current_detail_link_row_area()
+            .expect("scrolled graph detail link row area");
+
+        assert_eq!(scrolled.y, initial.y.saturating_sub(1));
+        assert_eq!(scrolled.x, initial.x);
+        assert_eq!(scrolled.width, initial.width);
+    }
+
+    #[test]
     fn current_detail_link_row_area_matches_insights_hyperlink_row() {
         let mut app = new_app(ViewMode::Insights, 0);
         app.focus = FocusPane::Detail;
@@ -24139,6 +24224,7 @@ mod tests {
                 critical_depth: 1,
                 search_match_position: None,
                 total_search_matches: 0,
+                diff_tag: None,
                 available_width: 80,
             },
         )
@@ -24170,6 +24256,7 @@ mod tests {
                     critical_depth: 0,
                     search_match_position: None,
                     total_search_matches: 0,
+                    diff_tag: None,
                     available_width: 60,
                 },
             )
@@ -24198,6 +24285,7 @@ mod tests {
                 critical_depth: 2,
                 search_match_position: None,
                 total_search_matches: 0,
+                diff_tag: None,
                 available_width: 80,
             },
         )

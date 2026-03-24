@@ -1894,9 +1894,14 @@ enum ModalOverlay {
     LabelPicker {
         items: Vec<(String, usize)>,
         cursor: usize,
+        filter: String,
     },
     /// Repo picker: shows workspace repos for filtering.
-    RepoPicker { items: Vec<String>, cursor: usize },
+    RepoPicker {
+        items: Vec<String>,
+        cursor: usize,
+        filter: String,
+    },
 }
 
 /// State for the multi-step pages export wizard.
@@ -2300,14 +2305,29 @@ impl Model for BvrApp {
                         .render(rows[2], frame);
                     return;
                 }
-                ModalOverlay::LabelPicker { items, cursor } => {
+                ModalOverlay::LabelPicker { items, cursor, filter } => {
+                    let needle = filter.to_ascii_lowercase();
                     let mut lines = Vec::new();
-                    for (i, (label, count)) in items.iter().enumerate() {
-                        let marker = if i == *cursor { "▸" } else { " " };
-                        lines.push(format!(" {marker} {label:24} ({count} issues)"));
+                    if !filter.is_empty() {
+                        lines.push(format!(" Filter: /{filter}"));
                     }
-                    let text = if lines.is_empty() {
-                        " No labels found.".to_string()
+                    let mut vis_idx = 0usize;
+                    for (label, count) in items.iter() {
+                        if !needle.is_empty()
+                            && !label.to_ascii_lowercase().contains(&needle)
+                        {
+                            continue;
+                        }
+                        let marker = if vis_idx == *cursor { "▸" } else { " " };
+                        lines.push(format!(" {marker} {label:24} ({count} issues)"));
+                        vis_idx += 1;
+                    }
+                    let text = if vis_idx == 0 {
+                        if filter.is_empty() {
+                            " No labels found.".to_string()
+                        } else {
+                            format!(" No labels match: /{filter}")
+                        }
                     } else {
                         lines.join("\n")
                     };
@@ -2318,19 +2338,36 @@ impl Model for BvrApp {
                             SemanticTone::Accent,
                         ))
                         .render(rows[1], frame);
-                    Paragraph::new("j/k=navigate | Enter=filter by label | Esc=close")
-                        .style(tokens::footer())
-                        .render(rows[2], frame);
+                    Paragraph::new(
+                        "Type to filter | ↑/↓=navigate | Enter=apply | Esc=close",
+                    )
+                    .style(tokens::footer())
+                    .render(rows[2], frame);
                     return;
                 }
-                ModalOverlay::RepoPicker { items, cursor } => {
+                ModalOverlay::RepoPicker { items, cursor, filter } => {
+                    let needle = filter.to_ascii_lowercase();
                     let mut lines = Vec::new();
-                    for (i, repo) in items.iter().enumerate() {
-                        let marker = if i == *cursor { "▸" } else { " " };
-                        lines.push(format!(" {marker} {repo}"));
+                    if !filter.is_empty() {
+                        lines.push(format!(" Filter: /{filter}"));
                     }
-                    let text = if lines.is_empty() {
-                        " No repos found.".to_string()
+                    let mut vis_idx = 0usize;
+                    for repo in items.iter() {
+                        if !needle.is_empty()
+                            && !repo.to_ascii_lowercase().contains(&needle)
+                        {
+                            continue;
+                        }
+                        let marker = if vis_idx == *cursor { "▸" } else { " " };
+                        lines.push(format!(" {marker} {repo}"));
+                        vis_idx += 1;
+                    }
+                    let text = if vis_idx == 0 {
+                        if filter.is_empty() {
+                            " No repos found.".to_string()
+                        } else {
+                            format!(" No repos match: /{filter}")
+                        }
                     } else {
                         lines.join("\n")
                     };
@@ -2341,9 +2378,11 @@ impl Model for BvrApp {
                             SemanticTone::Accent,
                         ))
                         .render(rows[1], frame);
-                    Paragraph::new("j/k=navigate | Enter=filter by repo | Esc=close")
-                        .style(tokens::footer())
-                        .render(rows[2], frame);
+                    Paragraph::new(
+                        "Type to filter | ↑/↓=navigate | Enter=apply | Esc=close",
+                    )
+                    .style(tokens::footer())
+                    .render(rows[2], frame);
                     return;
                 }
             }
@@ -3603,64 +3642,116 @@ impl BvrApp {
                     }
                     return Cmd::None;
                 }
-                ModalOverlay::LabelPicker { items, cursor } => {
-                    let len = items.len();
-                    let cur = *cursor;
+                ModalOverlay::LabelPicker { items, cursor, filter } => {
+                    let needle = filter.to_ascii_lowercase();
+                    let filtered: Vec<usize> = items
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, (name, _))| {
+                            needle.is_empty()
+                                || name.to_ascii_lowercase().contains(&needle)
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+                    let flen = filtered.len();
                     match code {
                         KeyCode::Escape => self.modal_overlay = None,
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            if let Some(ModalOverlay::LabelPicker { cursor, items }) =
+                        KeyCode::Down => {
+                            if let Some(ModalOverlay::LabelPicker { cursor, .. }) =
                                 &mut self.modal_overlay
                             {
-                                if *cursor + 1 < items.len() {
+                                if *cursor + 1 < flen {
                                     *cursor += 1;
                                 }
                             }
                         }
-                        KeyCode::Char('k') | KeyCode::Up => {
+                        KeyCode::Up => {
                             if let Some(ModalOverlay::LabelPicker { cursor, .. }) =
                                 &mut self.modal_overlay
                             {
                                 *cursor = cursor.saturating_sub(1);
                             }
                         }
+                        KeyCode::Backspace => {
+                            if let Some(ModalOverlay::LabelPicker { filter, cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                filter.pop();
+                                *cursor = 0;
+                            }
+                        }
                         KeyCode::Enter => {
-                            if cur < len {
-                                let label = items[cur].0.clone();
+                            let actual_idx = filtered.get(*cursor).copied();
+                            if let Some(idx) = actual_idx {
+                                let label = items[idx].0.clone();
                                 self.modal_overlay = None;
                                 self.set_label_filter(&label);
+                            }
+                        }
+                        KeyCode::Char(c) => {
+                            if let Some(ModalOverlay::LabelPicker { filter, cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                filter.push(c);
+                                *cursor = 0;
                             }
                         }
                         _ => {}
                     }
                     return Cmd::None;
                 }
-                ModalOverlay::RepoPicker { items, cursor } => {
-                    let len = items.len();
-                    let cur = *cursor;
+                ModalOverlay::RepoPicker { items, cursor, filter } => {
+                    let needle = filter.to_ascii_lowercase();
+                    let filtered: Vec<usize> = items
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, name)| {
+                            needle.is_empty()
+                                || name.to_ascii_lowercase().contains(&needle)
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+                    let flen = filtered.len();
                     match code {
                         KeyCode::Escape => self.modal_overlay = None,
-                        KeyCode::Char('j') | KeyCode::Down => {
-                            if let Some(ModalOverlay::RepoPicker { cursor, items }) =
+                        KeyCode::Down => {
+                            if let Some(ModalOverlay::RepoPicker { cursor, .. }) =
                                 &mut self.modal_overlay
                             {
-                                if *cursor + 1 < items.len() {
+                                if *cursor + 1 < flen {
                                     *cursor += 1;
                                 }
                             }
                         }
-                        KeyCode::Char('k') | KeyCode::Up => {
+                        KeyCode::Up => {
                             if let Some(ModalOverlay::RepoPicker { cursor, .. }) =
                                 &mut self.modal_overlay
                             {
                                 *cursor = cursor.saturating_sub(1);
                             }
                         }
+                        KeyCode::Backspace => {
+                            if let Some(ModalOverlay::RepoPicker { filter, cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                filter.pop();
+                                *cursor = 0;
+                            }
+                        }
                         KeyCode::Enter => {
-                            if cur < len {
-                                let repo = items[cur].clone();
+                            let actual_idx = filtered.get(*cursor).copied();
+                            if let Some(idx) = actual_idx {
+                                let repo = items[idx].clone();
                                 self.modal_overlay = None;
                                 self.set_repo_filter(&repo);
+                            }
+                        }
+                        KeyCode::Char(c) => {
+                            if let Some(ModalOverlay::RepoPicker { filter, cursor, .. }) =
+                                &mut self.modal_overlay
+                            {
+                                filter.push(c);
+                                *cursor = 0;
                             }
                         }
                         _ => {}
@@ -10257,7 +10348,11 @@ impl BvrApp {
             }
         }
         let items: Vec<(String, usize)> = label_counts.into_iter().collect();
-        self.modal_overlay = Some(ModalOverlay::LabelPicker { items, cursor: 0 });
+        self.modal_overlay = Some(ModalOverlay::LabelPicker {
+            items,
+            cursor: 0,
+            filter: String::new(),
+        });
     }
 
     fn open_repo_picker(&mut self) {
@@ -10273,7 +10368,11 @@ impl BvrApp {
             self.status_msg = "No workspace repos loaded".into();
             return;
         }
-        self.modal_overlay = Some(ModalOverlay::RepoPicker { items, cursor: 0 });
+        self.modal_overlay = Some(ModalOverlay::RepoPicker {
+            items,
+            cursor: 0,
+            filter: String::new(),
+        });
     }
 
     fn set_label_filter(&mut self, label: &str) {

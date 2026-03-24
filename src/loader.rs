@@ -669,6 +669,9 @@ pub fn find_jsonl_path(beads_dir: &Path) -> Result<PathBuf> {
         if path.extension() != Some(OsStr::new("jsonl")) {
             continue;
         }
+        if std::fs::metadata(&path).is_ok_and(|meta| meta.len() == 0) {
+            continue;
+        }
 
         let file_name = path
             .file_name()
@@ -1152,6 +1155,17 @@ mod tests {
 
         let path = find_jsonl_path(beads_dir).expect("find fallback path");
         assert!(path.ends_with("alpha.jsonl"));
+    }
+
+    #[test]
+    fn find_jsonl_fallback_skips_empty_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let beads_dir = dir.path();
+        std::fs::write(beads_dir.join("alpha.jsonl"), "").expect("write empty alpha");
+        std::fs::write(beads_dir.join("zeta.jsonl"), "{}\n").expect("write zeta");
+
+        let path = find_jsonl_path(beads_dir).expect("find fallback path");
+        assert!(path.ends_with("zeta.jsonl"));
     }
 
     #[test]

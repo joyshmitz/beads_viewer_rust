@@ -20917,6 +20917,42 @@ mod tests {
         render_app(&app, width, height)
     }
 
+    /// Redact non-deterministic git commit counts from snapshot text.
+    /// The count changes with every commit, causing spurious snapshot failures.
+    fn redact_git_commit_count(text: &str) -> String {
+        // Pattern: "(1/292 correla" → "(N/N correla"
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(pos) = rest.find(" correla") {
+            // Walk backwards from pos to find the "N/N" pattern
+            let prefix = &rest[..pos];
+            if let Some(slash) = prefix.rfind('/') {
+                // Find start of the first number
+                let num_start = prefix[..slash]
+                    .rfind(|ch: char| !ch.is_ascii_digit())
+                    .map_or(0, |i| i + 1);
+                // Check the second number after slash
+                let after_slash = &prefix[slash + 1..];
+                if !after_slash.is_empty()
+                    && after_slash.chars().all(|ch| ch.is_ascii_digit())
+                    && prefix[num_start..slash]
+                        .chars()
+                        .all(|ch| ch.is_ascii_digit())
+                    && !prefix[num_start..slash].is_empty()
+                {
+                    out.push_str(&rest[..num_start]);
+                    out.push_str("N/N");
+                    rest = &rest[pos..];
+                    continue;
+                }
+            }
+            out.push_str(&rest[..pos + 8]);
+            rest = &rest[pos + 8..];
+        }
+        out.push_str(rest);
+        out
+    }
+
     fn render_app(app: &BvrApp, width: u16, height: u16) -> String {
         let mut pool = ftui::GraphemePool::default();
         let mut frame = ftui::render::frame::Frame::new(width, height, &mut pool);
@@ -21565,7 +21601,9 @@ mod tests {
         let mut app = new_app(ViewMode::History, 0);
         app.update(key(KeyCode::Char('v')));
 
+        // Redact the git commit count which changes with every commit to the repo.
         let text = render_app(&app, 100, 30);
+        let text = redact_git_commit_count(&text);
         insta::assert_snapshot!(text);
     }
 
@@ -24333,7 +24371,9 @@ mod tests {
         assert_eq!(app.mode, ViewMode::Main);
         journey_capture(&app, w, h, "main_after_history", &mut caps);
 
+        // Redact git commit count which changes with every commit to the repo.
         let artifact = journey_artifact("history-deep-dive", w, h, &caps);
+        let artifact = redact_git_commit_count(&artifact);
         insta::assert_snapshot!(artifact);
     }
 

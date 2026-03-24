@@ -5651,13 +5651,38 @@ impl BvrApp {
                     )
                     .then_with(|| left_issue.id.cmp(&right_issue.id)),
                     ListSort::PageRank => {
-                        let l = self.analyzer.metrics.pagerank.get(&left_issue.id).copied().unwrap_or_default();
-                        let r = self.analyzer.metrics.pagerank.get(&right_issue.id).copied().unwrap_or_default();
-                        r.total_cmp(&l).then_with(|| left_issue.id.cmp(&right_issue.id))
+                        let l = self
+                            .analyzer
+                            .metrics
+                            .pagerank
+                            .get(&left_issue.id)
+                            .copied()
+                            .unwrap_or_default();
+                        let r = self
+                            .analyzer
+                            .metrics
+                            .pagerank
+                            .get(&right_issue.id)
+                            .copied()
+                            .unwrap_or_default();
+                        r.total_cmp(&l)
+                            .then_with(|| left_issue.id.cmp(&right_issue.id))
                     }
                     ListSort::Blockers => {
-                        let l = self.analyzer.metrics.blocks_count.get(&left_issue.id).copied().unwrap_or_default();
-                        let r = self.analyzer.metrics.blocks_count.get(&right_issue.id).copied().unwrap_or_default();
+                        let l = self
+                            .analyzer
+                            .metrics
+                            .blocks_count
+                            .get(&left_issue.id)
+                            .copied()
+                            .unwrap_or_default();
+                        let r = self
+                            .analyzer
+                            .metrics
+                            .blocks_count
+                            .get(&right_issue.id)
+                            .copied()
+                            .unwrap_or_default();
                         r.cmp(&l).then_with(|| left_issue.id.cmp(&right_issue.id))
                     }
                 }
@@ -6777,14 +6802,18 @@ impl BvrApp {
     }
 
     fn should_open_selected_issue_external_ref(&self) -> bool {
-        matches!(self.mode, ViewMode::Main | ViewMode::Insights | ViewMode::Graph)
-            && matches!(self.focus, FocusPane::Detail)
+        matches!(
+            self.mode,
+            ViewMode::Main | ViewMode::Insights | ViewMode::Graph
+        ) && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
 
     fn should_copy_selected_issue_external_ref(&self) -> bool {
-        matches!(self.mode, ViewMode::Main | ViewMode::Insights | ViewMode::Graph)
-            && matches!(self.focus, FocusPane::Detail)
+        matches!(
+            self.mode,
+            ViewMode::Main | ViewMode::Insights | ViewMode::Graph
+        ) && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
 
@@ -9267,7 +9296,13 @@ impl BvrApp {
             };
 
             let si = status_icon(&issue.status);
-            let blocks = self.analyzer.metrics.blocks_count.get(&issue.id).copied().unwrap_or(0);
+            let blocks = self
+                .analyzer
+                .metrics
+                .blocks_count
+                .get(&issue.id)
+                .copied()
+                .unwrap_or(0);
             let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
             let dep_tag = if open_bl > 0 {
                 format!(" \u{2298}{open_bl}")
@@ -9276,7 +9311,13 @@ impl BvrApp {
             } else {
                 String::new()
             };
-            let cycle_tag = if self.analyzer.metrics.cycles.iter().any(|c| c.contains(&issue.id)) {
+            let cycle_tag = if self
+                .analyzer
+                .metrics
+                .cycles
+                .iter()
+                .any(|c| c.contains(&issue.id))
+            {
                 " \u{27f3}"
             } else {
                 ""
@@ -11013,7 +11054,13 @@ impl BvrApp {
         ));
         // Labels
         if !issue.labels.is_empty() {
-            let labels_str = issue.labels.iter().take(4).cloned().collect::<Vec<_>>().join(", ");
+            let labels_str = issue
+                .labels
+                .iter()
+                .take(4)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
             let labels_display = if issue.labels.len() > 4 {
                 format!("{labels_str} +{}", issue.labels.len() - 4)
             } else {
@@ -11039,13 +11086,35 @@ impl BvrApp {
             ));
         }
         // Graph metrics
-        let pr = self.analyzer.metrics.pagerank.get(&issue.id).copied().unwrap_or(0.0);
-        let depth = self.analyzer.metrics.critical_depth.get(&issue.id).copied().unwrap_or(0);
+        let pr = self
+            .analyzer
+            .metrics
+            .pagerank
+            .get(&issue.id)
+            .copied()
+            .unwrap_or(0.0);
+        let depth = self
+            .analyzer
+            .metrics
+            .critical_depth
+            .get(&issue.id)
+            .copied()
+            .unwrap_or(0);
         if pr > 0.0 || depth > 0 {
             out.push(format!(
                 "\u{2502} PR:{:.3} Depth:{} {:<w$}\u{2502}",
-                pr, depth,
-                if self.analyzer.metrics.articulation_points.contains(&issue.id) { "\u{25c6}cut" } else { "" },
+                pr,
+                depth,
+                if self
+                    .analyzer
+                    .metrics
+                    .articulation_points
+                    .contains(&issue.id)
+                {
+                    "\u{25c6}cut"
+                } else {
+                    ""
+                },
                 w = box_width - 18
             ));
         }
@@ -11061,11 +11130,7 @@ impl BvrApp {
                 ));
             }
             if issue.description.lines().count() > 3 {
-                out.push(format!(
-                    "\u{2502} {:<w$}\u{2502}",
-                    "...",
-                    w = box_width - 1
-                ));
+                out.push(format!("\u{2502} {:<w$}\u{2502}", "...", w = box_width - 1));
             }
         }
         out.push(format!("\u{2514}{hrule}\u{2518}"));
@@ -11414,7 +11479,9 @@ impl BvrApp {
         let mut lines = Vec::new();
         let mut inserted_link = false;
         for (index, line) in self.insights_detail_text().lines().enumerate() {
-            if let Some(url) = external_ref && index == insights_link_insert_after {
+            if let Some(url) = external_ref
+                && index == insights_link_insert_after
+            {
                 lines.push(RichLine::from_spans([
                     RichSpan::raw("External Link: "),
                     RichSpan::styled(url, tokens::panel_title_focused()).link(url),
@@ -11428,7 +11495,9 @@ impl BvrApp {
             lines.push(RichLine::raw(line));
         }
 
-        if let Some(url) = external_ref && !inserted_link {
+        if let Some(url) = external_ref
+            && !inserted_link
+        {
             lines.push(RichLine::raw(""));
             lines.push(RichLine::from_spans([
                 RichSpan::raw("External Link: "),

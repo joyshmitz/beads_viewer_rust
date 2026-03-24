@@ -100,6 +100,8 @@ pub struct AgentFileDetection {
     pub has_legacy_blurb: bool,
     pub blurb_version: u32,
     pub content: String,
+    /// True when the file exists but could not be read (permissions, encoding).
+    pub read_error: bool,
 }
 
 impl AgentFileDetection {
@@ -189,12 +191,20 @@ fn check_agent_file(path: &Path, file_type: &str) -> Option<AgentFileDetection> 
         return None;
     }
 
-    let Ok(content) = std::fs::read_to_string(path) else {
-        return Some(AgentFileDetection {
-            file_path: Some(path.to_path_buf()),
-            file_type: file_type.to_string(),
-            ..Default::default()
-        });
+    let content = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => {
+            tracing::warn!(
+                "cannot read {}: {error} — treating as unreadable",
+                path.display()
+            );
+            return Some(AgentFileDetection {
+                file_path: Some(path.to_path_buf()),
+                file_type: file_type.to_string(),
+                read_error: true,
+                ..Default::default()
+            });
+        }
     };
 
     let has_legacy = contains_legacy_blurb(&content);
@@ -207,6 +217,7 @@ fn check_agent_file(path: &Path, file_type: &str) -> Option<AgentFileDetection> 
         has_legacy_blurb: has_legacy,
         blurb_version: get_blurb_version(&content),
         content,
+        read_error: false,
     })
 }
 
@@ -435,6 +446,13 @@ pub fn agents_add(work_dir: &Path, dry_run: bool) -> Result<AgentsResult> {
             ));
         };
 
+        if det.read_error {
+            return Err(BvrError::InvalidArgument(format!(
+                "Cannot read {} — check file permissions.",
+                path.display()
+            )));
+        }
+
         if det.has_blurb && !det.needs_upgrade() {
             return Ok(AgentsResult {
                 message: format!(
@@ -506,6 +524,13 @@ pub fn agents_update(work_dir: &Path, dry_run: bool) -> Result<AgentsResult> {
         ));
     };
 
+    if det.read_error {
+        return Err(BvrError::InvalidArgument(format!(
+            "Cannot read {} — check file permissions.",
+            path.display()
+        )));
+    }
+
     if !det.has_blurb {
         return Err(BvrError::InvalidArgument(format!(
             "{} has no blurb to update. Run 'bvr --agents-add' instead.",
@@ -564,6 +589,13 @@ pub fn agents_remove(work_dir: &Path, dry_run: bool) -> Result<AgentsResult> {
             "Agent file detected but no file path was recorded.".to_string(),
         ));
     };
+
+    if det.read_error {
+        return Err(BvrError::InvalidArgument(format!(
+            "Cannot read {} — check file permissions.",
+            path.display()
+        )));
+    }
 
     if !det.has_blurb {
         return Ok(AgentsResult {

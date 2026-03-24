@@ -3653,12 +3653,10 @@ impl BvrApp {
                                 *cursor = cursor.saturating_sub(1);
                             }
                         }
-                        KeyCode::Enter => {
-                            if cur < len {
-                                let recipe_name = items[cur].0.clone();
-                                self.modal_overlay = None;
-                                self.status_msg = format!("Recipe: {recipe_name}");
-                            }
+                        KeyCode::Enter if cur < len => {
+                            let recipe_name = items[cur].0.clone();
+                            self.modal_overlay = None;
+                            self.status_msg = format!("Recipe: {recipe_name}");
                         }
                         _ => {}
                     }
@@ -4237,10 +4235,11 @@ impl BvrApp {
                 self.move_attention_cursor(-1);
             }
             // -- Tree mode navigation
-            KeyCode::Char('j') | KeyCode::Down if self.tree_shortcut_focus() => {
-                if self.tree_cursor + 1 < self.tree_flat_nodes.len() {
-                    self.tree_cursor += 1;
-                }
+            KeyCode::Char('j') | KeyCode::Down
+                if self.tree_shortcut_focus()
+                    && self.tree_cursor + 1 < self.tree_flat_nodes.len() =>
+            {
+                self.tree_cursor += 1;
             }
             KeyCode::Char('k') | KeyCode::Up if self.tree_shortcut_focus() => {
                 self.tree_cursor = self.tree_cursor.saturating_sub(1);

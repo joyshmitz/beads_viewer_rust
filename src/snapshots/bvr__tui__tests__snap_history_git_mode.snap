@@ -5,7 +5,7 @@ expression: text
 bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all
 ┌Commits [focus]─────────────┐┌Related Beads────────────────────┐┌Commit Details───────────────────┐
 │                            ││                                 ││                                 │
-│ Git commits (1/286 correla ││ 1 related bead(s) for d50d5c0   ││ Commit 1/1 | confidence >= 0%   │
+│ Git commits (1/288 correla ││ 1 related bead(s) for d50d5c0   ││ Commit 1/1 | confidence >= 0%   │
 │ Min confidence: >= 0%      ││                                 ││                                 │
 │                            ││   [o] B        Dependent        ││ COMMIT DETAILS:                 │
 │ > F d50d5c0 B        feat( ││                                 ││   SHA: d50d5c0d32fec65f6a66b954 │

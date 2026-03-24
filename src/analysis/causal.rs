@@ -872,13 +872,11 @@ pub fn build_causality_chain(
 
     for event in &events {
         match event.event_type.as_str() {
-            "blocked" => {
-                if blocked_start.is_none() {
-                    blocked_start = Some((
-                        event.timestamp.clone(),
-                        event.blocker_id.clone().unwrap_or_default(),
-                    ));
-                }
+            "blocked" if blocked_start.is_none() => {
+                blocked_start = Some((
+                    event.timestamp.clone(),
+                    event.blocker_id.clone().unwrap_or_default(),
+                ));
             }
             "unblocked" => {
                 if let Some((start, blocker)) = blocked_start.take() {

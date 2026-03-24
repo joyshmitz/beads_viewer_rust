@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 #[cfg(not(test))]
 use std::collections::VecDeque;
+use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::PathBuf;
 
@@ -9109,16 +9110,19 @@ impl BvrApp {
             let col_width = (width.saturating_sub(4)) / plan.tracks.len().min(4);
             for chunk in plan.tracks.chunks(4) {
                 // Header row
-                let headers: String = chunk
-                    .iter()
-                    .map(|t| {
-                        let label = t.id.strip_prefix("track-").unwrap_or(&t.id);
-                        format!("{:<w$}", format!("Track {label} ({})", t.items.len()), w = col_width)
-                    })
-                    .collect();
+                let headers = chunk.iter().fold(String::new(), |mut acc, track| {
+                    let label = track.id.strip_prefix("track-").unwrap_or(&track.id);
+                    let title = format!("Track {label} ({})", track.items.len());
+                    let _ = write!(acc, "{title:<w$}", w = col_width);
+                    acc
+                });
                 lines.push(headers);
                 // Item rows (show up to 5 per track)
-                let max_items = chunk.iter().map(|t| t.items.len().min(5)).max().unwrap_or(0);
+                let max_items = chunk
+                    .iter()
+                    .map(|t| t.items.len().min(5))
+                    .max()
+                    .unwrap_or(0);
                 for row in 0..max_items {
                     let row_text: String = chunk
                         .iter()
@@ -9126,11 +9130,7 @@ impl BvrApp {
                             if let Some(item) = t.items.get(row) {
                                 format!(
                                     "{:<w$}",
-                                    format!(
-                                        "  {} {:.2}",
-                                        truncate_str(&item.id, 10),
-                                        item.score
-                                    ),
+                                    format!("  {} {:.2}", truncate_str(&item.id, 10), item.score),
                                     w = col_width
                                 )
                             } else {
@@ -10570,6 +10570,22 @@ impl BvrApp {
                 let empty = 20 - filled;
                 let bar = format!("[{}{}] {}%", "█".repeat(filled), "░".repeat(empty), pct);
                 lines.push(format!(" Progress: {bar}"));
+            }
+        }
+
+        // Sprint action commands
+        lines.push(String::new());
+        lines.push(" ─── Sprint Actions ───".to_string());
+        lines.push(format!(" Claim next:  br update <id> --status=in_progress"));
+        lines.push(format!(" Close issue: br close <id> --reason \"done\""));
+        if !sprint.bead_ids.is_empty() {
+            let first_open = self
+                .sprint_visible_issues()
+                .iter()
+                .find(|(_, i)| i.is_open_like())
+                .map(|(_, i)| i.id.clone());
+            if let Some(next_id) = first_open {
+                lines.push(format!(" Suggested:   br update {next_id} --status=in_progress"));
             }
         }
 

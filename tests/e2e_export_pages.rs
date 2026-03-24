@@ -520,7 +520,7 @@ fn e2e_export_complex_fixture_has_dependencies_and_metrics() {
         &fs::read_to_string(export_path.join("data/insights.json")).expect("read insights"),
     )
     .expect("parse insights");
-    assert!(insights.get("bottlenecks").is_some());
+    assert!(insights.get("Bottlenecks").is_some());
 }
 
 // ── Watch-export integration tests ──────────────────────────────────

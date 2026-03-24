@@ -6,7 +6,9 @@ use clap::{ArgAction, Parser, ValueEnum};
 fn parse_confidence(s: &str) -> Result<f64, String> {
     let value: f64 = s.parse().map_err(|e| format!("{e}"))?;
     if !(0.0..=1.0).contains(&value) {
-        return Err(format!("confidence must be between 0.0 and 1.0, got {value}"));
+        return Err(format!(
+            "confidence must be between 0.0 and 1.0, got {value}"
+        ));
     }
     Ok(value)
 }

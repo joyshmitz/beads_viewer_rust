@@ -2316,7 +2316,7 @@ impl Model for BvrApp {
                         lines.push(format!(" Filter: /{filter}"));
                     }
                     let mut vis_idx = 0usize;
-                    for (label, count) in items.iter() {
+                    for (label, count) in items {
                         if !needle.is_empty() && !label.to_ascii_lowercase().contains(&needle) {
                             continue;
                         }
@@ -2356,7 +2356,7 @@ impl Model for BvrApp {
                         lines.push(format!(" Filter: /{filter}"));
                     }
                     let mut vis_idx = 0usize;
-                    for repo in items.iter() {
+                    for repo in items {
                         if !needle.is_empty() && !repo.to_ascii_lowercase().contains(&needle) {
                             continue;
                         }

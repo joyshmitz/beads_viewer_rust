@@ -2305,7 +2305,11 @@ impl Model for BvrApp {
                         .render(rows[2], frame);
                     return;
                 }
-                ModalOverlay::LabelPicker { items, cursor, filter } => {
+                ModalOverlay::LabelPicker {
+                    items,
+                    cursor,
+                    filter,
+                } => {
                     let needle = filter.to_ascii_lowercase();
                     let mut lines = Vec::new();
                     if !filter.is_empty() {
@@ -2313,9 +2317,7 @@ impl Model for BvrApp {
                     }
                     let mut vis_idx = 0usize;
                     for (label, count) in items.iter() {
-                        if !needle.is_empty()
-                            && !label.to_ascii_lowercase().contains(&needle)
-                        {
+                        if !needle.is_empty() && !label.to_ascii_lowercase().contains(&needle) {
                             continue;
                         }
                         let marker = if vis_idx == *cursor { "▸" } else { " " };
@@ -2338,14 +2340,16 @@ impl Model for BvrApp {
                             SemanticTone::Accent,
                         ))
                         .render(rows[1], frame);
-                    Paragraph::new(
-                        "Type to filter | ↑/↓=navigate | Enter=apply | Esc=close",
-                    )
-                    .style(tokens::footer())
-                    .render(rows[2], frame);
+                    Paragraph::new("Type to filter | ↑/↓=navigate | Enter=apply | Esc=close")
+                        .style(tokens::footer())
+                        .render(rows[2], frame);
                     return;
                 }
-                ModalOverlay::RepoPicker { items, cursor, filter } => {
+                ModalOverlay::RepoPicker {
+                    items,
+                    cursor,
+                    filter,
+                } => {
                     let needle = filter.to_ascii_lowercase();
                     let mut lines = Vec::new();
                     if !filter.is_empty() {
@@ -2353,9 +2357,7 @@ impl Model for BvrApp {
                     }
                     let mut vis_idx = 0usize;
                     for repo in items.iter() {
-                        if !needle.is_empty()
-                            && !repo.to_ascii_lowercase().contains(&needle)
-                        {
+                        if !needle.is_empty() && !repo.to_ascii_lowercase().contains(&needle) {
                             continue;
                         }
                         let marker = if vis_idx == *cursor { "▸" } else { " " };
@@ -2378,11 +2380,9 @@ impl Model for BvrApp {
                             SemanticTone::Accent,
                         ))
                         .render(rows[1], frame);
-                    Paragraph::new(
-                        "Type to filter | ↑/↓=navigate | Enter=apply | Esc=close",
-                    )
-                    .style(tokens::footer())
-                    .render(rows[2], frame);
+                    Paragraph::new("Type to filter | ↑/↓=navigate | Enter=apply | Esc=close")
+                        .style(tokens::footer())
+                        .render(rows[2], frame);
                     return;
                 }
             }
@@ -2627,10 +2627,7 @@ impl Model for BvrApp {
                     detail_focused,
                     SemanticTone::Accent,
                 ))
-                .scroll((
-                    saturating_scroll_offset(self.detail_scroll_offset),
-                    0,
-                ))
+                .scroll((saturating_scroll_offset(self.detail_scroll_offset), 0))
                 .render(panes[1], frame);
             record_detail_content_area(block_inner_rect(panes[1]));
         }
@@ -3642,14 +3639,17 @@ impl BvrApp {
                     }
                     return Cmd::None;
                 }
-                ModalOverlay::LabelPicker { items, cursor, filter } => {
+                ModalOverlay::LabelPicker {
+                    items,
+                    cursor,
+                    filter,
+                } => {
                     let needle = filter.to_ascii_lowercase();
                     let filtered: Vec<usize> = items
                         .iter()
                         .enumerate()
                         .filter(|(_, (name, _))| {
-                            needle.is_empty()
-                                || name.to_ascii_lowercase().contains(&needle)
+                            needle.is_empty() || name.to_ascii_lowercase().contains(&needle)
                         })
                         .map(|(i, _)| i)
                         .collect();
@@ -3700,14 +3700,17 @@ impl BvrApp {
                     }
                     return Cmd::None;
                 }
-                ModalOverlay::RepoPicker { items, cursor, filter } => {
+                ModalOverlay::RepoPicker {
+                    items,
+                    cursor,
+                    filter,
+                } => {
                     let needle = filter.to_ascii_lowercase();
                     let filtered: Vec<usize> = items
                         .iter()
                         .enumerate()
                         .filter(|(_, name)| {
-                            needle.is_empty()
-                                || name.to_ascii_lowercase().contains(&needle)
+                            needle.is_empty() || name.to_ascii_lowercase().contains(&needle)
                         })
                         .map(|(i, _)| i)
                         .collect();
@@ -7886,6 +7889,12 @@ impl BvrApp {
             }
         }
         lines.push(String::new());
+        let search_matches = self.insights_search_matches();
+        let search_positions = search_matches
+            .iter()
+            .enumerate()
+            .map(|(slot, index)| (*index, slot + 1))
+            .collect::<BTreeMap<usize, usize>>();
         lines.extend(self.insights_signal_tiles());
         lines.push(String::new());
         lines.extend(self.insights_outlier_radar());
@@ -7904,12 +7913,18 @@ impl BvrApp {
                 } else {
                     lines.extend(insights.bottlenecks.iter().take(15).enumerate().map(
                         |(index, item)| {
+                            let hit_suffix = self.insights_search_hit_suffix(
+                                &item.id,
+                                &search_positions,
+                                search_matches.len(),
+                            );
                             format!(
-                                " {}. {:<12} score={:.3} blocks={}",
+                                " {}. {:<12} score={:.3} blocks={}{}",
                                 index + 1,
                                 item.id,
                                 item.score,
-                                item.blocks_count
+                                item.blocks_count,
+                                hit_suffix
                             )
                         },
                     ));
@@ -7947,12 +7962,18 @@ impl BvrApp {
                                 .get(*id)
                                 .copied()
                                 .unwrap_or_default();
+                            let hit_suffix = self.insights_search_hit_suffix(
+                                id,
+                                &search_positions,
+                                search_matches.len(),
+                            );
                             format!(
-                                " {}. {:<12} depth={} unblocks={}",
+                                " {}. {:<12} depth={} unblocks={}{}",
                                 index + 1,
                                 id,
                                 depth,
-                                unblocks
+                                unblocks,
+                                hit_suffix
                             )
                         },
                     ));
@@ -7975,29 +7996,71 @@ impl BvrApp {
                                     .get(id)
                                     .copied()
                                     .unwrap_or_default();
-                                format!(" {}. {:<12} depth={}", index + 1, id, depth)
+                                let hit_suffix = self.insights_search_hit_suffix(
+                                    id,
+                                    &search_positions,
+                                    search_matches.len(),
+                                );
+                                format!(" {}. {:<12} depth={}{}", index + 1, id, depth, hit_suffix)
                             }),
                     );
                 }
             }
             InsightsPanel::Influencers => {
-                Self::append_metric_items(&mut lines, &insights.influencers, "influencer");
+                self.append_metric_items(
+                    &mut lines,
+                    &insights.influencers,
+                    "influencer",
+                    &search_positions,
+                    search_matches.len(),
+                );
             }
             InsightsPanel::Betweenness => {
-                Self::append_metric_items(&mut lines, &insights.betweenness, "betweenness");
+                self.append_metric_items(
+                    &mut lines,
+                    &insights.betweenness,
+                    "betweenness",
+                    &search_positions,
+                    search_matches.len(),
+                );
             }
             InsightsPanel::Hubs => {
-                Self::append_metric_items(&mut lines, &insights.hubs, "hub-score");
+                self.append_metric_items(
+                    &mut lines,
+                    &insights.hubs,
+                    "hub-score",
+                    &search_positions,
+                    search_matches.len(),
+                );
             }
             InsightsPanel::Authorities => {
-                Self::append_metric_items(&mut lines, &insights.authorities, "authority");
+                self.append_metric_items(
+                    &mut lines,
+                    &insights.authorities,
+                    "authority",
+                    &search_positions,
+                    search_matches.len(),
+                );
             }
             InsightsPanel::Cores => {
                 if insights.cores.is_empty() {
                     lines.push("  (no k-core data)".to_string());
                 } else {
                     lines.extend(insights.cores.iter().take(15).enumerate().map(
-                        |(index, item)| format!(" {}. {:<12} k={}", index + 1, item.id, item.value),
+                        |(index, item)| {
+                            let hit_suffix = self.insights_search_hit_suffix(
+                                &item.id,
+                                &search_positions,
+                                search_matches.len(),
+                            );
+                            format!(
+                                " {}. {:<12} k={}{}",
+                                index + 1,
+                                item.id,
+                                item.value,
+                                hit_suffix
+                            )
+                        },
                     ));
                 }
             }
@@ -8005,13 +8068,16 @@ impl BvrApp {
                 if insights.articulation_points.is_empty() {
                     lines.push("  (no cut points -- graph is well-connected)".to_string());
                 } else {
-                    lines.extend(
-                        insights
-                            .articulation_points
-                            .iter()
-                            .enumerate()
-                            .map(|(index, id)| format!(" {}. {}", index + 1, id)),
-                    );
+                    lines.extend(insights.articulation_points.iter().enumerate().map(
+                        |(index, id)| {
+                            let hit_suffix = self.insights_search_hit_suffix(
+                                id,
+                                &search_positions,
+                                search_matches.len(),
+                            );
+                            format!(" {}. {}{}", index + 1, id, hit_suffix)
+                        },
+                    ));
                 }
             }
             InsightsPanel::Slack => {
@@ -8019,13 +8085,14 @@ impl BvrApp {
                     lines
                         .push("  (no zero-slack issues -- all have scheduling buffer)".to_string());
                 } else {
-                    lines.extend(
-                        insights
-                            .slack
-                            .iter()
-                            .enumerate()
-                            .map(|(index, id)| format!(" {}. {}", index + 1, id)),
-                    );
+                    lines.extend(insights.slack.iter().enumerate().map(|(index, id)| {
+                        let hit_suffix = self.insights_search_hit_suffix(
+                            id,
+                            &search_positions,
+                            search_matches.len(),
+                        );
+                        format!(" {}. {}{}", index + 1, id, hit_suffix)
+                    }));
                 }
             }
             InsightsPanel::Cycles => {
@@ -8045,13 +8112,19 @@ impl BvrApp {
                     lines.push("  (no priority recommendations available)".to_string());
                 } else {
                     lines.extend(recommendations.iter().enumerate().map(|(index, item)| {
+                        let hit_suffix = self.insights_search_hit_suffix(
+                            &item.id,
+                            &search_positions,
+                            search_matches.len(),
+                        );
                         format!(
-                            " {}. {:<12} score={:.3} unblocks={} p{}",
+                            " {}. {:<12} score={:.3} unblocks={} p{}{}",
                             index + 1,
                             item.id,
                             item.score,
                             item.unblocks,
-                            item.priority
+                            item.priority,
+                            hit_suffix
                         )
                     }));
                 }
@@ -8147,10 +8220,26 @@ impl BvrApp {
         }
     }
 
+    fn insights_search_hit_suffix(
+        &self,
+        issue_id: &str,
+        search_positions: &BTreeMap<usize, usize>,
+        total_search_matches: usize,
+    ) -> String {
+        self.issue_index_for_id(issue_id)
+            .and_then(|issue_index| search_positions.get(&issue_index).copied())
+            .map_or_else(String::new, |position| {
+                format!(" hit {position}/{total_search_matches}")
+            })
+    }
+
     fn append_metric_items(
+        &self,
         lines: &mut Vec<String>,
         items: &[crate::analysis::MetricItem],
         label: &str,
+        search_positions: &BTreeMap<usize, usize>,
+        total_search_matches: usize,
     ) {
         if items.is_empty() {
             lines.push(format!("  (no {label} data)"));
@@ -8165,7 +8254,17 @@ impl BvrApp {
                     "#".repeat(bar_len),
                     ".".repeat(20_usize.saturating_sub(bar_len))
                 );
-                format!(" {}. {:<12} [{bar}] {:.4}", index + 1, item.id, item.value)
+                let hit_suffix = self.insights_search_hit_suffix(
+                    &item.id,
+                    search_positions,
+                    total_search_matches,
+                );
+                format!(
+                    " {}. {:<12} [{bar}] {:.4}{hit_suffix}",
+                    index + 1,
+                    item.id,
+                    item.value
+                )
             }));
         }
     }
@@ -8216,6 +8315,12 @@ impl BvrApp {
             }
         }
         lines.push(String::new());
+        let search_matches = self.graph_search_matches();
+        let search_positions = search_matches
+            .iter()
+            .enumerate()
+            .map(|(slot, index)| (*index, slot + 1))
+            .collect::<BTreeMap<usize, usize>>();
 
         lines.extend(
             visible
@@ -8245,8 +8350,13 @@ impl BvrApp {
                         .get(&issue.id)
                         .copied()
                         .unwrap_or_default();
+                    let hit_suffix = search_positions
+                        .get(&index)
+                        .map_or_else(String::new, |position| {
+                            format!(" hit {position}/{}", search_matches.len())
+                        });
                     format!(
-                        "{marker} {si} {:<12} in:{:>2} out:{:>2} pr:{:.3}",
+                        "{marker} {si} {:<12} in:{:>2} out:{:>2} pr:{:.3}{hit_suffix}",
                         issue.id, blocked_by, blocks, pagerank
                     )
                 }),
@@ -8302,6 +8412,12 @@ impl BvrApp {
 
         let pr_max = max_metric_value(&self.analyzer.metrics.pagerank);
         let line_width = usize::from(width.saturating_sub(2)).max(24);
+        let search_matches = self.graph_search_matches();
+        let search_positions = search_matches
+            .iter()
+            .enumerate()
+            .map(|(slot, index)| (*index, slot + 1))
+            .collect::<BTreeMap<usize, usize>>();
         for index in visible {
             let Some(issue) = self.analyzer.issues.get(index) else {
                 continue;
@@ -8385,6 +8501,13 @@ impl BvrApp {
                 truncate_display(&issue.title, title_width.max(8)),
                 tokens::help_desc(),
             ));
+            if let Some(position) = search_positions.get(&index) {
+                line.push_span(RichSpan::raw(" "));
+                line.push_span(RichSpan::styled(
+                    format!("hit {position}/{}", search_matches.len()),
+                    tokens::status_style("selected"),
+                ));
+            }
             lines.push(line);
         }
 
@@ -9515,18 +9638,18 @@ impl BvrApp {
             };
 
             // Velocity sparkline (uses Unicode block characters for trend)
-            let velocity = label.velocity_score;
-            let spark = if velocity > 0.7 {
+            let velocity = label.velocity.velocity_score;
+            let spark = if velocity > 70 {
                 "\u{2593}\u{2593}\u{2593}" // ▓▓▓ high velocity
-            } else if velocity > 0.3 {
+            } else if velocity > 30 {
                 "\u{2592}\u{2592}\u{2591}" // ▒▒░ medium
-            } else if velocity > 0.0 {
+            } else if velocity > 0 {
                 "\u{2591}\u{2591}\u{2591}" // ░░░ low
             } else {
                 "\u{2581}\u{2581}\u{2581}" // ▁▁▁ stale
             };
 
-            let stale_tag = if label.staleness > 0.7 {
+            let stale_tag = if label.freshness.stale_count > 0 {
                 " STALE"
             } else {
                 ""
@@ -13344,7 +13467,7 @@ fn new_app_with_background(
         board_empty_visibility: EmptyLaneVisibility::Auto,
         mode,
         mode_before_history: ViewMode::Main,
-            mode_back_stack: Vec::new(),
+        mode_back_stack: Vec::new(),
         focus: FocusPane::List,
         focus_before_help: FocusPane::List,
         show_help: false,
@@ -15170,7 +15293,29 @@ mod tests {
 
     #[test]
     fn graph_mode_search_query_and_match_cycling_work() {
-        let mut app = new_app(ViewMode::Graph, 0);
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "Alpha dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Alpha root".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Graph, 0, issues);
         assert!(!app.graph_search_active);
 
         app.update(key(KeyCode::Char('/')));
@@ -15181,14 +15326,24 @@ mod tests {
         app.update(key(KeyCode::Char('a')));
         assert_eq!(app.graph_search_query, "a");
         assert_eq!(selected_issue_id(&app), "A");
+        assert!(app.list_panel_text().contains("hit 1/2"));
 
         // Enter finishes search but keeps query
         app.update(key(KeyCode::Enter));
         assert!(!app.graph_search_active);
         assert_eq!(app.graph_search_query, "a");
+        assert!(app.list_panel_text().contains("Matches: 1/2"));
+        assert!(app.list_panel_text().contains("hit 1/2"));
 
         // n/N should cycle matches
         app.update(key(KeyCode::Char('n')));
+        assert_eq!(selected_issue_id(&app), "B");
+        assert!(app.list_panel_text().contains("Matches: 2/2"));
+        assert!(app.list_panel_text().contains("hit 2/2"));
+
+        app.update(key(KeyCode::Char('N')));
+        assert_eq!(selected_issue_id(&app), "A");
+        assert!(app.list_panel_text().contains("Matches: 1/2"));
 
         // Escape from new search clears query
         app.update(key(KeyCode::Char('/')));
@@ -15357,7 +15512,29 @@ mod tests {
 
     #[test]
     fn insights_mode_search_query_and_match_cycling_work() {
-        let mut app = new_app(ViewMode::Main, 0);
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "Alpha dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".to_string(),
+                title: "Alpha root".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+        ];
+        let mut app = new_app_with_issues(ViewMode::Main, 0, issues);
         app.update(key(KeyCode::Char('i')));
         assert!(matches!(app.mode, ViewMode::Insights));
         assert!(!app.insights_search_active);
@@ -15369,11 +15546,24 @@ mod tests {
         // Type a search query
         app.update(key(KeyCode::Char('a')));
         assert_eq!(app.insights_search_query, "a");
+        assert_eq!(selected_issue_id(&app), "A");
+        assert!(app.list_panel_text().contains("hit 1/2"));
 
         // Enter finishes search but keeps query
         app.update(key(KeyCode::Enter));
         assert!(!app.insights_search_active);
         assert_eq!(app.insights_search_query, "a");
+        assert!(app.list_panel_text().contains("Matches: 1/2"));
+        assert!(app.list_panel_text().contains("hit 1/2"));
+
+        app.update(key(KeyCode::Char('n')));
+        assert_eq!(selected_issue_id(&app), "B");
+        assert!(app.list_panel_text().contains("Matches: 2/2"));
+        assert!(app.list_panel_text().contains("hit 2/2"));
+
+        app.update(key(KeyCode::Char('N')));
+        assert_eq!(selected_issue_id(&app), "A");
+        assert!(app.list_panel_text().contains("Matches: 1/2"));
 
         // Escape from new search clears query
         app.update(key(KeyCode::Char('/')));
@@ -17139,7 +17329,12 @@ mod tests {
     #[test]
     fn detail_scroll_works_in_all_modes() {
         // Universal detail scroll works in every mode, not just Main
-        for mode in [ViewMode::Main, ViewMode::Graph, ViewMode::Insights, ViewMode::History] {
+        for mode in [
+            ViewMode::Main,
+            ViewMode::Graph,
+            ViewMode::Insights,
+            ViewMode::History,
+        ] {
             let mut app = new_app(mode, 0);
             app.focus = FocusPane::Detail;
             app.scroll_detail(5);

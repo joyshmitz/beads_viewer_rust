@@ -242,7 +242,12 @@ impl WizardConfig {
             .ok_or_else(|| BvrError::InvalidArgument("deploy target is required".into()))?;
         match target {
             DeployTarget::Github => {
-                if self.github_repo.as_ref().is_none_or(String::is_empty) {
+                if self
+                    .github_repo
+                    .as_deref()
+                    .map(str::trim)
+                    .is_none_or(str::is_empty)
+                {
                     return Err(BvrError::InvalidArgument(
                         "GitHub repo name is required (owner/repo format)".into(),
                     ));
@@ -251,8 +256,9 @@ impl WizardConfig {
             DeployTarget::Cloudflare => {
                 if self
                     .cloudflare_project
-                    .as_ref()
-                    .is_none_or(String::is_empty)
+                    .as_deref()
+                    .map(str::trim)
+                    .is_none_or(str::is_empty)
                 {
                     return Err(BvrError::InvalidArgument(
                         "Cloudflare project name is required".into(),
@@ -1321,6 +1327,15 @@ mod tests {
     }
 
     #[test]
+    fn validate_for_deploy_github_rejects_whitespace_only_repo() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("./pages"));
+        config.deploy_target = Some(DeployTarget::Github);
+        config.github_repo = Some("   ".into());
+        assert!(config.validate_for_deploy().is_err());
+    }
+
+    #[test]
     fn validate_for_deploy_cloudflare_requires_project_name() {
         let mut config = WizardConfig::default();
         config.output_path = Some(PathBuf::from("./pages"));
@@ -1329,6 +1344,15 @@ mod tests {
 
         config.cloudflare_project = Some("my-project".into());
         assert!(config.validate_for_deploy().is_ok());
+    }
+
+    #[test]
+    fn validate_for_deploy_cloudflare_rejects_whitespace_only_project_name() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("./pages"));
+        config.deploy_target = Some(DeployTarget::Cloudflare);
+        config.cloudflare_project = Some("   ".into());
+        assert!(config.validate_for_deploy().is_err());
     }
 
     #[test]

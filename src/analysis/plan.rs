@@ -51,8 +51,9 @@ pub fn compute_execution_plan(
     let actionable: HashSet<String> = graph.actionable_ids().into_iter().collect();
 
     let mut tracks = Vec::<ExecutionTrack>::new();
+    let mut track_number: usize = 0;
 
-    for (index, component) in components.iter().enumerate() {
+    for component in &components {
         let mut items = Vec::<ExecutionItem>::new();
 
         for issue_id in component {
@@ -120,8 +121,9 @@ pub fn compute_execution_plan(
             format!("connected component of {} independent items", items.len())
         };
 
+        track_number += 1;
         tracks.push(ExecutionTrack {
-            id: format!("track-{}", index + 1),
+            id: format!("track-{track_number}"),
             items,
             reason,
         });
@@ -389,5 +391,66 @@ mod tests {
         assert_eq!(plan.summary.track_count, 0);
         assert_eq!(plan.summary.actionable_count, 0);
         assert!(plan.summary.highest_impact.is_none());
+    }
+
+    #[test]
+    fn plan_track_ids_are_contiguous() {
+        // Create 3 components where the middle one has no actionable items,
+        // so it gets skipped. Track IDs should still be contiguous (1, 2).
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                ..Issue::default()
+            },
+            // B and C form a component where both are blocked (no actionable items).
+            Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    depends_on_id: "C".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "C".to_string(),
+                title: "C".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    depends_on_id: "B".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "D".to_string(),
+                title: "D".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                ..Issue::default()
+            },
+        ];
+
+        let graph = IssueGraph::build(&issues);
+        let mut scores = HashMap::new();
+        scores.insert("A".to_string(), 0.8);
+        scores.insert("D".to_string(), 0.7);
+
+        let plan = compute_execution_plan(&graph, &scores);
+        assert_eq!(plan.tracks.len(), 2);
+        // Track IDs should be contiguous: track-1, track-2 (no gaps).
+        let mut ids: Vec<&str> = plan.tracks.iter().map(|t| t.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["track-1", "track-2"]);
     }
 }

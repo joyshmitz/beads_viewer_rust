@@ -63,7 +63,7 @@ pub fn build_histories(
             }
         }
 
-        events.sort_by_key(|event| event.timestamp);
+        events.sort_by_key(|event| (event.timestamp.is_none(), event.timestamp));
 
         histories.push(IssueHistory {
             id: issue.id.clone(),
@@ -140,5 +140,30 @@ mod tests {
                 event.kind == "dependency" && event.details == "Blocked by bd-3q0"
             })
         );
+    }
+
+    #[test]
+    fn untimestamped_dependency_events_sort_after_timestamped_events() {
+        let issues = vec![Issue {
+            id: "bd-4z1".to_string(),
+            title: "Blocked follow-on".to_string(),
+            status: "blocked".to_string(),
+            issue_type: "task".to_string(),
+            created_at: ts("2026-02-18T03:01:00Z"),
+            updated_at: ts("2026-02-18T03:06:00Z"),
+            dependencies: vec![Dependency {
+                issue_id: "bd-4z1".to_string(),
+                depends_on_id: "bd-4z0".to_string(),
+                dep_type: "blocks".to_string(),
+                ..Dependency::default()
+            }],
+            ..Issue::default()
+        }];
+
+        let histories = build_histories(&issues, Some("bd-4z1"), 10);
+        let events = &histories[0].events;
+        assert_eq!(events[0].kind, "created");
+        assert_eq!(events[1].kind, "updated");
+        assert_eq!(events[2].kind, "dependency");
     }
 }

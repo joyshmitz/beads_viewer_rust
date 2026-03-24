@@ -2906,6 +2906,7 @@ impl BvrApp {
                     self.compute_actionable_plan();
                     self.mode = ViewMode::Actionable;
                 }
+                self.detail_scroll_offset = 0;
                 self.focus = FocusPane::List;
             }
             ViewMode::Attention => {
@@ -4727,6 +4728,7 @@ impl BvrApp {
                     self.compute_actionable_plan();
                     ViewMode::Actionable
                 };
+                self.detail_scroll_offset = 0;
                 self.focus = FocusPane::List;
             }
             KeyCode::Char('!') => {
@@ -9007,6 +9009,9 @@ impl BvrApp {
             return;
         };
 
+        let previous_track = self.actionable_track_cursor;
+        let previous_item = self.actionable_item_cursor;
+
         if matches!(self.focus, FocusPane::List) {
             // Navigate between tracks.
             let max = plan.tracks.len().saturating_sub(1);
@@ -9020,6 +9025,12 @@ impl BvrApp {
                 let new_pos = (self.actionable_item_cursor as isize + delta).clamp(0, max as isize);
                 self.actionable_item_cursor = new_pos as usize;
             }
+        }
+
+        if self.actionable_track_cursor != previous_track
+            || self.actionable_item_cursor != previous_item
+        {
+            self.detail_scroll_offset = 0;
         }
     }
 
@@ -10585,7 +10596,9 @@ impl BvrApp {
                 .find(|(_, i)| i.is_open_like())
                 .map(|(_, i)| i.id.clone());
             if let Some(next_id) = first_open {
-                lines.push(format!(" Suggested:   br update {next_id} --status=in_progress"));
+                lines.push(format!(
+                    " Suggested:   br update {next_id} --status=in_progress"
+                ));
             }
         }
 
@@ -23493,6 +23506,134 @@ mod tests {
                 "item cursor should reset when changing track"
             );
         }
+    }
+
+    #[test]
+    fn actionable_detail_scroll_resets_on_track_navigation() {
+        let mut app = new_app(ViewMode::Actionable, 0);
+        app.mode = ViewMode::Actionable;
+        app.focus = FocusPane::List;
+        app.actionable_plan = Some(crate::analysis::plan::ExecutionPlan {
+            total_actionable: 2,
+            total_blocked: 0,
+            tracks: vec![
+                crate::analysis::plan::ExecutionTrack {
+                    id: "track-1".to_string(),
+                    reason: "first".to_string(),
+                    items: vec![crate::analysis::plan::ExecutionItem {
+                        id: "A".to_string(),
+                        title: "Alpha".to_string(),
+                        status: "open".to_string(),
+                        priority: 1,
+                        score: 5.0,
+                        unblocks: Vec::new(),
+                        claim_command: "br update A --status=in_progress".to_string(),
+                        show_command: "br show A".to_string(),
+                    }],
+                },
+                crate::analysis::plan::ExecutionTrack {
+                    id: "track-2".to_string(),
+                    reason: "second".to_string(),
+                    items: vec![crate::analysis::plan::ExecutionItem {
+                        id: "B".to_string(),
+                        title: "Beta".to_string(),
+                        status: "open".to_string(),
+                        priority: 1,
+                        score: 4.0,
+                        unblocks: Vec::new(),
+                        claim_command: "br update B --status=in_progress".to_string(),
+                        show_command: "br show B".to_string(),
+                    }],
+                },
+            ],
+            summary: crate::analysis::plan::PlanSummary {
+                track_count: 2,
+                actionable_count: 2,
+                unblocks_count: Some(0),
+                highest_impact: Some("A".to_string()),
+                impact_reason: Some("highest impact: A (score 5.00)".to_string()),
+            },
+        });
+        app.detail_scroll_offset = 7;
+
+        app.move_actionable_cursor(1);
+
+        assert_eq!(app.actionable_track_cursor, 1);
+        assert_eq!(app.actionable_item_cursor, 0);
+        assert_eq!(app.detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn actionable_detail_scroll_resets_on_item_navigation() {
+        let mut app = new_app(ViewMode::Actionable, 0);
+        app.mode = ViewMode::Actionable;
+        app.focus = FocusPane::Detail;
+        app.actionable_plan = Some(crate::analysis::plan::ExecutionPlan {
+            total_actionable: 2,
+            total_blocked: 0,
+            tracks: vec![crate::analysis::plan::ExecutionTrack {
+                id: "track-1".to_string(),
+                reason: "first".to_string(),
+                items: vec![
+                    crate::analysis::plan::ExecutionItem {
+                        id: "A".to_string(),
+                        title: "Alpha".to_string(),
+                        status: "open".to_string(),
+                        priority: 1,
+                        score: 5.0,
+                        unblocks: Vec::new(),
+                        claim_command: "br update A --status=in_progress".to_string(),
+                        show_command: "br show A".to_string(),
+                    },
+                    crate::analysis::plan::ExecutionItem {
+                        id: "B".to_string(),
+                        title: "Beta".to_string(),
+                        status: "open".to_string(),
+                        priority: 1,
+                        score: 4.0,
+                        unblocks: Vec::new(),
+                        claim_command: "br update B --status=in_progress".to_string(),
+                        show_command: "br show B".to_string(),
+                    },
+                ],
+            }],
+            summary: crate::analysis::plan::PlanSummary {
+                track_count: 1,
+                actionable_count: 2,
+                unblocks_count: Some(0),
+                highest_impact: Some("A".to_string()),
+                impact_reason: Some("highest impact: A (score 5.00)".to_string()),
+            },
+        });
+        app.detail_scroll_offset = 6;
+
+        app.move_actionable_cursor(1);
+
+        assert_eq!(app.actionable_item_cursor, 1);
+        assert_eq!(app.detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn actionable_mode_entry_resets_detail_scroll_offset() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.detail_scroll_offset = 5;
+
+        app.update(key(KeyCode::Char('a')));
+
+        assert_eq!(app.mode, ViewMode::Actionable);
+        assert_eq!(app.detail_scroll_offset, 0);
+    }
+
+    #[test]
+    fn actionable_mode_exit_resets_detail_scroll_offset() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.update(key(KeyCode::Char('a')));
+        app.detail_scroll_offset = 5;
+
+        app.update(key(KeyCode::Char('a')));
+
+        assert_eq!(app.mode, ViewMode::Main);
+        assert_eq!(app.detail_scroll_offset, 0);
     }
 
     // -- Attention mode expanded coverage (bd-7oo.4.5) ----------------------

@@ -46,7 +46,7 @@ pub fn generate_priority_brief(
                 "| {} | `{}` | {} | {:.3} | P{} | {} |",
                 i + 1,
                 rec.id,
-                truncate_str(&rec.title, 50),
+                escape_md_table(&truncate_str(&rec.title, 50)),
                 rec.score,
                 rec.priority,
                 rec.status,
@@ -205,6 +205,10 @@ jq '.blockers_to_clear[] | select(.unblocks > 1)' triage.json
 ```
 "#
     .to_string()
+}
+
+fn escape_md_table(s: &str) -> String {
+    s.replace('|', "\\|")
 }
 
 fn truncate_str(s: &str, max_len: usize) -> String {
@@ -381,5 +385,28 @@ mod tests {
     fn truncate_str_unicode_safe() {
         let emoji = "🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀";
         assert_eq!(truncate_str(emoji, 5), "🦀🦀...");
+    }
+
+    #[test]
+    fn pipe_in_title_is_escaped_in_table() {
+        let mut triage = make_triage_result();
+        triage.recommendations[0].title = "Fix auth | login flow".to_string();
+        let brief = generate_priority_brief(&[], &triage, "h", "now");
+        // The pipe inside the title cell must be escaped so it doesn't break the table.
+        assert!(brief.contains("Fix auth \\| login flow"));
+        // Should still be a valid table row (6 cells).
+        let table_row = brief.lines().find(|l| l.contains("A-1")).unwrap();
+        // Unescaped pipes delimit cells; escaped pipes don't. Count unescaped pipes.
+        let unescaped_pipes = table_row
+            .chars()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .filter(|w| w[1] == '|' && w[0] != '\\')
+            .count()
+            + usize::from(table_row.starts_with('|'));
+        assert_eq!(
+            unescaped_pipes, 7,
+            "table row should have 7 unescaped pipes (6 cells + leading)"
+        );
     }
 }

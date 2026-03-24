@@ -9514,12 +9514,30 @@ impl BvrApp {
                 _ => "  ",
             };
 
+            // Velocity sparkline (uses Unicode block characters for trend)
+            let velocity = label.velocity_score;
+            let spark = if velocity > 0.7 {
+                "\u{2593}\u{2593}\u{2593}" // ▓▓▓ high velocity
+            } else if velocity > 0.3 {
+                "\u{2592}\u{2592}\u{2591}" // ▒▒░ medium
+            } else if velocity > 0.0 {
+                "\u{2591}\u{2591}\u{2591}" // ░░░ low
+            } else {
+                "\u{2581}\u{2581}\u{2581}" // ▁▁▁ stale
+            };
+
+            let stale_tag = if label.staleness > 0.7 {
+                " STALE"
+            } else {
+                ""
+            };
+
             lines.push(format!(
-                "{marker} {level_marker} [{bar}] {:>3}  {:<16} ({} open, {} closed)",
+                "{marker} {level_marker} [{bar}] {:>3}  {spark} {:<14} ({} open, {} blk){stale_tag}",
                 label.health,
-                truncate_str(&label.label, 16),
+                truncate_str(&label.label, 14),
                 label.open_count,
-                label.closed_count,
+                label.blocked_count,
             ));
         }
 

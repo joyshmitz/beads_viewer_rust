@@ -590,7 +590,7 @@ impl IssueGraph {
                 let neighbors = self
                     .blockers(&id)
                     .into_iter()
-                    .chain(self.dependents(&id).into_iter());
+                    .chain(self.dependents(&id));
 
                 for neighbor in neighbors {
                     if !open_ids.contains(&neighbor) {

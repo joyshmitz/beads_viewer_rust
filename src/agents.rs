@@ -373,10 +373,7 @@ pub struct AgentsResult {
     pub changed: bool,
 }
 
-/// `--agents-check`: report blurb status.
-pub fn agents_check(work_dir: &Path) -> AgentsResult {
-    let det = detect_agent_file_in_parents(work_dir, 3);
-
+fn agents_check_from_detection(work_dir: &Path, det: &AgentFileDetection) -> AgentsResult {
     if !det.found() {
         return AgentsResult {
             message: format!(
@@ -398,6 +395,17 @@ pub fn agents_check(work_dir: &Path) -> AgentsResult {
         };
     };
     let path = path_buf.display();
+
+    if det.read_error {
+        return AgentsResult {
+            message: format!(
+                "Found {file_type} at {path}, but it could not be read.\n\
+                 Check file permissions before running any agents command.",
+                file_type = det.file_type,
+            ),
+            changed: false,
+        };
+    }
 
     if det.needs_upgrade() {
         let current_ver = if det.has_legacy_blurb {
@@ -433,6 +441,12 @@ pub fn agents_check(work_dir: &Path) -> AgentsResult {
         ),
         changed: false,
     }
+}
+
+/// `--agents-check`: report blurb status.
+pub fn agents_check(work_dir: &Path) -> AgentsResult {
+    let det = detect_agent_file_in_parents(work_dir, 3);
+    agents_check_from_detection(work_dir, &det)
 }
 
 /// `--agents-add`: add blurb to agent file (create if needed).
@@ -716,6 +730,22 @@ mod tests {
             "unexpected message: {}",
             result.message
         );
+        assert!(!result.changed);
+    }
+
+    #[test]
+    fn agents_check_reports_unreadable_agent_file() {
+        let work_dir = Path::new("/tmp/project");
+        let detection = AgentFileDetection {
+            file_path: Some(PathBuf::from("/tmp/project/AGENTS.md")),
+            file_type: "AGENTS.md".to_string(),
+            read_error: true,
+            ..Default::default()
+        };
+
+        let result = agents_check_from_detection(work_dir, &detection);
+        assert!(result.message.contains("could not be read"));
+        assert!(result.message.contains("Check file permissions"));
         assert!(!result.changed);
     }
 

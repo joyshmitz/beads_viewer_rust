@@ -14519,18 +14519,11 @@ mod tests {
     }
 
     fn first_rendered_issue_id(app: &BvrApp) -> String {
-        app.list_panel_text()
-            .lines()
-            .next()
-            .map(|line| {
-                let mut tokens = line.split_whitespace();
-                let first = tokens.next().unwrap_or_default();
-                if first == ">" {
-                    tokens.next().unwrap_or_default().to_string()
-                } else {
-                    first.to_string()
-                }
-            })
+        let indices = app.visible_issue_indices();
+        indices
+            .first()
+            .and_then(|&idx| app.analyzer.issues.get(idx))
+            .map(|issue| issue.id.clone())
             .unwrap_or_default()
     }
 
@@ -17712,6 +17705,12 @@ mod tests {
         app.update(key(KeyCode::Char('s')));
         assert_eq!(app.list_sort, ListSort::Updated);
         assert_eq!(first_rendered_issue_id(&app), "Z");
+
+        app.update(key(KeyCode::Char('s')));
+        assert_eq!(app.list_sort, ListSort::PageRank);
+
+        app.update(key(KeyCode::Char('s')));
+        assert_eq!(app.list_sort, ListSort::Blockers);
 
         app.update(key(KeyCode::Char('s')));
         assert_eq!(app.list_sort, ListSort::Default);

@@ -2043,10 +2043,18 @@ mod tests {
         let full = compute_triage(&issues, &graph, &full_metrics, &options);
         let lean = compute_triage(&issues, &graph, &triage_metrics, &options);
 
-        assert_eq!(
-            serde_json::to_value(&full.result).unwrap(),
-            serde_json::to_value(&lean.result).unwrap()
-        );
+        let mut full_val = serde_json::to_value(&full.result).unwrap();
+        let mut lean_val = serde_json::to_value(&lean.result).unwrap();
+        // Strip non-deterministic generated_at timestamps before comparison.
+        full_val.as_object_mut().unwrap()["meta"]
+            .as_object_mut()
+            .unwrap()
+            .remove("generated_at");
+        lean_val.as_object_mut().unwrap()["meta"]
+            .as_object_mut()
+            .unwrap()
+            .remove("generated_at");
+        assert_eq!(full_val, lean_val);
         assert_eq!(full.score_by_id, lean.score_by_id);
     }
 

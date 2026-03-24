@@ -18,10 +18,10 @@ bvr 1 Main b Board i Insights S Sprint | mode=Sprint | focus=detail | issues=3/3
 │                                        ││                                                        │
 │                                        ││  Progress: [██████░░░░░░░░░░░░░░] 33%                  │
 │                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
-│                                        ││                                                        │
+│                                        ││  ─── Sprint Actions ───                                │
+│                                        ││  Claim next:  br update <id> --status=in_progress      │
+│                                        ││  Close issue: br close <id> --reason "done"            │
+│                                        ││  Suggested:   br update A --status=in_progress         │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │

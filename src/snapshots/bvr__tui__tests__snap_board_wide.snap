@@ -11,17 +11,17 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 │                                                   ││ ├────────────────────────────────────────┤                                          │
 │ ▸ ┌─ open [2] ██  clear                           ││ │ Lane: open                             │                                          │
 │   ▶ oT P0 A Root↓1 @alice                         ││ │ Assignee: alice                        │                                          │
-│   │ oT P0 B Dependent⊘1                           ││ │ Top-level issue that unblocks downst…  │                                          │
+│   │ oT P0 B Dependent⊘1                           ││ │ Labels: core, parity                   │                                          │
+│   └────────────                                   ││ │ Age: 82d | Updated: 81d ago            │                                          │
+│                                                   ││ │ PR:0.481 Depth:2                       │                                          │
+│   ┌─ in_progress [0]   empty                      ││ ├────────────────────────────────────────┤                                          │
+│   │ (empty)                                       ││ │ Top-level issue that unblocks downst…  │                                          │
 │   └────────────                                   ││ └────────────────────────────────────────┘                                          │
 │                                                   ││                                                                                     │
-│   ┌─ in_progress [0]   empty                      ││ Unblocks (1)                                                                        │
+│   ┌─ blocked [0]   empty                          ││ Unblocks (1)                                                                        │
 │   │ (empty)                                       ││   o B                                                                               │
 │   └────────────                                   ││                                                                                     │
 │                                                   ││ Ready to advance to next lane.                                                      │
-│   ┌─ blocked [0]   empty                          ││                                                                                     │
-│   │ (empty)                                       ││                                                                                     │
-│   └────────────                                   ││                                                                                     │
-│                                                   ││                                                                                     │
 │   ┌─ closed [1] █  clear                          ││                                                                                     │
 │   │ xT P0 C Closed                                ││                                                                                     │
 │   └────────────                                   ││                                                                                     │

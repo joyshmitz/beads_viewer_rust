@@ -7,9 +7,9 @@ bvr 1 Main b Board i Insights [ Labels | mode=Labels | focus=detail | issues=3/3
 │                                        ││                                                        │
 │ Label health (3 labels) | healthy:0 wa ││ Label: backend                                         │
 │                                        ││ Health: 63/100 (warning)                               │
-│ > !  [######....]  63  backend         ││ Issues: 2 total (2 open, 0 closed, 0 blocked)          │
-│   !  [######....]  63  frontend        ││                                                        │
-│   !  [######....]  63  urgent          ││ Velocity (score: 0/100):                               │
+│ > !  [######....]  63  ▁▁▁ backend     ││ Issues: 2 total (2 open, 0 closed, 0 blocked)          │
+│   !  [######....]  63  ▁▁▁ frontend    ││                                                        │
+│   !  [######....]  63  ▁▁▁ urgent      ││ Velocity (score: 0/100):                               │
 │                                        ││   Closed 7d: 0 | 30d: 0                                │
 │                                        ││   Trend: stable (+0%)                                  │
 │                                        ││                                                        │

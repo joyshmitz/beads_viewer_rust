@@ -14,7 +14,7 @@ bvr 1 Main b Board i Insights | mode=Insights | focus=list | issues=3/3 | filter
 │ Outlier Radar                          ││ Metric Strip                                           │
 │ [Lead ] bottleneck=A score=0.481 block ││ [Rank ] pagerank=0.4805 betweenness=0.0000 eigenvector │
 │ [Rank ] influencer=A pr=0.4805         ││ [HITS ] hub=0.0000 authority=1.0000 k-core=1           │
-│ [Act  ] next-priority=A score=0.695 p0 ││ [Risk ] crit-depth=2 slack=0.0000 cut-point=no         │
+│ [Act  ] next-priority=A score=0.694 p0 ││ [Risk ] crit-depth=2 slack=0.0000 cut-point=no         │
 │                                        ││ [Flow ] blockers=0 dependents=1 crit-path=yes cycle=no │
 │ Panel Focus | Bottlenecks | blocking p ││ [Lead ] top-bottleneck=yes                             │
 │                                        ││                                                        │

@@ -2002,6 +2002,8 @@ struct BvrApp {
     board_empty_visibility: EmptyLaneVisibility,
     mode: ViewMode,
     mode_before_history: ViewMode,
+    /// Navigation back stack: tracks which modes led to the current one.
+    mode_back_stack: Vec<ViewMode>,
     focus: FocusPane,
     focus_before_help: FocusPane,
     show_help: bool,
@@ -2803,7 +2805,19 @@ impl BvrApp {
             .map(|tab| tab.mode)
     }
 
+    /// Push current mode onto back stack before switching.
+    fn push_mode_stack(&mut self) {
+        if self.mode_back_stack.last() != Some(&self.mode) {
+            self.mode_back_stack.push(self.mode);
+            // Cap stack at 10 to prevent unbounded growth
+            if self.mode_back_stack.len() > 10 {
+                self.mode_back_stack.remove(0);
+            }
+        }
+    }
+
     fn activate_mode_tab(&mut self, mode: ViewMode) {
+        self.push_mode_stack();
         match mode {
             ViewMode::Main => {
                 self.mode = ViewMode::Main;
@@ -3860,12 +3874,12 @@ impl BvrApp {
                     self.history_show_file_tree = false;
                     self.history_file_tree_focus = false;
                     self.history_status_msg = "File tree hidden".into();
-                } else if matches!(self.mode, ViewMode::History) {
-                    self.mode = self.mode_before_history;
-                    self.focus = FocusPane::List;
                 } else if !matches!(self.mode, ViewMode::Main) {
-                    self.mode = ViewMode::Main;
+                    // Pop from back stack if available, otherwise go to Main
+                    let prev = self.mode_back_stack.pop().unwrap_or(ViewMode::Main);
+                    self.mode = prev;
                     self.focus = FocusPane::List;
+                    self.detail_scroll_offset = 0;
                 } else if matches!(self.focus, FocusPane::Detail) {
                     self.focus = FocusPane::List;
                     self.status_msg = "Focus returned to list".into();
@@ -13213,6 +13227,7 @@ fn new_app_with_background(
         board_empty_visibility: EmptyLaneVisibility::Auto,
         mode,
         mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
         focus: FocusPane::List,
         focus_before_help: FocusPane::List,
         show_help: false,
@@ -13907,6 +13922,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -15847,6 +15863,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -15950,6 +15967,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16047,6 +16065,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16162,6 +16181,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16261,6 +16281,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16361,6 +16382,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16462,6 +16484,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16558,6 +16581,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16669,6 +16693,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -16804,6 +16829,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -17039,6 +17065,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Board,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,
@@ -17142,6 +17169,7 @@ mod tests {
             board_empty_visibility: EmptyLaneVisibility::Auto,
             mode: ViewMode::Main,
             mode_before_history: ViewMode::Main,
+            mode_back_stack: Vec::new(),
             focus: FocusPane::List,
             focus_before_help: FocusPane::List,
             show_help: false,

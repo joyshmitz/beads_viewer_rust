@@ -6993,7 +6993,11 @@ impl BvrApp {
                         .iter()
                         .any(|span| span.link.is_some())
                 })?;
-                (detail_text, line_index, 0)
+                (
+                    detail_text,
+                    line_index,
+                    usize::from(saturating_scroll_offset(self.detail_scroll_offset)),
+                )
             }
             ViewMode::Graph => {
                 let detail_text = self.graph_detail_render_text();
@@ -9095,6 +9099,49 @@ impl BvrApp {
                 ));
             }
             lines.push(String::new());
+        }
+
+        // On wide terminals (>=120), show a parallel summary of all tracks
+        let width = usize::from(cached_view_width());
+        if width >= 120 && plan.tracks.len() >= 2 {
+            lines.push(String::new());
+            lines.push("═══ Parallel Track Overview ═══".to_string());
+            let col_width = (width.saturating_sub(4)) / plan.tracks.len().min(4);
+            for chunk in plan.tracks.chunks(4) {
+                // Header row
+                let headers: String = chunk
+                    .iter()
+                    .map(|t| {
+                        let label = t.id.strip_prefix("track-").unwrap_or(&t.id);
+                        format!("{:<w$}", format!("Track {label} ({})", t.items.len()), w = col_width)
+                    })
+                    .collect();
+                lines.push(headers);
+                // Item rows (show up to 5 per track)
+                let max_items = chunk.iter().map(|t| t.items.len().min(5)).max().unwrap_or(0);
+                for row in 0..max_items {
+                    let row_text: String = chunk
+                        .iter()
+                        .map(|t| {
+                            if let Some(item) = t.items.get(row) {
+                                format!(
+                                    "{:<w$}",
+                                    format!(
+                                        "  {} {:.2}",
+                                        truncate_str(&item.id, 10),
+                                        item.score
+                                    ),
+                                    w = col_width
+                                )
+                            } else {
+                                " ".repeat(col_width)
+                            }
+                        })
+                        .collect();
+                    lines.push(row_text);
+                }
+                lines.push(String::new());
+            }
         }
 
         lines.join("\n").trim_end().to_string()
@@ -20228,6 +20275,30 @@ mod tests {
                 .y
                 .saturating_add(saturating_scroll_offset(expected_row)),
         );
+    }
+
+    #[test]
+    fn current_detail_link_row_area_tracks_insights_detail_scroll_offset() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let _ = render_app(&app, 120, 40);
+        let initial = app
+            .current_detail_link_row_area()
+            .expect("initial insights detail link row area");
+
+        app.detail_scroll_offset = 1;
+        let _ = render_app(&app, 120, 40);
+        let scrolled = app
+            .current_detail_link_row_area()
+            .expect("scrolled insights detail link row area");
+
+        assert_eq!(scrolled.y, initial.y.saturating_sub(1));
+        assert_eq!(scrolled.height, initial.height);
+        assert_eq!(scrolled.width, initial.width);
     }
 
     #[test]

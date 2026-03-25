@@ -12,6 +12,10 @@ use crate::{BvrError, Result};
 // ---------------------------------------------------------------------------
 
 /// Current blurb format version. Increment on breaking changes.
+///
+/// COUPLING NOTE: When bumping this value, also update the `v<N>` marker
+/// inside `AGENT_BLURB` below (the raw string literal cannot interpolate).
+/// The `agent_blurb_version_matches_constant` test will catch any mismatch.
 const BLURB_VERSION: u32 = 1;
 
 #[cfg(test)]
@@ -22,6 +26,8 @@ const BLURB_END_MARKER: &str = "<!-- end-bv-agent-instructions -->";
 const SUPPORTED_FILES: &[&str] = &["AGENTS.md", "CLAUDE.md", "agents.md", "claude.md"];
 
 /// Beads workflow instructions blurb.
+///
+/// The `<!-- bv-agent-instructions-vN -->` marker must match [`BLURB_VERSION`].
 const AGENT_BLURB: &str = r#"<!-- bv-agent-instructions-v1 -->
 
 ---

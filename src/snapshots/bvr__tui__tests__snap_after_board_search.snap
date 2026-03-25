@@ -11,7 +11,7 @@ bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=3/3 | filter=al
 │                                        ││ ├────────────────────────────────────────┤             │
 │ Lanes (5) | 3 issues total             ││ │ Lane: open                             │             │
 │                                        ││ │ Assignee:                              │             │
-│ ▸ ┌─ open [2] ██  clear                ││ │ Age: 80d | Updated: 79d ago            │             │
+│ ▸ ┌─ open [2] ██  clear                ││ │ Age: 81d | Updated: 80d ago            │             │
 │   │ oT P0 A Root↓1 @alice              ││ │ PR:0.260 Depth:1                       │             │
 │   ▶ oT P0 B Dependent⊘1                ││ ├────────────────────────────────────────┤             │
 │   └────────────                        ││ │ Depends on A and should report block…  │             │

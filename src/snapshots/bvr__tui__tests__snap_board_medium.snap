@@ -12,7 +12,7 @@ bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=3/3 | filter=al
 │ ▸ ┌─ open [2] ██  clear                ││ │ Lane: open                             │             │
 │   ▶ oT P0 A Root↓1 @alice              ││ │ Assignee: alice                        │             │
 │   │ oT P0 B Dependent⊘1                ││ │ Labels: core, parity                   │             │
-│   └────────────                        ││ │ Age: 82d | Updated: 81d ago            │             │
+│   └────────────                        ││ │ Age: 83d | Updated: 82d ago            │             │
 │                                        ││ │ PR:0.481 Depth:2                       │             │
 │   ┌─ in_progress [0]   empty           ││ ├────────────────────────────────────────┤             │
 │   │ (empty)                            ││ │ Top-level issue that unblocks downst…  │             │

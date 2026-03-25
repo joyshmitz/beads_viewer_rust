@@ -124,6 +124,12 @@ pub fn ts(s: &str) -> Option<DateTime<Utc>> {
     )
 }
 
+/// Create a timestamp N days before now. Useful for test fixtures that need
+/// staleness-relative dates instead of hard-coded absolute timestamps.
+pub fn days_ago(n: i64) -> Option<DateTime<Utc>> {
+    Some(Utc::now() - chrono::Duration::days(n))
+}
+
 impl Issue {
     #[must_use]
     pub fn normalized_status(&self) -> String {

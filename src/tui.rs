@@ -20917,40 +20917,104 @@ mod tests {
         render_app(&app, width, height)
     }
 
-    /// Redact non-deterministic git commit counts from snapshot text.
-    /// The count changes with every commit, causing spurious snapshot failures.
-    fn redact_git_commit_count(text: &str) -> String {
-        // Pattern: "(1/292 correla" → "(N/N correla"
-        let mut out = String::with_capacity(text.len());
-        let mut rest = text;
-        while let Some(pos) = rest.find(" correla") {
-            // Walk backwards from pos to find the "N/N" pattern
-            let prefix = &rest[..pos];
-            if let Some(slash) = prefix.rfind('/') {
-                // Find start of the first number
-                let num_start = prefix[..slash]
-                    .rfind(|ch: char| !ch.is_ascii_digit())
-                    .map_or(0, |i| i + 1);
-                // Check the second number after slash
-                let after_slash = &prefix[slash + 1..];
-                if !after_slash.is_empty()
-                    && after_slash.chars().all(|ch| ch.is_ascii_digit())
-                    && prefix[num_start..slash]
-                        .chars()
-                        .all(|ch| ch.is_ascii_digit())
-                    && !prefix[num_start..slash].is_empty()
-                {
-                    out.push_str(&rest[..num_start]);
-                    out.push_str("N/N");
-                    rest = &rest[pos..];
-                    continue;
+    /// Redact non-deterministic git data from snapshot text.
+    /// Handles: commit counts, 7-char SHAs, ISO dates, and author info.
+    fn redact_git_volatile(text: &str) -> String {
+        let mut result = String::with_capacity(text.len());
+
+        for line in text.lines() {
+            let mut redacted = line.to_string();
+
+            // Redact "N/M correla" patterns (commit counts)
+            if let Some(pos) = redacted.find(" correla") {
+                let prefix = &redacted[..pos];
+                if let Some(slash) = prefix.rfind('/') {
+                    let num_start = prefix[..slash]
+                        .rfind(|ch: char| !ch.is_ascii_digit())
+                        .map_or(0, |i| i + 1);
+                    let after_slash = &prefix[slash + 1..];
+                    if !after_slash.is_empty()
+                        && after_slash.chars().all(|ch| ch.is_ascii_digit())
+                        && prefix[num_start..slash]
+                            .chars()
+                            .all(|ch| ch.is_ascii_digit())
+                        && !prefix[num_start..slash].is_empty()
+                    {
+                        redacted = format!(
+                            "{}N/N{}",
+                            &redacted[..num_start],
+                            &redacted[pos..]
+                        );
+                    }
                 }
             }
-            out.push_str(&rest[..pos + 8]);
-            rest = &rest[pos + 8..];
+
+            // Redact "SHA: <full-hex>" lines by replacing the hex after "SHA: "
+            if redacted.contains("SHA:") {
+                if let Some(pos) = redacted.find("SHA: ") {
+                    let sha_start = pos + 5;
+                    let sha_end = redacted[sha_start..]
+                        .find(|c: char| !c.is_ascii_hexdigit())
+                        .map_or(redacted.len(), |i| sha_start + i);
+                    if sha_end > sha_start {
+                        redacted = format!(
+                            "{}AAAAAAA{}",
+                            &redacted[..sha_start],
+                            &redacted[sha_end..]
+                        );
+                    }
+                }
+            }
+
+            // Redact 7-char hex SHAs (e.g., "d50d5c0" → "AAAAAAA")
+            // Only in lines that look like git commit references
+            if redacted.contains("for ") || redacted.contains("> F ") {
+                let chars: Vec<char> = redacted.chars().collect();
+                let mut new_line = String::with_capacity(redacted.len());
+                let mut i = 0;
+                while i < chars.len() {
+                    if i + 7 <= chars.len()
+                        && chars[i..i + 7].iter().all(|c| c.is_ascii_hexdigit())
+                        && (i == 0 || !chars[i - 1].is_ascii_alphanumeric())
+                        && (i + 7 >= chars.len() || !chars[i + 7].is_ascii_alphanumeric())
+                    {
+                        // Check it's not all digits (could be a date fragment)
+                        if chars[i..i + 7].iter().any(|c| c.is_ascii_alphabetic()) {
+                            new_line.push_str("AAAAAAA");
+                            i += 7;
+                            continue;
+                        }
+                    }
+                    new_line.push(chars[i]);
+                    i += 1;
+                }
+                redacted = new_line;
+            }
+
+            // Redact ISO dates like "2026-03-23T06:14:45Z" → "YYYY-MM-DDTHH:MM:SSZ"
+            if redacted.contains("Date:") {
+                if let Some(pos) = redacted.find("20") {
+                    let rest = &redacted[pos..];
+                    if rest.len() >= 20 && rest.as_bytes().get(4) == Some(&b'-') {
+                        redacted = format!(
+                            "{}YYYY-MM-DDTHH:MM:SSZ{}",
+                            &redacted[..pos],
+                            &redacted[pos + 20..]
+                        );
+                    }
+                }
+            }
+
+            result.push_str(&redacted);
+            result.push('\n');
         }
-        out.push_str(rest);
-        out
+
+        // Remove trailing newline to match input format
+        if result.ends_with('\n') && !text.ends_with('\n') {
+            result.pop();
+        }
+
+        result
     }
 
     fn render_app(app: &BvrApp, width: u16, height: u16) -> String {
@@ -21603,7 +21667,7 @@ mod tests {
 
         // Redact the git commit count which changes with every commit to the repo.
         let text = render_app(&app, 100, 30);
-        let text = redact_git_commit_count(&text);
+        let text = redact_git_volatile(&text);
         insta::assert_snapshot!(text);
     }
 
@@ -24373,7 +24437,7 @@ mod tests {
 
         // Redact git commit count which changes with every commit to the repo.
         let artifact = journey_artifact("history-deep-dive", w, h, &caps);
-        let artifact = redact_git_commit_count(&artifact);
+        let artifact = redact_git_volatile(&artifact);
         insta::assert_snapshot!(artifact);
     }
 

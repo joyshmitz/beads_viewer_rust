@@ -82,12 +82,12 @@ c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit |
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
 ┌Commits [focus]───────────────────┐┌Related Beads───────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
-│ Git commits (N/N correlated) | ││ 1 related bead(s) for d50d5c0          ││ Commit 1/1 | confidence >= 0%          │
+│ Git commits (N/N correlated) | ││ 1 related bead(s) for AAAAAAA          ││ Commit 1/1 | confidence >= 0%          │
 │ Min confidence: >= 0%            ││                                        ││                                        │
 │                                  ││   [o] B        Dependent               ││ COMMIT DETAILS:                        │
-│ > F d50d5c0 B        feat(tui):  ││                                        ││   SHA: d50d5c0d32fec65f6a66b9547eef6ee │
+│ > F AAAAAAA B        feat(tui):  ││                                        ││   SHA: AAAAAAA │
 │                                  ││                                        ││   [D] Dicklesworthstone <jeff141421@gm │
-│                                  ││                                        ││   Date: 2026-03-23T06:14:45Z           │
+│                                  ││                                        ││   Date: YYYY-MM-DDTHH:MM:SSZ           │
 │                                  ││                                        ││   F feat(tui): add InProgress and Bloc │
 │                                  ││                                        ││   Files: 1 changed +0/-0               │
 │                                  ││                                        ││     ~ src/tui.rs                       │

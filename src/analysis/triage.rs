@@ -11,6 +11,20 @@ use crate::model::Issue;
 // ---------------------------------------------------------------------------
 
 /// Weight constants for ImpactScore components (must sum to 1.0).
+///
+/// These weights balance structural importance (PageRank, betweenness) against
+/// operational signals (priority, urgency, staleness). The values are tuned to
+/// match the Go legacy tool's `priority.go` behavior — do not change without
+/// updating conformance fixtures (78 tests).
+///
+/// Design rationale:
+/// - PageRank (0.22) + betweenness (0.20) = 42% structural: ensures graph
+///   centrality dominates over cosmetic metadata for ranking decisions.
+/// - BlockerRatio (0.13): rewards issues that unblock the most downstream work.
+/// - PriorityBoost + urgency + risk (0.30 combined): respects declared priority
+///   and status without letting any single metadata field override the graph.
+/// - Staleness (0.05): minor tiebreaker — prevents long-dead items from floating
+///   up, but does not dominate over structural signals.
 const W_PAGERANK: f64 = 0.22;
 const W_BETWEENNESS: f64 = 0.20;
 const W_BLOCKER_RATIO: f64 = 0.13;
@@ -145,7 +159,8 @@ fn compute_impact_score(
         .updated_at
         .map(|dt| dt.timestamp())
         .unwrap_or(ctx.now_ts);
-    let days_stale = ((ctx.now_ts - updated_ts) as f64 / 86400.0).max(0.0);
+    const SECS_PER_DAY: f64 = 86_400.0;
+    let days_stale = ((ctx.now_ts - updated_ts) as f64 / SECS_PER_DAY).max(0.0);
     // Inverse staleness: recently updated items score higher.  Cap at 90 days.
     let staleness_norm = 1.0 - (days_stale / 90.0).min(1.0);
 

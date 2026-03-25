@@ -460,8 +460,9 @@ fn chrono_now() -> String {
         .map_or(0, |d| d.as_secs());
 
     // Convert epoch seconds to ISO-8601
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
+    const SECS_PER_DAY: u64 = 86_400;
+    let days = secs / SECS_PER_DAY;
+    let time_secs = secs % SECS_PER_DAY;
     let hours = time_secs / 3600;
     let minutes = (time_secs % 3600) / 60;
     let seconds = time_secs % 60;

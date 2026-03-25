@@ -911,7 +911,8 @@ pub fn build_causality_chain(
     };
     let longest_gap_ms = gaps.iter().copied().max().unwrap_or(0);
     let longest_gap_desc = if longest_gap_ms > 0 {
-        let days = longest_gap_ms / 86_400_000;
+        const MS_PER_DAY: u64 = 86_400_000;
+        let days = longest_gap_ms / MS_PER_DAY;
         if days > 0 {
             format!("{days}d gap between events")
         } else {
@@ -923,7 +924,8 @@ pub fn build_causality_chain(
     };
 
     // Generate summary and recommendations
-    let total_days = total_duration_ms / 86_400_000;
+    const MS_PER_DAY_TOTAL: u64 = 86_400_000;
+    let total_days = total_duration_ms / MS_PER_DAY_TOTAL;
     let summary = if is_complete {
         format!("Completed in {total_days}d ({blocked_percentage:.0}% blocked)")
     } else {
@@ -1027,7 +1029,8 @@ fn parse_timestamp_ms(ts: &str) -> Option<u64> {
 
     // Simple epoch calculation (approximate, good enough for duration differences)
     let days_since_epoch = days_from_date(year, month, day)?;
-    Some(((days_since_epoch * 86400) + (hour * 3600) + (minute * 60) + second) * 1000)
+    const SECS_PER_DAY: u64 = 86_400;
+    Some(((days_since_epoch * SECS_PER_DAY) + (hour * 3600) + (minute * 60) + second) * 1000)
 }
 
 fn days_from_date(year: u64, month: u64, day: u64) -> Option<u64> {

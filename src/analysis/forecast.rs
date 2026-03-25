@@ -389,7 +389,8 @@ fn duration_days(days: f64) -> Duration {
         return Duration::zero();
     }
 
-    let nanos = truncate_f64_to_i64(days * 86_400.0 * 1_000_000_000.0)
+    const NANOS_PER_DAY: f64 = 86_400.0 * 1_000_000_000.0;
+    let nanos = truncate_f64_to_i64(days * NANOS_PER_DAY)
         .unwrap_or(i64::MAX)
         .max(0);
     Duration::nanoseconds(nanos)

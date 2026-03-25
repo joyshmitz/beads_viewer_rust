@@ -232,12 +232,9 @@ pub fn apply_recipe(
                 return false;
             }
 
-            // Has blockers filter
-            if recipe.filters.has_blockers == Some(true) && !actionable_ids.contains(&rec.id) {
-                // has_blockers = true means only show items WITH blockers
-                // (items NOT in actionable list)
-            } else if recipe.filters.has_blockers == Some(true) && actionable_ids.contains(&rec.id)
-            {
+            // Has blockers filter: when has_blockers=true, reject items that are
+            // actionable (no blockers). Non-actionable items (with blockers) pass through.
+            if recipe.filters.has_blockers == Some(true) && actionable_ids.contains(&rec.id) {
                 return false;
             }
 

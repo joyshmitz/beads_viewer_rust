@@ -4,6 +4,7 @@ use serde::Serialize;
 use crate::analysis::graph::{GraphMetrics, IssueGraph};
 use crate::model::Issue;
 
+const SECS_PER_DAY: u32 = 86_400;
 const STALE_WARNING_DAYS: f64 = 14.0;
 const STALE_CRITICAL_DAYS: f64 = 30.0;
 const IN_PROGRESS_STALE_MULTIPLIER: f64 = 0.5;
@@ -176,7 +177,7 @@ fn detect_stale_issues(issues: &[Issue], now: DateTime<Utc>, alerts: &mut Vec<Al
         if inactivity.num_seconds() < 0 {
             continue;
         }
-        let days = inactivity.num_seconds() as f64 / 86_400.0;
+        let days = inactivity.num_seconds() as f64 / f64::from(SECS_PER_DAY);
 
         let severity = if days >= critical_days {
             Some(AlertSeverity::Critical)

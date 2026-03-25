@@ -1028,7 +1028,8 @@ pub fn compute_history_stats(
                 .map(|event| event.timestamp.as_str()),
         ) {
             let seconds_i32 = i32::try_from(duration.num_seconds()).unwrap_or(i32::MAX);
-            claim_to_close_days.push(f64::from(seconds_i32) / 86_400.0);
+            const SECS_PER_DAY: f64 = 86_400.0;
+            claim_to_close_days.push(f64::from(seconds_i32) / SECS_PER_DAY);
         }
     }
 

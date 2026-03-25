@@ -3231,7 +3231,7 @@ impl BvrApp {
         let selected_id = self.selected_issue().map(|issue| issue.id.clone());
 
         let use_two_phase =
-            issues.len() > crate::analysis::graph::AnalysisConfig::BACKGROUND_THRESHOLD;
+            issues.len() > crate::analysis::graph::AnalysisConfig::background_threshold();
         if use_two_phase {
             self.analyzer = Analyzer::new_fast(issues);
             #[cfg(not(test))]
@@ -9311,7 +9311,7 @@ impl BvrApp {
             .map(|i| i.id.clone());
 
         let use_two_phase =
-            issues.len() > crate::analysis::graph::AnalysisConfig::BACKGROUND_THRESHOLD;
+            issues.len() > crate::analysis::graph::AnalysisConfig::background_threshold();
         if use_two_phase {
             self.analyzer = Analyzer::new_fast(issues);
             #[cfg(not(test))]
@@ -13579,7 +13579,7 @@ fn new_app_with_background(
         .ok()
         .and_then(|beads_dir| beads_dir.parent().map(std::path::Path::to_path_buf));
 
-    let use_two_phase = issues.len() > crate::analysis::graph::AnalysisConfig::BACKGROUND_THRESHOLD;
+    let use_two_phase = issues.len() > crate::analysis::graph::AnalysisConfig::background_threshold();
     let analyzer = if use_two_phase {
         Analyzer::new_fast(issues)
     } else {

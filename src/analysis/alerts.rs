@@ -91,11 +91,34 @@ pub struct RobotAlertsOutput {
     pub usage_hints: Vec<String>,
 }
 
+/// Tunable thresholds for alert generation.
+#[derive(Debug, Clone)]
+pub struct AlertThresholds {
+    pub stale_warning_days: f64,
+    pub stale_critical_days: f64,
+    pub in_progress_stale_multiplier: f64,
+    pub blocking_cascade_info: usize,
+    pub blocking_cascade_warning: usize,
+}
+
+impl Default for AlertThresholds {
+    fn default() -> Self {
+        Self {
+            stale_warning_days: STALE_WARNING_DAYS,
+            stale_critical_days: STALE_CRITICAL_DAYS,
+            in_progress_stale_multiplier: IN_PROGRESS_STALE_MULTIPLIER,
+            blocking_cascade_info: BLOCKING_CASCADE_INFO_THRESHOLD,
+            blocking_cascade_warning: BLOCKING_CASCADE_WARNING_THRESHOLD,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct AlertOptions {
     pub severity: Option<String>,
     pub alert_type: Option<String>,
     pub alert_label: Option<String>,
+    pub thresholds: AlertThresholds,
 }
 
 #[must_use]
@@ -109,8 +132,8 @@ pub fn generate_robot_alerts_output(
 
     let mut alerts = Vec::<Alert>::new();
     detect_new_cycles(metrics, now, &mut alerts);
-    detect_stale_issues(issues, now, &mut alerts);
-    detect_blocking_cascades(issues, graph, now, &mut alerts);
+    detect_stale_issues(issues, now, &options.thresholds, &mut alerts);
+    detect_blocking_cascades(issues, graph, now, &options.thresholds, &mut alerts);
 
     alerts.retain(|alert| matches_alert_filters(alert, options));
     let summary = summarize_alerts(&alerts);
@@ -155,7 +178,12 @@ fn detect_new_cycles(metrics: &GraphMetrics, now: DateTime<Utc>, alerts: &mut Ve
     });
 }
 
-fn detect_stale_issues(issues: &[Issue], now: DateTime<Utc>, alerts: &mut Vec<Alert>) {
+fn detect_stale_issues(
+    issues: &[Issue],
+    now: DateTime<Utc>,
+    thresholds: &AlertThresholds,
+    alerts: &mut Vec<Alert>,
+) {
     for issue in issues {
         let status = issue.normalized_status();
         if status == "closed" || status == "tombstone" {
@@ -166,11 +194,11 @@ fn detect_stale_issues(issues: &[Issue], now: DateTime<Utc>, alerts: &mut Vec<Al
             continue;
         };
 
-        let mut warning_days = STALE_WARNING_DAYS;
-        let mut critical_days = STALE_CRITICAL_DAYS;
+        let mut warning_days = thresholds.stale_warning_days;
+        let mut critical_days = thresholds.stale_critical_days;
         if status == "in_progress" {
-            warning_days *= IN_PROGRESS_STALE_MULTIPLIER;
-            critical_days *= IN_PROGRESS_STALE_MULTIPLIER;
+            warning_days *= thresholds.in_progress_stale_multiplier;
+            critical_days *= thresholds.in_progress_stale_multiplier;
         }
 
         let inactivity = now.signed_duration_since(last_active);
@@ -215,16 +243,17 @@ fn detect_blocking_cascades(
     issues: &[Issue],
     graph: &IssueGraph,
     now: DateTime<Utc>,
+    thresholds: &AlertThresholds,
     alerts: &mut Vec<Alert>,
 ) {
     for issue_id in graph.actionable_ids() {
         let unblocks = compute_unblocks(graph, &issue_id);
         let unblocks_count = unblocks.len();
-        if unblocks_count < BLOCKING_CASCADE_INFO_THRESHOLD {
+        if unblocks_count < thresholds.blocking_cascade_info {
             continue;
         }
 
-        let severity = if unblocks_count >= BLOCKING_CASCADE_WARNING_THRESHOLD {
+        let severity = if unblocks_count >= thresholds.blocking_cascade_warning {
             AlertSeverity::Warning
         } else {
             AlertSeverity::Info
@@ -517,6 +546,7 @@ mod tests {
                 severity: Some("warning".to_string()),
                 alert_type: None,
                 alert_label: None,
+                ..AlertOptions::default()
             },
         );
         assert!(
@@ -534,6 +564,7 @@ mod tests {
                 severity: None,
                 alert_type: Some("stale_issue".to_string()),
                 alert_label: None,
+                ..AlertOptions::default()
             },
         );
         assert!(!stale_only.alerts.is_empty());
@@ -552,6 +583,7 @@ mod tests {
                 severity: None,
                 alert_type: Some("blocking_cascade".to_string()),
                 alert_label: Some("d1".to_string()),
+                ..AlertOptions::default()
             },
         );
         assert_eq!(detail_filter.alerts.len(), 1);
@@ -565,6 +597,7 @@ mod tests {
                 severity: Some("WaRnInG".to_string()),
                 alert_type: Some("StAlE_IsSuE".to_string()),
                 alert_label: None,
+                ..AlertOptions::default()
             },
         );
         assert!(!case_insensitive.alerts.is_empty());
@@ -586,7 +619,7 @@ mod tests {
         let mut alerts = Vec::new();
         let mut i = issue("A", "open");
         i.updated_at = Some(at_15_days);
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].severity, AlertSeverity::Warning);
     }
@@ -598,7 +631,7 @@ mod tests {
         let mut alerts = Vec::new();
         let mut i = issue("A", "open");
         i.updated_at = Some(at_31_days);
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].severity, AlertSeverity::Critical);
     }
@@ -610,7 +643,7 @@ mod tests {
         let mut alerts = Vec::new();
         let mut i = issue("A", "open");
         i.updated_at = Some(fresh);
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert!(alerts.is_empty());
     }
 
@@ -623,7 +656,7 @@ mod tests {
         closed.updated_at = Some(old);
         let mut tomb = issue("B", "tombstone");
         tomb.updated_at = Some(old);
-        super::detect_stale_issues(&[closed, tomb], now, &mut alerts);
+        super::detect_stale_issues(&[closed, tomb], now, &super::AlertThresholds::default(), &mut alerts);
         assert!(alerts.is_empty());
     }
 
@@ -635,7 +668,7 @@ mod tests {
         let mut alerts = Vec::new();
         let mut i = issue("A", "in_progress");
         i.updated_at = Some(at_8_days);
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].severity, AlertSeverity::Warning);
         assert!(alerts[0].message.contains("A"));
@@ -649,7 +682,7 @@ mod tests {
         let mut alerts = Vec::new();
         let mut i = issue("A", "in_progress");
         i.updated_at = Some(at_16_days);
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].severity, AlertSeverity::Critical);
     }
@@ -662,7 +695,7 @@ mod tests {
         let mut i = issue("A", "open");
         i.updated_at = None;
         i.created_at = Some(old);
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].issue_id.as_deref(), Some("A"));
     }
@@ -672,7 +705,7 @@ mod tests {
         let now = chrono::Utc::now();
         let mut alerts = Vec::new();
         let i = issue("A", "open");
-        super::detect_stale_issues(&[i], now, &mut alerts);
+        super::detect_stale_issues(&[i], now, &super::AlertThresholds::default(), &mut alerts);
         assert!(alerts.is_empty());
     }
 
@@ -730,7 +763,7 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
         assert!(!alerts.is_empty());
         let cascade = alerts
             .iter()
@@ -766,7 +799,7 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
         let cascade = alerts
             .iter()
             .find(|a| a.alert_type == AlertType::BlockingCascade)
@@ -796,7 +829,7 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
         assert!(alerts.is_empty(), "1 dependent < threshold of 3");
     }
 
@@ -827,7 +860,7 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &mut alerts);
+        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
         let cascade = alerts
             .iter()
             .find(|a| a.alert_type == AlertType::BlockingCascade)

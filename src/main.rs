@@ -642,7 +642,7 @@ fn main() -> ExitCode {
     }
 
     if cli.robot_insights {
-        let insights = analyzer.insights();
+        let insights = analyzer.insights_with_limit(cli.insight_limit.max(1));
         let full_stats = if cli.robot_full_stats {
             Some(build_full_stats(&analyzer.metrics))
         } else {
@@ -746,6 +746,7 @@ fn main() -> ExitCode {
                 .as_ref()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty()),
+            ..AlertOptions::default()
         });
 
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {

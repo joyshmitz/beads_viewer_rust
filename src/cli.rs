@@ -109,6 +109,10 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_full_stats: bool,
 
+    /// Maximum items per insight category (bottlenecks, influencers, etc.).
+    #[arg(long, default_value_t = 20)]
+    pub insight_limit: usize,
+
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_priority: bool,
 

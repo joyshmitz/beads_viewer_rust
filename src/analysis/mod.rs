@@ -206,7 +206,7 @@ impl Analyzer {
     /// Returns true if this graph exceeds the background computation threshold.
     #[must_use]
     pub fn is_large_graph(&self) -> bool {
-        self.graph.node_count() > graph::AnalysisConfig::BACKGROUND_THRESHOLD
+        self.graph.node_count() > graph::AnalysisConfig::background_threshold()
     }
 
     /// Spawn a background thread to compute expensive metrics.
@@ -249,8 +249,14 @@ impl Analyzer {
         whatif::top_what_if_deltas(&self.issues, &self.graph, &self.metrics, top_n)
     }
 
-    #[must_use]
+    /// Default limit for insight result lists (bottlenecks, influencers, etc.).
+    pub const DEFAULT_INSIGHT_LIMIT: usize = 20;
+
     pub fn insights(&self) -> Insights {
+        self.insights_with_limit(Self::DEFAULT_INSIGHT_LIMIT)
+    }
+
+    pub fn insights_with_limit(&self, max_items: usize) -> Insights {
         let mut bottlenecks = self
             .issues
             .iter()
@@ -294,7 +300,7 @@ impl Analyzer {
                 .then_with(|| right.score.total_cmp(&left.score))
                 .then_with(|| left.id.cmp(&right.id))
         });
-        bottlenecks.truncate(15);
+        bottlenecks.truncate(max_items);
 
         let mut critical_path = self
             .metrics
@@ -309,7 +315,7 @@ impl Analyzer {
             .collect::<Vec<_>>();
         critical_path
             .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
-        critical_path.truncate(20);
+        critical_path.truncate(max_items);
 
         let mut zero_slack = self
             .metrics
@@ -415,12 +421,12 @@ impl Analyzer {
             critical_path: critical_path.into_iter().map(|(id, _)| id).collect(),
             cycles: self.metrics.cycles.clone(),
             slack: zero_slack,
-            influencers: top_metric_items(&self.metrics.pagerank, 20),
-            betweenness: top_metric_items(&self.metrics.betweenness, 20),
-            hubs: top_metric_items(&self.metrics.hubs, 20),
-            authorities: top_metric_items(&self.metrics.authorities, 20),
-            eigenvector: top_metric_items(&self.metrics.eigenvector, 20),
-            cores: top_core_items(&self.metrics.k_core, 20),
+            influencers: top_metric_items(&self.metrics.pagerank, max_items),
+            betweenness: top_metric_items(&self.metrics.betweenness, max_items),
+            hubs: top_metric_items(&self.metrics.hubs, max_items),
+            authorities: top_metric_items(&self.metrics.authorities, max_items),
+            eigenvector: top_metric_items(&self.metrics.eigenvector, max_items),
+            cores: top_core_items(&self.metrics.k_core, max_items),
             articulation_points,
             keystones,
             orphans,

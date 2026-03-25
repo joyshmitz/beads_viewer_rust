@@ -252,8 +252,18 @@ impl AnalysisConfig {
         }
     }
 
-    /// Node-count threshold above which background computation is used.
+    /// Default node-count threshold above which background computation is used.
     pub const BACKGROUND_THRESHOLD: usize = 200;
+
+    /// Read the background threshold from `BVR_BACKGROUND_THRESHOLD` env var,
+    /// falling back to [`Self::BACKGROUND_THRESHOLD`] if unset or invalid.
+    #[must_use]
+    pub fn background_threshold() -> usize {
+        std::env::var("BVR_BACKGROUND_THRESHOLD")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(Self::BACKGROUND_THRESHOLD)
+    }
 }
 
 /// Record of a metric that was skipped during analysis.

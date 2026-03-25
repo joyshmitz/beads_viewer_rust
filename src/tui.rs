@@ -2636,14 +2636,21 @@ impl Model for BvrApp {
 
             detail_viewport_height = panes[1].height.saturating_sub(2) as usize;
             let detail_text = if matches!(self.mode, ViewMode::Board) {
-                let (text, offset, total_lines) =
-                    self.board_detail_render_state(detail_viewport_height);
+                let rendered = self.board_detail_render_text();
+                let total_lines = rendered.lines().len();
+                let max_offset = total_lines.saturating_sub(detail_viewport_height);
+                let offset = self.board_detail_scroll_offset.min(max_offset);
                 board_detail_line = Some((offset, total_lines));
-                RichText::raw(text)
+                rendered
             } else if matches!(self.mode, ViewMode::Graph) {
                 self.graph_detail_render_text()
             } else {
                 self.detail_panel_render_text()
+            };
+            let detail_scroll = if matches!(self.mode, ViewMode::Board) {
+                self.board_detail_scroll_offset
+            } else {
+                usize::from(saturating_scroll_offset(self.detail_scroll_offset))
             };
             Paragraph::new(detail_text)
                 .block(semantic_panel_block(
@@ -2651,7 +2658,7 @@ impl Model for BvrApp {
                     detail_focused,
                     SemanticTone::Accent,
                 ))
-                .scroll((saturating_scroll_offset(self.detail_scroll_offset), 0))
+                .scroll((saturating_scroll_offset(detail_scroll), 0))
                 .render(panes[1], frame);
             record_detail_content_area(block_inner_rect(panes[1]));
         }
@@ -2680,12 +2687,20 @@ impl Model for BvrApp {
                         }
                     },
                 );
-                Some(RichText::raw(format!(
-                    "Board mode: lane counts, queued IDs, and selected issue delivery context | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
-                    self.board_grouping.label(),
-                    self.board_empty_visibility.label(),
-                    detail_hint,
-                )))
+                if self.status_msg.is_empty() {
+                    let mut footer = format!(
+                        "Board mode: lane counts, queued IDs, and selected issue delivery context | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
+                        self.board_grouping.label(),
+                        self.board_empty_visibility.label(),
+                        detail_hint,
+                    );
+                    if self.should_open_selected_issue_external_ref() {
+                        footer.push_str(" | o open link | y copy link");
+                    }
+                    Some(RichText::raw(footer))
+                } else {
+                    Some(RichText::raw(self.status_msg.clone()))
+                }
             }
             ViewMode::Insights => {
                 if self.status_msg.is_empty() {
@@ -6929,7 +6944,7 @@ impl BvrApp {
     fn should_open_selected_issue_external_ref(&self) -> bool {
         matches!(
             self.mode,
-            ViewMode::Main | ViewMode::Insights | ViewMode::Graph
+            ViewMode::Main | ViewMode::Board | ViewMode::Insights | ViewMode::Graph
         ) && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
@@ -6937,7 +6952,7 @@ impl BvrApp {
     fn should_copy_selected_issue_external_ref(&self) -> bool {
         matches!(
             self.mode,
-            ViewMode::Main | ViewMode::Insights | ViewMode::Graph
+            ViewMode::Main | ViewMode::Board | ViewMode::Insights | ViewMode::Graph
         ) && matches!(self.focus, FocusPane::Detail)
             && self.selected_issue_external_ref_url().is_some()
     }
@@ -6987,6 +7002,15 @@ impl BvrApp {
                     line_index,
                     usize::from(saturating_scroll_offset(self.detail_scroll_offset)),
                 )
+            }
+            ViewMode::Board => {
+                let detail_text = self.board_detail_render_text();
+                let line_index = detail_text.lines().iter().position(|line| {
+                    ftui::text::Line::spans(line)
+                        .iter()
+                        .any(|span| span.link.is_some())
+                })?;
+                (detail_text, line_index, self.board_detail_scroll_offset)
             }
             ViewMode::Insights => {
                 let detail_text = self.insights_detail_render_text();
@@ -7058,7 +7082,7 @@ impl BvrApp {
         }
 
         match self.mode {
-            ViewMode::Main | ViewMode::Insights | ViewMode::Graph => {
+            ViewMode::Main | ViewMode::Board | ViewMode::Insights | ViewMode::Graph => {
                 self.selected_issue_external_ref_url().is_some()
             }
             ViewMode::History => self.history_selected_commit_url().is_some(),
@@ -7072,7 +7096,7 @@ impl BvrApp {
         }
 
         match self.mode {
-            ViewMode::Main | ViewMode::Insights | ViewMode::Graph => {
+            ViewMode::Main | ViewMode::Board | ViewMode::Insights | ViewMode::Graph => {
                 self.open_selected_issue_external_ref();
             }
             ViewMode::History => self.history_open_in_browser(),
@@ -7088,7 +7112,7 @@ impl BvrApp {
         }
 
         match self.mode {
-            ViewMode::Main | ViewMode::Insights | ViewMode::Graph => {
+            ViewMode::Main | ViewMode::Board | ViewMode::Insights | ViewMode::Graph => {
                 self.copy_selected_issue_external_ref();
                 true
             }
@@ -11055,6 +11079,44 @@ impl BvrApp {
                 RichSpan::styled("(o open, y copy)", tokens::dim()),
             ]));
         }
+        RichText::from_lines(lines)
+    }
+
+    fn board_detail_render_text(&self) -> RichText {
+        let external_ref = self.selected_issue_external_ref_url();
+        let mut lines = Vec::new();
+        let mut inserted_link = false;
+
+        for line in self.board_detail_text().lines() {
+            if let Some(url) = external_ref
+                && !inserted_link
+                && line.is_empty()
+            {
+                lines.push(RichLine::from_spans([
+                    RichSpan::raw("External Link: "),
+                    RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                    RichSpan::styled("  ", tokens::dim()),
+                    RichSpan::styled("(o open, y copy)", tokens::dim()),
+                ]));
+                lines.push(RichLine::raw(""));
+                inserted_link = true;
+            }
+
+            lines.push(RichLine::raw(line));
+        }
+
+        if let Some(url) = external_ref
+            && !inserted_link
+        {
+            lines.push(RichLine::raw(""));
+            lines.push(RichLine::from_spans([
+                RichSpan::raw("External Link: "),
+                RichSpan::styled(url, tokens::panel_title_focused()).link(url),
+                RichSpan::styled("  ", tokens::dim()),
+                RichSpan::styled("(o open, y copy)", tokens::dim()),
+            ]));
+        }
+
         RichText::from_lines(lines)
     }
 
@@ -19735,6 +19797,21 @@ mod tests {
     }
 
     #[test]
+    fn board_detail_open_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Board, 0);
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("mailto:test@example.com".into());
+        assert!(!app.should_open_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        assert!(app.should_open_selected_issue_external_ref());
+    }
+
+    #[test]
     fn main_detail_copy_shortcut_only_activates_for_detail_focus_with_http_ref() {
         let mut app = new_app(ViewMode::Main, 0);
         assert!(!app.should_copy_selected_issue_external_ref());
@@ -19765,6 +19842,21 @@ mod tests {
         for issue in &mut app.analyzer.issues {
             issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
         }
+        assert!(app.should_copy_selected_issue_external_ref());
+    }
+
+    #[test]
+    fn board_detail_copy_shortcut_only_activates_for_detail_focus_with_http_ref() {
+        let mut app = new_app(ViewMode::Board, 0);
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.focus = FocusPane::Detail;
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("mailto:test@example.com".into());
+        assert!(!app.should_copy_selected_issue_external_ref());
+
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
         assert!(app.should_copy_selected_issue_external_ref());
     }
 
@@ -19868,6 +19960,61 @@ mod tests {
         assert!(
             rendered.contains("y copy link"),
             "expected graph footer to advertise copy-link hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn board_detail_render_shows_external_ref_link_actions() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let detail = app.board_detail_render_text();
+        let urls = detail
+            .lines()
+            .iter()
+            .flat_map(ftui::text::Line::spans)
+            .filter_map(|span| span.link.as_deref())
+            .collect::<Vec<_>>();
+        assert!(
+            urls.iter()
+                .any(|url| *url == "https://github.com/org/repo/issues/42"),
+            "expected board detail hyperlink span to be rendered, got {urls:?}"
+        );
+
+        let rendered = detail.to_plain_text();
+        assert!(
+            rendered.contains("(o open, y copy)"),
+            "expected board detail inline external-ref action hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn board_footer_shows_external_ref_commands_when_detail_link_is_available() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("o open link"),
+            "expected board footer to advertise open-link hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("y copy link"),
+            "expected board footer to advertise copy-link hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn board_footer_shows_status_message_when_present() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.status_msg = "Copied external issue reference to clipboard".into();
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("Copied external issue reference to clipboard"),
+            "expected board footer to surface status message, got:\n{rendered}"
         );
     }
 
@@ -20165,6 +20312,22 @@ mod tests {
     }
 
     #[test]
+    fn mouse_left_click_opens_board_detail_external_link() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+        let (x, y) = detail_link_click_point(&app, 120, 40).expect("detail link point");
+
+        app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+
+        assert!(
+            !app.status_msg.is_empty(),
+            "expected click to trigger open-link status"
+        );
+        assert_ne!(app.status_msg, "No external issue reference");
+    }
+
+    #[test]
     fn mouse_click_outside_main_detail_link_row_is_noop() {
         let mut app = new_app(ViewMode::Main, 0);
         app.focus = FocusPane::Detail;
@@ -20212,6 +20375,58 @@ mod tests {
 
         assert_eq!(scrolled.y, initial.y.saturating_sub(1));
         assert_eq!(scrolled.x, initial.x);
+        assert_eq!(scrolled.width, initial.width);
+    }
+
+    #[test]
+    fn current_detail_link_row_area_matches_board_hyperlink_row() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let _ = render_app(&app, 120, 40);
+        let link_area = app
+            .current_detail_link_row_area()
+            .expect("board detail link row area");
+        let detail_area = cached_detail_content_area();
+        let detail = app.board_detail_render_text();
+        let expected_row = detail
+            .lines()
+            .iter()
+            .position(|line| {
+                ftui::text::Line::spans(line)
+                    .iter()
+                    .any(|span| span.link.is_some())
+            })
+            .expect("board detail hyperlink row");
+
+        assert_eq!(
+            link_area.y,
+            detail_area
+                .y
+                .saturating_add(saturating_scroll_offset(expected_row)),
+        );
+    }
+
+    #[test]
+    fn current_detail_link_row_area_tracks_board_detail_scroll_offset() {
+        let mut app = new_app(ViewMode::Board, 0);
+        app.focus = FocusPane::Detail;
+        app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
+
+        let _ = render_app(&app, 120, 40);
+        let initial = app
+            .current_detail_link_row_area()
+            .expect("initial board detail link row area");
+
+        app.board_detail_scroll_offset = 1;
+        let _ = render_app(&app, 120, 40);
+        let scrolled = app
+            .current_detail_link_row_area()
+            .expect("scrolled board detail link row area");
+
+        assert_eq!(scrolled.y, initial.y.saturating_sub(1));
+        assert_eq!(scrolled.height, initial.height);
         assert_eq!(scrolled.width, initial.width);
     }
 

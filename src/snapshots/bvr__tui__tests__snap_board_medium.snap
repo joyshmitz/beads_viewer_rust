@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=3/3 | filter=al
 │   └────────────                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles
+Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | gr

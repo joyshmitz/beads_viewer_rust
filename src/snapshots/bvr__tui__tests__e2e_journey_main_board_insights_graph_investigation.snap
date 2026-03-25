@@ -113,7 +113,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles) | empty-lanes=Auto
+Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | grouping=status (s cyc
 
 --- Step 4: board_navigate ---
 bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issues=3/3 | filter=all | sort=default |
@@ -150,7 +150,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles) | empty-lanes=Auto
+Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | grouping=status (s cyc
 
 --- Step 5: graph_entry_from_board ---
 bvr 1 Main b Board i Insights g Graph h History | mode=Graph | focus=list | issues=3/3 | filter=all | sort=default |
@@ -261,7 +261,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Insights | focus=list | i
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Insights [bottlenecks] | s/S panel | e explanations=on | x proof=off
+Insights [bottlenecks] | Tab focus | / search | s/S panel | e explanations=on | x proof=off
 
 --- Step 8: insights_panel_cycle ---
 bvr 1 Main b Board i Insights g Graph h History | mode=Insights | focus=list | issues=3/3 | filter=all | sort=default |
@@ -298,7 +298,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Insights | focus=list | i
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Insights [keystones] | s/S panel | e explanations=on | x proof=off
+Insights [keystones] | Tab focus | / search | s/S panel | e explanations=on | x proof=off
 
 --- Step 9: main_return ---
 bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |

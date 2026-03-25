@@ -4159,12 +4159,14 @@ impl BvrApp {
                 self.start_history_search();
             }
             KeyCode::Char('/')
-                if matches!(self.mode, ViewMode::Graph) && self.focus == FocusPane::List =>
+                if matches!(self.mode, ViewMode::Graph)
+                    && matches!(self.focus, FocusPane::List | FocusPane::Detail) =>
             {
                 self.start_graph_search();
             }
             KeyCode::Char('/')
-                if matches!(self.mode, ViewMode::Insights) && self.focus == FocusPane::List =>
+                if matches!(self.mode, ViewMode::Insights)
+                    && matches!(self.focus, FocusPane::List | FocusPane::Detail) =>
             {
                 self.start_insights_search();
             }
@@ -6397,10 +6399,13 @@ impl BvrApp {
     // ── Graph search ──────────────────────────────────────────
 
     fn start_graph_search(&mut self) {
-        if !matches!(self.mode, ViewMode::Graph) || self.focus != FocusPane::List {
+        if !matches!(self.mode, ViewMode::Graph)
+            || !matches!(self.focus, FocusPane::List | FocusPane::Detail)
+        {
             return;
         }
 
+        self.focus = FocusPane::List;
         self.graph_search_active = true;
         self.graph_search_query.clear();
         self.graph_search_match_cursor = 0;
@@ -6571,10 +6576,13 @@ impl BvrApp {
     // ── Insights search ──────────────────────────────────────────
 
     fn start_insights_search(&mut self) {
-        if !matches!(self.mode, ViewMode::Insights) || self.focus != FocusPane::List {
+        if !matches!(self.mode, ViewMode::Insights)
+            || !matches!(self.focus, FocusPane::List | FocusPane::Detail)
+        {
             return;
         }
 
+        self.focus = FocusPane::List;
         self.insights_search_active = true;
         self.insights_search_query.clear();
         self.insights_search_match_cursor = 0;
@@ -15551,6 +15559,18 @@ mod tests {
     }
 
     #[test]
+    fn graph_mode_search_starts_from_detail_focus_and_returns_to_list() {
+        let mut app = new_app(ViewMode::Graph, 0);
+        app.focus = FocusPane::Detail;
+
+        app.update(key(KeyCode::Char('/')));
+
+        assert!(app.graph_search_active);
+        assert_eq!(app.focus, FocusPane::List);
+        assert!(app.graph_search_query.is_empty());
+    }
+
+    #[test]
     fn graph_mode_search_prefers_rendered_order_over_storage_order() {
         let issues = vec![
             Issue {
@@ -15767,6 +15787,18 @@ mod tests {
         assert_eq!(app.insights_search_query, "z");
         app.update(key(KeyCode::Escape));
         assert!(!app.insights_search_active);
+        assert!(app.insights_search_query.is_empty());
+    }
+
+    #[test]
+    fn insights_mode_search_starts_from_detail_focus_and_returns_to_list() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.focus = FocusPane::Detail;
+
+        app.update(key(KeyCode::Char('/')));
+
+        assert!(app.insights_search_active);
+        assert_eq!(app.focus, FocusPane::List);
         assert!(app.insights_search_query.is_empty());
     }
 

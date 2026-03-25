@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights | mode=Insights | focus=list | issues=3/3 | filter
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Insights [influencers] | s/S panel | e explanations=on | x proof=off
+Insights [influencers] | Tab focus | / search | s/S panel | e explanations=on | x proof=off

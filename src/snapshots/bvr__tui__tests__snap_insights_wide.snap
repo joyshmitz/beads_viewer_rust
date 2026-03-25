@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 │                                                   ││                                                                                     │
 │                                                   ││                                                                                     │
 └───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
-Insights [bottlenecks] | s/S panel | e explanations=on | x proof=off
+Insights [bottlenecks] | Tab focus | / search | s/S panel | e explanations=on | x proof=off

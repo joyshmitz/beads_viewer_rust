@@ -66,7 +66,7 @@ bvr 1 Main b Board i Insights | mode=Board | focus=list | issues=0/0 | filter=al
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Board mode: lane counts, queued IDs, and selected issue delivery context | grouping=status (s cycles
+Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | gr
 
 --- Step 3: empty_graph ---
 bvr 1 Main b Board i Insights g Graph | mode=Graph | focus=list | issues=0/0 | filter=all |
@@ -130,7 +130,7 @@ bvr 1 Main b Board i Insights | mode=Insights | focus=list | issues=0/0 | filter
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Insights [bottlenecks] | s/S panel | e explanations=on | x proof=off
+Insights [bottlenecks] | Tab focus | / search | s/S panel | e explanations=on | x proof=off
 
 --- Step 5: empty_actionable ---
 bvr 1 Main b Board i Insights a Actionable | mode=Actionable | focus=list | issues=0/0 | filter=all

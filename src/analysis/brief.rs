@@ -235,7 +235,7 @@ mod tests {
     fn make_triage_result() -> TriageResult {
         TriageResult {
             meta: crate::analysis::triage::TriageMeta {
-                version: "1.0.0",
+                version: env!("CARGO_PKG_VERSION"),
                 generated_at: "2025-01-01T00:00:00Z".to_string(),
                 phase2_ready: true,
                 issue_count: 5,

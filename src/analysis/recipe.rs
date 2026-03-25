@@ -456,7 +456,7 @@ pub struct FeedbackData {
 }
 
 fn default_version() -> String {
-    "1.0".to_string()
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[derive(Debug, Clone, Serialize)]

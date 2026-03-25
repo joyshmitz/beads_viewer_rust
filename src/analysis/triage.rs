@@ -721,7 +721,7 @@ pub fn compute_triage(
 
     let result = TriageResult {
         meta: TriageMeta {
-            version: "1.0.0",
+            version: env!("CARGO_PKG_VERSION"),
             generated_at: chrono::Utc::now().to_rfc3339(),
             phase2_ready: true,
             issue_count: issues.len(),

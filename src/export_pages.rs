@@ -993,7 +993,7 @@ async function init() {
   }
 
   const insightsNode = document.getElementById("insights");
-  const bottlenecks = (insights.bottlenecks ?? []).slice(0, 5)
+  const bottlenecks = (insights.Bottlenecks ?? []).slice(0, 5)
     .map((entry) => `${entry.id}: score=${entry.score.toFixed(3)} blocks=${entry.blocks_count}`);
   insightsNode.textContent = bottlenecks.length > 0
     ? bottlenecks.join("\n")
@@ -1314,7 +1314,7 @@ mod tests {
             include_closed: true,
             include_history: true,
             generator: "bvr".to_string(),
-            version: "0.1.0".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
         };
         let readme = generate_deploy_readme("Test Project", &meta);
         assert!(readme.contains("# Test Project"));
@@ -1571,6 +1571,18 @@ mod tests {
         assert!(
             insights.get("Bottlenecks").is_some(),
             "insights.json must contain Bottlenecks key"
+        );
+    }
+
+    #[test]
+    fn fallback_viewer_js_reads_exported_insights_key_shape() {
+        assert!(
+            JS_BUNDLE.contains("insights.Bottlenecks"),
+            "fallback viewer must read the serialized Insights key shape"
+        );
+        assert!(
+            !JS_BUNDLE.contains("insights.bottlenecks"),
+            "fallback viewer must not rely on a lowercase insights key that export never emits"
         );
     }
 

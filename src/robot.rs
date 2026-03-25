@@ -1638,7 +1638,7 @@ pub fn generate_robot_schemas() -> RobotSchemas {
     );
 
     RobotSchemas {
-        schema_version: "1.0.0".to_string(),
+        schema_version: env!("CARGO_PKG_VERSION").to_string(),
         generated_at: now,
         envelope,
         commands,
@@ -1801,7 +1801,7 @@ mod tests {
     #[test]
     fn robot_schema_has_required_top_level_fields() {
         let schemas = generate_robot_schemas();
-        assert_eq!(schemas.schema_version, "1.0.0");
+        assert_eq!(schemas.schema_version, env!("CARGO_PKG_VERSION"));
         assert!(!schemas.generated_at.is_empty());
         assert!(schemas.envelope.is_object());
         assert!(!schemas.commands.is_empty());
@@ -1887,7 +1887,7 @@ mod tests {
             "generated_at": "2026-03-07T00:00:00Z",
             "data_hash": "abc123",
             "output_format": "json",
-            "version": "v0.1.0"
+            "version": format!("v{}", env!("CARGO_PKG_VERSION"))
         });
 
         let rendered = render_payload(OutputFormat::Json, &payload).expect("rendered payload");

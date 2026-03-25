@@ -662,6 +662,19 @@ mod tests {
     }
 
     #[test]
+    fn agent_blurb_version_matches_constant() {
+        // Guard against BLURB_VERSION being bumped without updating the
+        // version marker inside AGENT_BLURB. If this fails, update the
+        // `<!-- bv-agent-instructions-vN -->` marker in AGENT_BLURB to
+        // match BLURB_VERSION.
+        assert_eq!(
+            get_blurb_version(AGENT_BLURB),
+            BLURB_VERSION,
+            "AGENT_BLURB marker version must match BLURB_VERSION (currently {BLURB_VERSION})"
+        );
+    }
+
+    #[test]
     fn append_blurb_adds_to_content() {
         let result = append_blurb("# Existing\n");
         assert!(result.starts_with("# Existing\n"));

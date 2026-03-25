@@ -2824,7 +2824,8 @@ fn load_issues_for_diff(cli: &Cli, diff_since: &str) -> bvr::Result<Vec<bvr::mod
                     .filter(|r| r.enabled.unwrap_or(true))
                     .collect();
                 // For single-repo workspaces, safely namespace the baseline.
-                // Multi-repo baselines would require per-repo snapshots.
+                // Multi-repo baselines are not supported; only single-repo
+                // workspaces can save/load baselines.
                 if enabled_repos.len() == 1 {
                     let repo = enabled_repos[0];
                     let prefix = repo.effective_prefix();

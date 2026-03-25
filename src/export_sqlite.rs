@@ -342,11 +342,18 @@ fn insert_metrics(
         "
         INSERT INTO issue_metrics (
             issue_id, pagerank, betweenness, critical_path_depth,
-            triage_score, blocks_count, blocked_by_count
+            triage_score, blocks_count, blocked_by_count, in_cycle
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ",
     )?;
+
+    let cycle_issue_ids = analyzer
+        .metrics
+        .cycles
+        .iter()
+        .flat_map(|cycle| cycle.iter().cloned())
+        .collect::<BTreeSet<_>>();
 
     for issue in sorted {
         stmt.execute(params![
@@ -410,6 +417,7 @@ fn insert_metrics(
                     issue.id
                 ))
             })?,
+            i64::from(cycle_issue_ids.contains(&issue.id)),
         ])?;
     }
 
@@ -640,7 +648,7 @@ pub fn rebuild_issue_overview_mv(connection: &Connection) -> Result<()> {
             COALESCE(m.blocked_by_count, 0),
             COALESCE(m.blocks_count, 0),
             COALESCE(m.critical_path_depth, 0),
-            0,
+            COALESCE(m.in_cycle, 0),
             (
                 SELECT COUNT(*)
                 FROM comments c
@@ -750,6 +758,7 @@ fn create_schema(connection: &Connection) -> Result<()> {
             triage_score REAL NOT NULL DEFAULT 0,
             blocks_count INTEGER NOT NULL DEFAULT 0,
             blocked_by_count INTEGER NOT NULL DEFAULT 0,
+            in_cycle INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (issue_id) REFERENCES issues(id)
         );
 
@@ -1207,11 +1216,11 @@ mod tests {
                 "
                 INSERT INTO issue_metrics (
                     issue_id, pagerank, betweenness, critical_path_depth,
-                    triage_score, blocks_count, blocked_by_count
+                    triage_score, blocks_count, blocked_by_count, in_cycle
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ",
-                params!["ISSUE-1", 0.25_f64, 0.1_f64, 4_i32, 0.8_f64, 1_i32, 0_i32],
+                params!["ISSUE-1", 0.25_f64, 0.1_f64, 4_i32, 0.8_f64, 1_i32, 0_i32, 0_i32],
             )
             .expect("insert metrics");
 
@@ -1500,6 +1509,68 @@ mod tests {
         assert_eq!(meta.get("issue_count"), Some(&"2".to_string()));
         assert_eq!(meta.get("dependency_count"), Some(&"1".to_string()));
         assert_eq!(meta.get("comment_count"), Some(&"1".to_string()));
+    }
+
+    #[test]
+    fn populate_export_database_marks_cycle_members_in_issue_overview() {
+        let temp = tempdir().expect("tempdir");
+        bootstrap_export_database(temp.path(), &SqliteBootstrapOptions::default())
+            .expect("bootstrap sqlite export database");
+
+        let issues = vec![
+            Issue {
+                id: "CYCLE-1".to_string(),
+                title: "Cycle 1".to_string(),
+                status: "open".to_string(),
+                priority: 1,
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "CYCLE-1".to_string(),
+                    depends_on_id: "CYCLE-2".to_string(),
+                    dep_type: "blocks".to_string(),
+                    created_by: "tester".to_string(),
+                    created_at: None,
+                }],
+                ..Issue::default()
+            },
+            Issue {
+                id: "CYCLE-2".to_string(),
+                title: "Cycle 2".to_string(),
+                status: "open".to_string(),
+                priority: 1,
+                issue_type: "task".to_string(),
+                dependencies: vec![Dependency {
+                    issue_id: "CYCLE-2".to_string(),
+                    depends_on_id: "CYCLE-1".to_string(),
+                    dep_type: "blocks".to_string(),
+                    created_by: "tester".to_string(),
+                    created_at: None,
+                }],
+                ..Issue::default()
+            },
+        ];
+
+        let analyzer = Analyzer::new(issues.clone());
+        let triage = analyzer.triage(TriageOptions::default());
+
+        populate_export_database(temp.path(), Some("Cycle Fixture"), &issues, &analyzer, &triage)
+            .expect("populate sqlite export database");
+
+        let connection =
+            Connection::open(export_database_path(temp.path())).expect("open populated database");
+
+        let cycle_flags = connection
+            .prepare("SELECT id, in_cycle FROM issue_overview_mv ORDER BY id")
+            .expect("prepare cycle query")
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .expect("query cycle flags")
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .expect("collect cycle flags");
+
+        assert_eq!(
+            cycle_flags,
+            vec![("CYCLE-1".to_string(), 1_i64), ("CYCLE-2".to_string(), 1_i64)]
+        );
     }
 
     #[test]

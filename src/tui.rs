@@ -19996,7 +19996,9 @@ mod tests {
         app.focus = FocusPane::Detail;
         app.analyzer.issues[0].external_ref = Some("https://github.com/org/repo/issues/42".into());
 
-        let rendered = render_app(&app, 120, 40);
+        // Use a wide terminal (240 cols) so the footer text is not truncated
+        // before the link hints. The footer string exceeds 200 chars.
+        let rendered = render_app(&app, 240, 40);
         assert!(
             rendered.contains("o open link"),
             "expected board footer to advertise open-link hint, got:\n{rendered}"

@@ -34,6 +34,91 @@ const W_TIME_TO_IMPACT: f64 = 0.10;
 const W_URGENCY: f64 = 0.10;
 const W_RISK: f64 = 0.10;
 
+/// Named presets for triage scoring weight emphasis.
+///
+/// Each preset applies multipliers to the default component weights,
+/// shifting emphasis without replacing the underlying scoring model.
+/// Multipliers are applied through `weight_adjustments` and renormalized
+/// to sum to 1.0, so presets compose safely with feedback adjustments.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WeightPreset {
+    /// Default Go-compatible weights (no adjustments).
+    #[default]
+    Default,
+    /// Emphasize graph structure: boost PageRank, betweenness, time-to-impact.
+    GraphHeavy,
+    /// Emphasize declared priority and urgency over graph signals.
+    PriorityFirst,
+    /// Emphasize quick wins: boost blocker ratio, time-to-impact, lower risk penalty.
+    QuickWins,
+    /// Emphasize risk reduction: boost risk, betweenness, blocker ratio.
+    RiskAverse,
+}
+
+impl WeightPreset {
+    /// Return weight adjustment multipliers for this preset.
+    /// Values > 1.0 boost the component; < 1.0 diminish it.
+    #[must_use]
+    pub fn adjustments(self) -> HashMap<String, f64> {
+        match self {
+            Self::Default => HashMap::new(),
+            Self::GraphHeavy => [
+                ("PageRank", 1.5),
+                ("Betweenness", 1.5),
+                ("TimeToImpact", 1.3),
+                ("PriorityBoost", 0.6),
+                ("Urgency", 0.6),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+            Self::PriorityFirst => [
+                ("PriorityBoost", 2.0),
+                ("Urgency", 1.5),
+                ("PageRank", 0.7),
+                ("Betweenness", 0.7),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+            Self::QuickWins => [
+                ("BlockerRatio", 1.5),
+                ("TimeToImpact", 1.5),
+                ("Risk", 0.6),
+                ("Staleness", 0.5),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+            Self::RiskAverse => [
+                ("Risk", 1.8),
+                ("Betweenness", 1.3),
+                ("BlockerRatio", 1.3),
+                ("PageRank", 0.8),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+        }
+    }
+
+    /// All available preset names (for CLI help text).
+    pub const ALL: &[&str] = &["default", "graph-heavy", "priority-first", "quick-wins", "risk-averse"];
+
+    /// Parse a preset name.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "default" => Some(Self::Default),
+            "graph-heavy" => Some(Self::GraphHeavy),
+            "priority-first" => Some(Self::PriorityFirst),
+            "quick-wins" => Some(Self::QuickWins),
+            "risk-averse" => Some(Self::RiskAverse),
+            _ => None,
+        }
+    }
+}
+
 /// One component of the impact score breakdown.
 #[derive(Debug, Clone, Serialize)]
 pub struct ScoreComponent {
@@ -1039,7 +1124,7 @@ mod tests {
     use crate::analysis::graph::{GraphMetrics, IssueGraph};
     use crate::model::Issue;
 
-    use super::{TriageOptions, TriageScoringOptions, compute_triage};
+    use super::{TriageOptions, TriageScoringOptions, WeightPreset, compute_triage};
 
     fn test_lookups<'a>(
         issues: &'a [Issue],
@@ -2036,5 +2121,44 @@ mod tests {
             (weight_sum - 1.0).abs() < 1e-9,
             "adjusted weights should sum to 1.0, got {weight_sum}"
         );
+    }
+
+    #[test]
+    fn weight_preset_from_name_roundtrips() {
+        for name in WeightPreset::ALL {
+            assert!(
+                WeightPreset::from_name(name).is_some(),
+                "preset {name} should parse"
+            );
+        }
+        assert!(WeightPreset::from_name("nonexistent").is_none());
+    }
+
+    #[test]
+    fn weight_preset_default_is_empty() {
+        assert!(WeightPreset::Default.adjustments().is_empty());
+    }
+
+    #[test]
+    fn weight_preset_adjustments_are_within_clamp_range() {
+        // All preset multipliers must be within the 0.5–2.0 clamp range
+        // enforced by compute_impact_score, otherwise they'd be silently clamped.
+        for name in WeightPreset::ALL {
+            let preset = WeightPreset::from_name(name).unwrap();
+            for (component, value) in preset.adjustments() {
+                assert!(
+                    (0.5..=2.0).contains(&value),
+                    "preset {name}: {component} adjustment {value} is outside 0.5–2.0 clamp range"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn weight_preset_graph_heavy_boosts_structural_signals() {
+        let adj = WeightPreset::GraphHeavy.adjustments();
+        assert!(adj["PageRank"] > 1.0);
+        assert!(adj["Betweenness"] > 1.0);
+        assert!(adj["PriorityBoost"] < 1.0);
     }
 }

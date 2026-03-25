@@ -348,6 +348,10 @@ pub struct Cli {
     #[arg(long)]
     pub recipe: Option<String>,
 
+    /// Scoring weight preset (default, graph-heavy, priority-first, quick-wins, risk-averse).
+    #[arg(long)]
+    pub weight_preset: Option<String>,
+
     /// Emit a shell script for the top recommendations.
     #[arg(long, action = ArgAction::SetTrue)]
     pub emit_script: bool,

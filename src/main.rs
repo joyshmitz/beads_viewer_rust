@@ -504,7 +504,24 @@ fn main() -> ExitCode {
         let work_dir = feedback_project_dir(&cli);
         bvr::analysis::recipe::FeedbackData::load(&work_dir)
     };
-    let feedback_weight_adjustments = feedback_data.weight_adjustment_map();
+    let mut feedback_weight_adjustments = feedback_data.weight_adjustment_map();
+
+    // Merge --weight-preset adjustments with feedback adjustments (preset first, feedback on top).
+    if let Some(preset_name) = &cli.weight_preset {
+        if let Some(preset) = bvr::analysis::triage::WeightPreset::from_name(preset_name) {
+            for (key, value) in preset.adjustments() {
+                feedback_weight_adjustments
+                    .entry(key)
+                    .and_modify(|existing| *existing *= value)
+                    .or_insert(value);
+            }
+        } else {
+            eprintln!(
+                "warning: unknown weight preset {preset_name:?}, using default. Available: {}",
+                bvr::analysis::triage::WeightPreset::ALL.join(", ")
+            );
+        }
+    }
 
     if cli.robot_next || cli.robot_triage || cli.robot_triage_by_track || cli.robot_triage_by_label
     {

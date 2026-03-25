@@ -14,14 +14,14 @@ use crate::{BvrError, Result};
 
 pub const SQLITE_EXPORT_FILENAME: &str = "beads.sqlite3";
 pub const SQLITE_EXPORT_CONFIG_FILENAME: &str = "beads.sqlite3.config.json";
-pub const SQLITE_EXPORT_SCHEMA_VERSION: i32 = 1;
+pub const SQLITE_EXPORT_SCHEMA_VERSION: i32 = 2;
 pub const SQLITE_WRITER_CONTRACT_VERSION: &str = "1";
 pub const DEFAULT_SQLITE_PAGE_SIZE: u32 = 1_024;
 pub const DEFAULT_SQLITE_CHUNK_THRESHOLD_BYTES: u64 = 5 * 1024 * 1024;
 pub const DEFAULT_SQLITE_CHUNK_SIZE_BYTES: u64 = 1_048_576;
 
 const EXPORT_META_KEYS: &[(&str, &str)] = &[
-    ("schema_version", "1"),
+    ("schema_version", "2"),
     ("writer_contract_version", SQLITE_WRITER_CONTRACT_VERSION),
     ("layout", "single-file"),
 ];
@@ -1055,7 +1055,10 @@ mod tests {
         }
 
         let meta = export_meta(&connection);
-        assert_eq!(meta.get("schema_version"), Some(&"1".to_string()));
+        assert_eq!(
+            meta.get("schema_version"),
+            Some(&SQLITE_EXPORT_SCHEMA_VERSION.to_string())
+        );
         assert_eq!(
             meta.get("writer_contract_version"),
             Some(&SQLITE_WRITER_CONTRACT_VERSION.to_string())
@@ -1107,6 +1110,24 @@ mod tests {
             .expect_err("conflicting schema version should fail");
         assert!(
             err.to_string().contains("schema version 99"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn bootstrap_export_database_rejects_previous_schema_version() {
+        let temp = tempdir().expect("tempdir");
+        let db_path = export_database_path(temp.path());
+        let connection = Connection::open(&db_path).expect("open sqlite database");
+        connection
+            .pragma_update(None, "user_version", 1_i32)
+            .expect("set prior schema version");
+        drop(connection);
+
+        let err = bootstrap_export_database(temp.path(), &SqliteBootstrapOptions::default())
+            .expect_err("previous schema version should fail");
+        assert!(
+            err.to_string().contains("schema version 1"),
             "unexpected error: {err}"
         );
     }

@@ -2689,7 +2689,7 @@ impl Model for BvrApp {
                 );
                 if self.status_msg.is_empty() {
                     let mut footer = format!(
-                        "Board mode: lane counts, queued IDs, and selected issue delivery context | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
+                        "Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
                         self.board_grouping.label(),
                         self.board_empty_visibility.label(),
                         detail_hint,
@@ -20022,6 +20022,21 @@ mod tests {
         assert!(
             rendered.contains("Copied external issue reference to clipboard"),
             "expected board footer to surface status message, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn board_footer_advertises_focus_and_search_controls() {
+        let app = new_app(ViewMode::Board, 0);
+
+        let rendered = render_app(&app, 240, 40);
+        assert!(
+            rendered.contains("Tab focus"),
+            "expected board footer to advertise focus switching, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("/ search"),
+            "expected board footer to advertise search, got:\n{rendered}"
         );
     }
 

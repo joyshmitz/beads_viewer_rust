@@ -909,9 +909,10 @@ pub fn build_causality_chain(
     } else {
         gaps.iter().sum::<u64>() / gaps.len() as u64
     };
+    const MS_PER_DAY: u64 = 86_400_000;
+
     let longest_gap_ms = gaps.iter().copied().max().unwrap_or(0);
     let longest_gap_desc = if longest_gap_ms > 0 {
-        const MS_PER_DAY: u64 = 86_400_000;
         let days = longest_gap_ms / MS_PER_DAY;
         if days > 0 {
             format!("{days}d gap between events")
@@ -924,8 +925,7 @@ pub fn build_causality_chain(
     };
 
     // Generate summary and recommendations
-    const MS_PER_DAY_TOTAL: u64 = 86_400_000;
-    let total_days = total_duration_ms / MS_PER_DAY_TOTAL;
+    let total_days = total_duration_ms / MS_PER_DAY;
     let summary = if is_complete {
         format!("Completed in {total_days}d ({blocked_percentage:.0}% blocked)")
     } else {

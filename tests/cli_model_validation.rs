@@ -911,7 +911,7 @@ fn robot_schema_without_beads_file_succeeds() {
         json["commands"].is_object(),
         "schema commands map must be present"
     );
-    assert_eq!(json["schema_version"], "1.0.0");
+    assert_eq!(json["schema_version"], env!("CARGO_PKG_VERSION"));
 }
 
 #[test]

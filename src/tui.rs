@@ -11120,6 +11120,7 @@ impl BvrApp {
         RichText::from_lines(lines)
     }
 
+    #[cfg(test)]
     fn board_detail_render_state(&self, visible_height: usize) -> (String, usize, usize) {
         let full_text = self.board_detail_text();
         let total_lines = full_text.lines().count();

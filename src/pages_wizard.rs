@@ -219,9 +219,9 @@ impl Default for WizardConfig {
 
 impl WizardConfig {
     fn has_output_path(&self) -> bool {
-        self.output_path
-            .as_ref()
-            .is_some_and(|path| !path.as_os_str().is_empty())
+        self.output_path.as_ref().is_some_and(|path| {
+            !path.as_os_str().is_empty() && !path.to_string_lossy().trim().is_empty()
+        })
     }
 
     /// Validate the config for completeness before export.
@@ -1292,6 +1292,13 @@ mod tests {
     }
 
     #[test]
+    fn validate_for_export_rejects_whitespace_only_output_path() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("   "));
+        assert!(config.validate_for_export().is_err());
+    }
+
+    #[test]
     fn validate_for_deploy_requires_deploy_target() {
         let mut config = WizardConfig::default();
         config.output_path = Some(PathBuf::from("./pages"));
@@ -1304,6 +1311,14 @@ mod tests {
         config.output_path = Some(PathBuf::from("./pages"));
         config.deploy_target = Some(DeployTarget::Local);
         assert!(config.validate_for_deploy().is_ok());
+    }
+
+    #[test]
+    fn validate_for_deploy_rejects_whitespace_only_output_path() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("   "));
+        config.deploy_target = Some(DeployTarget::Local);
+        assert!(config.validate_for_deploy().is_err());
     }
 
     #[test]

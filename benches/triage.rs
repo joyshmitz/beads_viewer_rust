@@ -226,6 +226,7 @@ fn bench_alerts(c: &mut Criterion) {
         severity: None,
         alert_type: None,
         alert_label: None,
+        ..AlertOptions::default()
     };
     for &size in &[100, 500, 1000] {
         let issues = gen_dense(size);

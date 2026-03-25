@@ -4457,26 +4457,39 @@ impl BvrApp {
             KeyCode::Char('l') if matches!(self.mode, ViewMode::Insights) => {
                 self.focus = FocusPane::Detail;
             }
-            KeyCode::Char('h') if matches!(self.mode, ViewMode::Main | ViewMode::History) => {
+            KeyCode::Char('h') if matches!(self.mode, ViewMode::Main) => {
                 self.toggle_history_mode();
             }
-            KeyCode::Char('c') if matches!(self.mode, ViewMode::History) => {
+            KeyCode::Char('h')
+                if matches!(self.mode, ViewMode::History) && !self.history_file_tree_focus =>
+            {
+                self.toggle_history_mode();
+            }
+            KeyCode::Char('c')
+                if matches!(self.mode, ViewMode::History) && !self.history_file_tree_focus =>
+            {
                 self.cycle_history_confidence();
             }
-            KeyCode::Char('v') if matches!(self.mode, ViewMode::History) => {
+            KeyCode::Char('v')
+                if matches!(self.mode, ViewMode::History) && !self.history_file_tree_focus =>
+            {
                 self.toggle_history_view_mode();
             }
             KeyCode::Char('s') if matches!(self.mode, ViewMode::Main) => self.cycle_list_sort(),
             KeyCode::Char('m') if matches!(self.mode, ViewMode::Insights) => {
                 self.toggle_insights_heatmap();
             }
-            KeyCode::Char('y') if matches!(self.mode, ViewMode::History) => {
+            KeyCode::Char('y')
+                if matches!(self.mode, ViewMode::History) && !self.history_file_tree_focus =>
+            {
                 self.history_copy_to_clipboard();
             }
             KeyCode::Char('y') if self.should_copy_selected_issue_external_ref() => {
                 self.copy_selected_issue_external_ref();
             }
-            KeyCode::Char('o') if matches!(self.mode, ViewMode::History) => {
+            KeyCode::Char('o')
+                if matches!(self.mode, ViewMode::History) && !self.history_file_tree_focus =>
+            {
                 self.history_open_in_browser();
             }
             KeyCode::Char('o') if self.should_open_selected_issue_external_ref() => {
@@ -19673,6 +19686,42 @@ mod tests {
         assert!(
             !rendered.contains("o open commit"),
             "expected generic commit action hints to be hidden while file tree owns focus, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn history_file_tree_focus_blocks_view_toggle_shortcuts() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.history_show_file_tree = true;
+        app.history_file_tree_focus = true;
+
+        app.update(key(KeyCode::Char('v')));
+        assert_eq!(app.history_view_mode, HistoryViewMode::Git);
+
+        app.update(key(KeyCode::Char('h')));
+        assert_eq!(app.mode, ViewMode::History);
+        assert!(app.history_file_tree_focus);
+    }
+
+    #[test]
+    fn history_file_tree_focus_blocks_copy_and_open_shortcuts() {
+        let repo = init_temp_repo_with_remote("git@github.com:owner/repo.git");
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.repo_root = Some(repo.path().to_path_buf());
+        app.history_show_file_tree = true;
+        app.history_file_tree_focus = true;
+        app.history_status_msg = "File tree: j/k navigate, Enter filter, Esc close".into();
+
+        app.update(key(KeyCode::Char('y')));
+        assert_eq!(
+            app.history_status_msg,
+            "File tree: j/k navigate, Enter filter, Esc close"
+        );
+
+        app.update(key(KeyCode::Char('o')));
+        assert_eq!(
+            app.history_status_msg,
+            "File tree: j/k navigate, Enter filter, Esc close"
         );
     }
 

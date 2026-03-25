@@ -2812,57 +2812,89 @@ impl Model for BvrApp {
                 wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
             ViewMode::History => {
-                let confidence = format!(
-                    "confidence >= {:.0}%",
-                    self.history_min_confidence() * 100.0
-                );
-                let mut hints = vec![
-                    CommandHint {
-                        key: "c",
-                        desc: confidence.as_str(),
-                    },
-                    CommandHint {
-                        key: "v",
-                        desc: "bead/git",
-                    },
-                    CommandHint {
-                        key: "/",
-                        desc: "search",
-                    },
-                    CommandHint {
-                        key: "Tab",
-                        desc: "mode",
-                    },
-                    CommandHint {
-                        key: "y",
-                        desc: "copy",
-                    },
-                ];
-                if self.history_selected_commit_url().is_some() {
-                    hints.push(CommandHint {
-                        key: "o",
-                        desc: "open commit",
-                    });
+                if self.history_file_tree_focus {
+                    let mut hints = vec![
+                        CommandHint {
+                            key: "j/k",
+                            desc: "tree",
+                        },
+                        CommandHint {
+                            key: "Enter",
+                            desc: "filter",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "panes",
+                        },
+                        CommandHint {
+                            key: "Esc",
+                            desc: "close tree",
+                        },
+                    ];
+                    hints.extend([
+                        CommandHint {
+                            key: "^←/→",
+                            desc: "resize",
+                        },
+                        CommandHint {
+                            key: "^0",
+                            desc: "reset split",
+                        },
+                    ]);
+                    wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
+                } else {
+                    let confidence = format!(
+                        "confidence >= {:.0}%",
+                        self.history_min_confidence() * 100.0
+                    );
+                    let mut hints = vec![
+                        CommandHint {
+                            key: "c",
+                            desc: confidence.as_str(),
+                        },
+                        CommandHint {
+                            key: "v",
+                            desc: "bead/git",
+                        },
+                        CommandHint {
+                            key: "/",
+                            desc: "search",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "mode",
+                        },
+                        CommandHint {
+                            key: "y",
+                            desc: "copy",
+                        },
+                    ];
+                    if self.history_selected_commit_url().is_some() {
+                        hints.push(CommandHint {
+                            key: "o",
+                            desc: "open commit",
+                        });
+                    }
+                    hints.extend([
+                        CommandHint {
+                            key: "f",
+                            desc: "file-tree",
+                        },
+                        CommandHint {
+                            key: "h/Esc",
+                            desc: "back",
+                        },
+                        CommandHint {
+                            key: "^←/→",
+                            desc: "resize",
+                        },
+                        CommandHint {
+                            key: "^0",
+                            desc: "reset split",
+                        },
+                    ]);
+                    wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
                 }
-                hints.extend([
-                    CommandHint {
-                        key: "f",
-                        desc: "file-tree",
-                    },
-                    CommandHint {
-                        key: "h/Esc",
-                        desc: "back",
-                    },
-                    CommandHint {
-                        key: "^←/→",
-                        desc: "resize",
-                    },
-                    CommandHint {
-                        key: "^0",
-                        desc: "reset split",
-                    },
-                ]);
-                wrap_command_hints(&hints, rows[2].width.saturating_sub(1) as usize)
             }
             _ => unreachable!("footer rich hints only apply to main/graph/history"),
         });
@@ -19616,6 +19648,31 @@ mod tests {
         assert!(
             !rendered.contains("o open commit"),
             "expected history footer to hide open action without a commit URL, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn history_footer_switches_to_file_tree_controls_when_tree_has_focus() {
+        let mut app = history_app_with_git_cache(HistoryViewMode::Git, 0);
+        app.history_show_file_tree = true;
+        app.history_file_tree_focus = true;
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("j/k tree"),
+            "expected history footer to advertise file-tree navigation, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("Enter filter"),
+            "expected history footer to advertise file-tree filtering, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("Esc close tree"),
+            "expected history footer to advertise closing the file tree, got:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("o open commit"),
+            "expected generic commit action hints to be hidden while file tree owns focus, got:\n{rendered}"
         );
     }
 

@@ -2704,8 +2704,8 @@ impl Model for BvrApp {
             }
             ViewMode::Insights => {
                 if self.status_msg.is_empty() {
-                    Some(RichText::raw(format!(
-                        "Insights [{}] | s/S panel | e explanations={} | x proof={}",
+                    let mut footer = format!(
+                        "Insights [{}] | Tab focus | / search | s/S panel | e explanations={} | x proof={}",
                         self.insights_panel.short_label(),
                         if self.insights_show_explanations {
                             "on"
@@ -2717,7 +2717,11 @@ impl Model for BvrApp {
                         } else {
                             "off"
                         }
-                    )))
+                    );
+                    if self.should_open_selected_issue_external_ref() {
+                        footer.push_str(" | o open link | y copy link");
+                    }
+                    Some(RichText::raw(footer))
                 } else {
                     Some(RichText::raw(self.status_msg.clone()))
                 }
@@ -20046,6 +20050,40 @@ mod tests {
         assert!(
             rendered.contains("(o open, y copy)"),
             "expected insights detail inline external-ref action hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn insights_footer_shows_external_ref_commands_when_detail_link_is_available() {
+        let mut app = new_app(ViewMode::Insights, 0);
+        app.focus = FocusPane::Detail;
+        for issue in &mut app.analyzer.issues {
+            issue.external_ref = Some("https://github.com/org/repo/issues/42".into());
+        }
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("o open link"),
+            "expected insights footer to advertise open-link hint, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("y copy link"),
+            "expected insights footer to advertise copy-link hint, got:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn insights_footer_advertises_focus_and_search_controls() {
+        let app = new_app(ViewMode::Insights, 0);
+
+        let rendered = render_app(&app, 120, 40);
+        assert!(
+            rendered.contains("Tab focus"),
+            "expected insights footer to advertise focus switching, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("/ search"),
+            "expected insights footer to advertise search, got:\n{rendered}"
         );
     }
 

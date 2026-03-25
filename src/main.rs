@@ -1555,7 +1555,20 @@ fn main() -> ExitCode {
     }
 
     // ---- Drift commands (save-baseline, robot-drift) ----
+    let is_multi_repo = matches!(resolve_issue_load_target(&cli), Ok(IssueLoadTarget::WorkspaceConfig(ref p)) if {
+        loader::load_workspace_config(p)
+            .map(|c| c.repos.iter().filter(|r| r.enabled.unwrap_or(true)).count() > 1)
+            .unwrap_or(false)
+    });
+
     if let Some(ref description) = cli.save_baseline {
+        if is_multi_repo {
+            eprintln!(
+                "warning: baselines are not fully supported for multi-repo workspaces. \
+                 Issue IDs may not be namespaced correctly. Consider saving baselines \
+                 per-repo using --beads-file instead."
+            );
+        }
         let project_dir = match project_dir_for_load_target(&cli) {
             Ok(path) => path,
             Err(error) => {
@@ -1582,6 +1595,11 @@ fn main() -> ExitCode {
     }
 
     if cli.check_drift {
+        if is_multi_repo {
+            eprintln!(
+                "warning: drift detection is not fully supported for multi-repo workspaces."
+            );
+        }
         let project_dir = match project_dir_for_load_target(&cli) {
             Ok(path) => path,
             Err(error) => {
@@ -1624,6 +1642,11 @@ fn main() -> ExitCode {
     }
 
     if cli.robot_drift {
+        if is_multi_repo {
+            eprintln!(
+                "warning: drift detection is not fully supported for multi-repo workspaces."
+            );
+        }
         let project_dir = match project_dir_for_load_target(&cli) {
             Ok(path) => path,
             Err(error) => {

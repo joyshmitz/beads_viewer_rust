@@ -180,23 +180,31 @@ fn compute_text_score(query: &str, issue: &Issue) -> f64 {
 
     let token_coverage = hit_count as f64 / tokens.len() as f64;
 
-    // Bonus for substring match in title
+    // Bonus for substring match in title (0.3 = strong signal that the user
+    // is searching for this issue specifically by name).
     let title_lower = issue.title.to_ascii_lowercase();
+    const TITLE_MATCH_BONUS: f64 = 0.3;
     let title_bonus = if title_lower.contains(&query_lower) {
-        0.3
+        TITLE_MATCH_BONUS
     } else {
         0.0
     };
 
-    // Bonus for substring match in ID
+    // Bonus for substring match in ID (0.2 = moderate signal; ID matches
+    // are strong but less semantically meaningful than title matches).
     let id_lower = issue.id.to_ascii_lowercase();
+    const ID_MATCH_BONUS: f64 = 0.2;
     let id_bonus = if id_lower.contains(&query_lower) {
-        0.2
+        ID_MATCH_BONUS
     } else {
         0.0
     };
 
-    (token_coverage * 0.5 + title_bonus + id_bonus).min(1.0)
+    // Token coverage contributes 50% of the text score; title and ID bonuses
+    // add on top, capped at 1.0. These weights are tuned for the common case
+    // where users search by partial title or issue ID.
+    const TOKEN_COVERAGE_WEIGHT: f64 = 0.5;
+    (token_coverage * TOKEN_COVERAGE_WEIGHT + title_bonus + id_bonus).min(1.0)
 }
 
 /// Short query detection (≤2 tokens or ≤12 chars).

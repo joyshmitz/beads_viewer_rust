@@ -7,6 +7,38 @@ use serde::{Deserialize, Serialize};
 use super::graph::{GraphMetrics, IssueGraph};
 use crate::model::Issue;
 
+/// Tunable thresholds for drift detection severity levels.
+///
+/// All percentage values are positive (e.g., 50.0 = 50%).
+#[derive(Debug, Clone)]
+pub struct DriftThresholds {
+    /// Density growth >= this % triggers a warning.
+    pub density_warning_pct: f64,
+    /// Density growth >= this % triggers an info alert.
+    pub density_info_pct: f64,
+    /// Blocked count increase >= this count triggers a warning.
+    pub blocked_increase_threshold: i64,
+    /// Actionable count decrease >= this % triggers a warning.
+    pub actionable_decrease_pct: f64,
+    /// Node/edge count change >= this % triggers a warning.
+    pub structure_change_pct: f64,
+    /// Top-N ranking items changed >= this count triggers a warning.
+    pub ranking_change_threshold: usize,
+}
+
+impl Default for DriftThresholds {
+    fn default() -> Self {
+        Self {
+            density_warning_pct: 50.0,
+            density_info_pct: 20.0,
+            blocked_increase_threshold: 5,
+            actionable_decrease_pct: 30.0,
+            structure_change_pct: 25.0,
+            ranking_change_threshold: 3,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Baseline
 // ---------------------------------------------------------------------------

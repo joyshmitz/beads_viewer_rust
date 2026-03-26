@@ -478,9 +478,8 @@ fn main() -> ExitCode {
 
     let build_start = std::time::Instant::now();
     let analysis_config = analysis_config_for_cli(&cli);
-    let analyzer = Analyzer::new_with_config(issues, &analysis_config);
+    let mut analyzer = Analyzer::new_with_config(issues, &analysis_config);
     let build_duration = build_start.elapsed();
-    let issues = &analyzer.issues;
 
     if cli.robot_help {
         print_robot_help();
@@ -488,6 +487,21 @@ fn main() -> ExitCode {
     }
 
     let (as_of, as_of_commit) = resolve_as_of(&cli);
+
+    // When --label is specified, scope the analysis to the label's subgraph.
+    // This matches the Go tool's ComputeLabelSubgraph behavior: include issues
+    // with the label plus their direct dependencies, then rerun analysis.
+    if let Some(ref label) = cli.label {
+        let subgraph =
+            bvr::analysis::label_intel::compute_label_subgraph(&analyzer.issues, label);
+        if subgraph.is_empty() {
+            eprintln!("warning: no issues found with label {label:?}");
+        }
+        analyzer = Analyzer::new_with_config(subgraph, &analysis_config);
+    }
+
+    let issues = &analyzer.issues;
+
     let (label_scope, label_context) = if let Some(ref label) = cli.label {
         let health = bvr::analysis::label_intel::compute_single_label_health(
             label,

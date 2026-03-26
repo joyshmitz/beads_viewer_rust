@@ -890,6 +890,83 @@ pub fn compute_label_attention(
 }
 
 // ============================================================================
+// Label subgraph extraction (Go parity: ComputeLabelSubgraph)
+// ============================================================================
+
+/// Extract a subgraph of issues scoped to a label.
+///
+/// Returns every issue in the weakly connected component reachable from any
+/// issue tagged with `label`.
+///
+/// Starting from the label-matching "core" issues, we walk both dependency
+/// directions transitively:
+/// 1. Upstream to the issues they depend on
+/// 2. Downstream to issues that depend on them
+///
+/// This matches the Go `ComputeLabelSubgraph` behavior used by `--label`
+/// to scope analysis to the label's connected component rather than a
+/// one-hop neighborhood.
+pub fn compute_label_subgraph(issues: &[Issue], label: &str) -> Vec<Issue> {
+    if label.is_empty() || issues.is_empty() {
+        return Vec::new();
+    }
+
+    let issue_map: HashMap<&str, &Issue> = issues.iter().map(|i| (i.id.as_str(), i)).collect();
+    let mut reverse_deps = HashMap::<&str, Vec<&str>>::new();
+    for issue in issues {
+        for dep in &issue.dependencies {
+            if issue_map.contains_key(dep.depends_on_id.as_str()) {
+                reverse_deps
+                    .entry(dep.depends_on_id.as_str())
+                    .or_default()
+                    .push(issue.id.as_str());
+            }
+        }
+    }
+
+    // Step 1: Find core issues (those with the target label)
+    let mut included: BTreeSet<&str> = BTreeSet::new();
+    let mut frontier = Vec::<&str>::new();
+    for issue in issues {
+        if issue.labels.iter().any(|l| l.eq_ignore_ascii_case(label)) {
+            included.insert(&issue.id);
+            frontier.push(issue.id.as_str());
+        }
+    }
+
+    if included.is_empty() {
+        return Vec::new();
+    }
+
+    // Step 2: Walk the full weakly connected component around the core set.
+    while let Some(issue_id) = frontier.pop() {
+        if let Some(issue) = issue_map.get(issue_id) {
+            for dep in &issue.dependencies {
+                let dep_id = dep.depends_on_id.as_str();
+                if issue_map.contains_key(dep_id) && included.insert(dep_id) {
+                    frontier.push(dep_id);
+                }
+            }
+        }
+
+        if let Some(dependents) = reverse_deps.get(issue_id) {
+            for dependent_id in dependents {
+                if included.insert(dependent_id) {
+                    frontier.push(dependent_id);
+                }
+            }
+        }
+    }
+
+    // Step 3: Collect the subgraph issues preserving original order
+    issues
+        .iter()
+        .filter(|i| included.contains(i.id.as_str()))
+        .cloned()
+        .collect()
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1276,6 +1353,51 @@ mod tests {
     }
 
     // ── cross_label_flow multi-label ────────────────────────────────
+
+    #[test]
+    fn label_subgraph_includes_core_and_deps() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let i2 = make_issue_with_dep("B", &["backend"], "open", "A");
+        let i3 = make_issue_with_dep("C", &["frontend"], "open", "A");
+        let i4 = make_issue("D", &["frontend"], "open");
+
+        let subgraph = compute_label_subgraph(&[i1, i2, i3, i4], "backend");
+        // Core: A, B (have "backend" label)
+        // Deps: C depends on A, so C is included as a dependency issue
+        // D has no connection to backend → excluded
+        assert!(subgraph.iter().any(|i| i.id == "A"));
+        assert!(subgraph.iter().any(|i| i.id == "B"));
+        assert!(subgraph.iter().any(|i| i.id == "C"));
+        assert!(!subgraph.iter().any(|i| i.id == "D"));
+    }
+
+    #[test]
+    fn label_subgraph_empty_label_returns_empty() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let subgraph = compute_label_subgraph(&[i1.clone()], "");
+        assert!(subgraph.is_empty());
+    }
+
+    #[test]
+    fn label_subgraph_no_matching_label_returns_empty() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let subgraph = compute_label_subgraph(&[i1], "nonexistent");
+        assert!(subgraph.is_empty());
+    }
+
+    #[test]
+    fn label_subgraph_walks_transitive_connected_component() {
+        let i1 = make_issue("A", &["backend"], "open");
+        let i2 = make_issue_with_dep("B", &["frontend"], "open", "A");
+        let i3 = make_issue_with_dep("C", &["ops"], "open", "B");
+        let i4 = make_issue_with_dep("D", &["qa"], "open", "C");
+        let i5 = make_issue("E", &["frontend"], "open");
+
+        let subgraph = compute_label_subgraph(&[i1, i2, i3, i4, i5], "backend");
+        let ids = subgraph.iter().map(|issue| issue.id.as_str()).collect::<Vec<_>>();
+
+        assert_eq!(ids, vec!["A", "B", "C", "D"]);
+    }
 
     #[test]
     fn cross_label_flow_multi_label_issue() {

@@ -247,9 +247,11 @@ fn estimate_velocity_minutes_per_day(
         );
     }
 
-    let mut best_label = String::new();
-    let mut best_velocity = 0.0;
-    let mut best_samples = 0usize;
+    // Pick the most conservative (lowest) label velocity for pessimistic ETA estimation.
+    // Using the slowest label avoids overoptimistic forecasts.
+    let mut slowest_label = String::new();
+    let mut slowest_velocity = 0.0;
+    let mut slowest_samples = 0usize;
 
     for label in &issue.labels {
         let (velocity, samples) =
@@ -258,23 +260,23 @@ fn estimate_velocity_minutes_per_day(
             continue;
         }
 
-        if best_velocity == 0.0
-            || velocity < best_velocity
-            || ((velocity - best_velocity).abs() < f64::EPSILON
-                && label.to_ascii_lowercase() < best_label.to_ascii_lowercase())
+        if slowest_velocity == 0.0
+            || velocity < slowest_velocity
+            || ((velocity - slowest_velocity).abs() < f64::EPSILON
+                && label.to_ascii_lowercase() < slowest_label.to_ascii_lowercase())
         {
-            best_label.clone_from(label);
-            best_velocity = velocity;
-            best_samples = samples;
+            slowest_label.clone_from(label);
+            slowest_velocity = velocity;
+            slowest_samples = samples;
         }
     }
 
-    if best_velocity > 0.0 {
+    if slowest_velocity > 0.0 {
         return (
-            best_velocity,
-            best_samples,
+            slowest_velocity,
+            slowest_samples,
             vec![format!(
-                "velocity: label={best_label} ({best_velocity:.0} min/day, {best_samples} samples/30d)"
+                "velocity: label={slowest_label} ({slowest_velocity:.0} min/day, {slowest_samples} samples/30d)"
             )],
         );
     }

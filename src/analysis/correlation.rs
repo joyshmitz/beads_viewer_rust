@@ -106,9 +106,17 @@ impl FeedbackStore {
                 if line.is_empty() {
                     continue;
                 }
-                if let Ok(entry) = serde_json::from_str::<CorrelationFeedback>(line) {
-                    let key = cache_key(&entry.commit_sha, &entry.bead_id);
-                    cache.insert(key, entry);
+                match serde_json::from_str::<CorrelationFeedback>(line) {
+                    Ok(entry) => {
+                        let key = cache_key(&entry.commit_sha, &entry.bead_id);
+                        cache.insert(key, entry);
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "skipping malformed feedback line in {}: {err}",
+                            path.display()
+                        );
+                    }
                 }
             }
         }

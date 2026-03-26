@@ -9,7 +9,7 @@ bvr 1 Main b Board i Insights a Actionable | mode=Actionable | focus=detail | is
 │ RECOMMENDED: Start with A -> highest i ││ completing A unblocks 1 issue(s)                       │
 │                                        ││ 1 actionable item                                      │
 │   TRACK 1 | completing A unblocks 1 is ││                                                        │
-│   1 item                               ││ ▸ A  score 0.694                                       │
+│   1 item                               ││ ▸ A  score 0.693                                       │
 │   ▸└─ P0 A             0.69  Root → B  ││   Root                                                 │
 │                                        ││   Unblocks: B                                          │
 │                                        ││   Claim: br update A --status=in_progress              │

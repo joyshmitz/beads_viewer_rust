@@ -877,6 +877,65 @@ fn robot_graph_dot_and_mermaid_emit_expected_markers() {
 }
 
 #[test]
+fn label_scope_filters_plan_priority_and_insights_to_connected_component() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let beads_path = temp.path().join("label_scope.jsonl");
+    fs::write(
+        &beads_path,
+        concat!(
+            "{\"id\":\"A\",\"title\":\"Backend Root\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"feature\",\"labels\":[\"backend\"]}\n",
+            "{\"id\":\"B\",\"title\":\"Frontend Depends On A\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"task\",\"labels\":[\"frontend\"],\"dependencies\":[{\"depends_on_id\":\"A\",\"type\":\"blocks\"}]}\n",
+            "{\"id\":\"C\",\"title\":\"Ops Depends On B\",\"status\":\"open\",\"priority\":2,\"issue_type\":\"task\",\"labels\":[\"ops\"],\"dependencies\":[{\"depends_on_id\":\"B\",\"type\":\"blocks\"}]}\n",
+            "{\"id\":\"D\",\"title\":\"Unrelated API Work\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\",\"labels\":[\"api\"]}\n"
+        ),
+    )
+    .expect("write beads");
+
+    let plan = run_bvr_json_from_path(&["--robot-plan", "--label", "backend"], &beads_path);
+    assert_eq!(plan["label_scope"], "backend");
+    let plan_ids = plan["plan"]["tracks"]
+        .as_array()
+        .expect("plan tracks")
+        .iter()
+        .flat_map(|track| {
+            track["items"]
+                .as_array()
+                .expect("track items")
+                .iter()
+                .filter_map(|item| item["id"].as_str())
+        })
+        .collect::<BTreeSet<_>>();
+    assert!(plan_ids.contains("A"));
+    assert!(!plan_ids.contains("D"));
+
+    let priority = run_bvr_json_from_path(&["--robot-priority", "--label", "backend"], &beads_path);
+    assert_eq!(priority["label_scope"], "backend");
+    let priority_ids = priority["recommendations"]
+        .as_array()
+        .expect("priority recommendations")
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(priority_ids.contains("A"));
+    assert!(priority_ids.contains("B"));
+    assert!(priority_ids.contains("C"));
+    assert!(!priority_ids.contains("D"));
+
+    let insights = run_bvr_json_from_path(&["--robot-insights", "--label", "backend"], &beads_path);
+    assert_eq!(insights["label_scope"], "backend");
+    let influencer_ids = insights["Influencers"]
+        .as_array()
+        .expect("influencers")
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert!(influencer_ids.contains("A"));
+    assert!(influencer_ids.contains("B"));
+    assert!(influencer_ids.contains("C"));
+    assert!(!influencer_ids.contains("D"));
+}
+
+#[test]
 fn robot_parity_slice_surfaces_bd_3q0_across_graph_insights_and_history() {
     let temp = tempfile::tempdir().expect("tempdir");
     let beads_path = temp.path().join("bd-3q0-parity.jsonl");

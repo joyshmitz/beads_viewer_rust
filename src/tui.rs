@@ -13699,7 +13699,8 @@ fn new_app_with_background(
         .ok()
         .and_then(|beads_dir| beads_dir.parent().map(std::path::Path::to_path_buf));
 
-    let use_two_phase = issues.len() > crate::analysis::graph::AnalysisConfig::background_threshold();
+    let use_two_phase =
+        issues.len() > crate::analysis::graph::AnalysisConfig::background_threshold();
     let analyzer = if use_two_phase {
         Analyzer::new_fast(issues)
     } else {
@@ -16149,9 +16150,10 @@ mod tests {
         let git_list = app.list_panel_text();
         assert!(git_list.contains("Git commits") || git_list.contains("No git commits correlated"));
 
-        assert!(app
-            .selected_history_event()
-            .is_some(), "git timeline should contain at least one event");
+        assert!(
+            app.selected_history_event().is_some(),
+            "git timeline should contain at least one event"
+        );
 
         app.update(key(KeyCode::Char('j')));
         app.update(key(KeyCode::Char('k')));
@@ -18397,7 +18399,10 @@ mod tests {
         let text = app.graph_list_render_text(90).to_plain_text();
         assert!(text.contains("Nodes"), "graph header missing: {text}");
         assert!(text.contains("PR "), "metric strip label missing: {text}");
-        assert!(text.contains("↓") || text.contains("⊘"), "blocker indicators missing: {text}");
+        assert!(
+            text.contains("↓") || text.contains("⊘"),
+            "blocker indicators missing: {text}"
+        );
     }
 
     #[test]
@@ -21349,11 +21354,7 @@ mod tests {
                             .all(|ch| ch.is_ascii_digit())
                         && !prefix[num_start..slash].is_empty()
                     {
-                        redacted = format!(
-                            "{}N/N{}",
-                            &redacted[..num_start],
-                            &redacted[pos..]
-                        );
+                        redacted = format!("{}N/N{}", &redacted[..num_start], &redacted[pos..]);
                     }
                 }
             }
@@ -21366,11 +21367,8 @@ mod tests {
                         .find(|c: char| !c.is_ascii_hexdigit())
                         .map_or(redacted.len(), |i| sha_start + i);
                     if sha_end > sha_start {
-                        redacted = format!(
-                            "{}AAAAAAA{}",
-                            &redacted[..sha_start],
-                            &redacted[sha_end..]
-                        );
+                        redacted =
+                            format!("{}AAAAAAA{}", &redacted[..sha_start], &redacted[sha_end..]);
                     }
                 }
             }

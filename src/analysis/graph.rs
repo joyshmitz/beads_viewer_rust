@@ -597,10 +597,7 @@ impl IssueGraph {
             while let Some(id) = stack.pop() {
                 component.push(id.clone());
 
-                let neighbors = self
-                    .blockers(&id)
-                    .into_iter()
-                    .chain(self.dependents(&id));
+                let neighbors = self.blockers(&id).into_iter().chain(self.dependents(&id));
 
                 for neighbor in neighbors {
                     if !open_ids.contains(&neighbor) {

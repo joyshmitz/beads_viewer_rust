@@ -492,8 +492,7 @@ fn main() -> ExitCode {
     // This matches the Go tool's ComputeLabelSubgraph behavior: include issues
     // with the label plus their direct dependencies, then rerun analysis.
     if let Some(ref label) = cli.label {
-        let subgraph =
-            bvr::analysis::label_intel::compute_label_subgraph(&analyzer.issues, label);
+        let subgraph = bvr::analysis::label_intel::compute_label_subgraph(&analyzer.issues, label);
         if subgraph.is_empty() {
             eprintln!("warning: no issues found with label {label:?}");
         }
@@ -1610,9 +1609,7 @@ fn main() -> ExitCode {
 
     if cli.check_drift {
         if is_multi_repo {
-            eprintln!(
-                "warning: drift detection is not fully supported for multi-repo workspaces."
-            );
+            eprintln!("warning: drift detection is not fully supported for multi-repo workspaces.");
         }
         let project_dir = match project_dir_for_load_target(&cli) {
             Ok(path) => path,
@@ -1657,9 +1654,7 @@ fn main() -> ExitCode {
 
     if cli.robot_drift {
         if is_multi_repo {
-            eprintln!(
-                "warning: drift detection is not fully supported for multi-repo workspaces."
-            );
+            eprintln!("warning: drift detection is not fully supported for multi-repo workspaces.");
         }
         let project_dir = match project_dir_for_load_target(&cli) {
             Ok(path) => path,

@@ -44,7 +44,7 @@ mod version_guard {
 
         // Patterns that indicate a hard-coded version where env!() should be used.
         let suspicious = [
-            format!("\"{}\"", pkg_version),  // e.g. "0.1.0"
+            format!("\"{}\"", pkg_version), // e.g. "0.1.0"
             "\"1.0.0\"".to_string(),
             "\"1.0\"".to_string(),
             "\"2.0.0\"".to_string(),
@@ -76,10 +76,7 @@ mod version_guard {
             };
 
             // Split into production vs test code at #[cfg(test)]
-            let prod_code = content
-                .split("#[cfg(test)]")
-                .next()
-                .unwrap_or(&content);
+            let prod_code = content.split("#[cfg(test)]").next().unwrap_or(&content);
 
             for pattern in &suspicious {
                 for (line_no, line) in prod_code.lines().enumerate() {

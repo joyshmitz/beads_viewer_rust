@@ -1241,7 +1241,9 @@ mod tests {
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ",
-                params!["ISSUE-1", 0.25_f64, 0.1_f64, 4_i32, 0.8_f64, 1_i32, 0_i32, 0_i32],
+                params![
+                    "ISSUE-1", 0.25_f64, 0.1_f64, 4_i32, 0.8_f64, 1_i32, 0_i32, 0_i32
+                ],
             )
             .expect("insert metrics");
 
@@ -1574,8 +1576,14 @@ mod tests {
         let analyzer = Analyzer::new(issues.clone());
         let triage = analyzer.triage(TriageOptions::default());
 
-        populate_export_database(temp.path(), Some("Cycle Fixture"), &issues, &analyzer, &triage)
-            .expect("populate sqlite export database");
+        populate_export_database(
+            temp.path(),
+            Some("Cycle Fixture"),
+            &issues,
+            &analyzer,
+            &triage,
+        )
+        .expect("populate sqlite export database");
 
         let connection =
             Connection::open(export_database_path(temp.path())).expect("open populated database");
@@ -1583,14 +1591,19 @@ mod tests {
         let cycle_flags = connection
             .prepare("SELECT id, in_cycle FROM issue_overview_mv ORDER BY id")
             .expect("prepare cycle query")
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
             .expect("query cycle flags")
             .collect::<std::result::Result<Vec<_>, _>>()
             .expect("collect cycle flags");
 
         assert_eq!(
             cycle_flags,
-            vec![("CYCLE-1".to_string(), 1_i64), ("CYCLE-2".to_string(), 1_i64)]
+            vec![
+                ("CYCLE-1".to_string(), 1_i64),
+                ("CYCLE-2".to_string(), 1_i64)
+            ]
         );
     }
 

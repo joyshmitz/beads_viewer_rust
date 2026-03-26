@@ -656,7 +656,12 @@ mod tests {
         closed.updated_at = Some(old);
         let mut tomb = issue("B", "tombstone");
         tomb.updated_at = Some(old);
-        super::detect_stale_issues(&[closed, tomb], now, &super::AlertThresholds::default(), &mut alerts);
+        super::detect_stale_issues(
+            &[closed, tomb],
+            now,
+            &super::AlertThresholds::default(),
+            &mut alerts,
+        );
         assert!(alerts.is_empty());
     }
 
@@ -763,7 +768,13 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
+        super::detect_blocking_cascades(
+            &issues,
+            &graph,
+            now,
+            &super::AlertThresholds::default(),
+            &mut alerts,
+        );
         assert!(!alerts.is_empty());
         let cascade = alerts
             .iter()
@@ -799,7 +810,13 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
+        super::detect_blocking_cascades(
+            &issues,
+            &graph,
+            now,
+            &super::AlertThresholds::default(),
+            &mut alerts,
+        );
         let cascade = alerts
             .iter()
             .find(|a| a.alert_type == AlertType::BlockingCascade)
@@ -829,7 +846,13 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
+        super::detect_blocking_cascades(
+            &issues,
+            &graph,
+            now,
+            &super::AlertThresholds::default(),
+            &mut alerts,
+        );
         assert!(alerts.is_empty(), "1 dependent < threshold of 3");
     }
 
@@ -860,7 +883,13 @@ mod tests {
         let graph = IssueGraph::build(&issues);
 
         let mut alerts = Vec::new();
-        super::detect_blocking_cascades(&issues, &graph, now, &super::AlertThresholds::default(), &mut alerts);
+        super::detect_blocking_cascades(
+            &issues,
+            &graph,
+            now,
+            &super::AlertThresholds::default(),
+            &mut alerts,
+        );
         let cascade = alerts
             .iter()
             .find(|a| a.alert_type == AlertType::BlockingCascade)

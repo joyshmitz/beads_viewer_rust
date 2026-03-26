@@ -103,7 +103,13 @@ impl WeightPreset {
     }
 
     /// All available preset names (for CLI help text).
-    pub const ALL: &[&str] = &["default", "graph-heavy", "priority-first", "quick-wins", "risk-averse"];
+    pub const ALL: &[&str] = &[
+        "default",
+        "graph-heavy",
+        "priority-first",
+        "quick-wins",
+        "risk-averse",
+    ];
 
     /// Parse a preset name.
     #[must_use]

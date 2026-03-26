@@ -1394,7 +1394,10 @@ mod tests {
         let i5 = make_issue("E", &["frontend"], "open");
 
         let subgraph = compute_label_subgraph(&[i1, i2, i3, i4, i5], "backend");
-        let ids = subgraph.iter().map(|issue| issue.id.as_str()).collect::<Vec<_>>();
+        let ids = subgraph
+            .iter()
+            .map(|issue| issue.id.as_str())
+            .collect::<Vec<_>>();
 
         assert_eq!(ids, vec!["A", "B", "C", "D"]);
     }

@@ -218,6 +218,25 @@ impl Default for WizardConfig {
 }
 
 impl WizardConfig {
+    fn has_valid_github_repo(&self) -> bool {
+        self.github_repo.as_deref().is_some_and(|repo| {
+            let repo = repo.trim();
+            let mut parts = repo.split('/');
+            let Some(owner) = parts.next() else {
+                return false;
+            };
+            let Some(name) = parts.next() else {
+                return false;
+            };
+
+            !owner.is_empty()
+                && !name.is_empty()
+                && parts.next().is_none()
+                && !owner.contains(char::is_whitespace)
+                && !name.contains(char::is_whitespace)
+        })
+    }
+
     fn has_output_path(&self) -> bool {
         self.output_path.as_ref().is_some_and(|path| {
             !path.as_os_str().is_empty() && !path.to_string_lossy().trim().is_empty()
@@ -242,12 +261,7 @@ impl WizardConfig {
             .ok_or_else(|| BvrError::InvalidArgument("deploy target is required".into()))?;
         match target {
             DeployTarget::Github => {
-                if self
-                    .github_repo
-                    .as_deref()
-                    .map(str::trim)
-                    .is_none_or(str::is_empty)
-                {
+                if !self.has_valid_github_repo() {
                     return Err(BvrError::InvalidArgument(
                         "GitHub repo name is required (owner/repo format)".into(),
                     ));
@@ -1351,6 +1365,33 @@ mod tests {
     }
 
     #[test]
+    fn validate_for_deploy_github_rejects_repo_without_owner() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("./pages"));
+        config.deploy_target = Some(DeployTarget::Github);
+        config.github_repo = Some("repo-only".into());
+        assert!(config.validate_for_deploy().is_err());
+    }
+
+    #[test]
+    fn validate_for_deploy_github_rejects_repo_with_extra_segments() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("./pages"));
+        config.deploy_target = Some(DeployTarget::Github);
+        config.github_repo = Some("owner/repo/extra".into());
+        assert!(config.validate_for_deploy().is_err());
+    }
+
+    #[test]
+    fn validate_for_deploy_github_rejects_repo_with_whitespace_in_segment() {
+        let mut config = WizardConfig::default();
+        config.output_path = Some(PathBuf::from("./pages"));
+        config.deploy_target = Some(DeployTarget::Github);
+        config.github_repo = Some("owner name/repo".into());
+        assert!(config.validate_for_deploy().is_err());
+    }
+
+    #[test]
     fn validate_for_deploy_cloudflare_requires_project_name() {
         let mut config = WizardConfig::default();
         config.output_path = Some(PathBuf::from("./pages"));
@@ -2122,11 +2163,13 @@ mod tests {
 
     #[test]
     fn wizard_interactive_quotes_github_deploy_command_arguments() {
-        let input = "y\ny\n\n\n1\norg/pages repo\nn\nProject dashboard's home\n./out dir\ny\n";
+        // Repo name must be valid owner/repo format (no spaces); quoting is
+        // tested via the description and output path which may contain spaces.
+        let input = "y\ny\n\n\n1\norg/pages-repo\nn\nProject dashboard's home\n./out dir\ny\n";
         let (output, result) = run_wizard_with_input(input);
         assert!(result.is_ok(), "output: {output}");
         assert!(
-            output.contains("gh repo create 'org/pages repo' --public"),
+            output.contains("gh repo create 'org/pages-repo' --public"),
             "expected quoted repo in deploy instructions: {output}"
         );
         assert!(

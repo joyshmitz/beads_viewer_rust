@@ -1964,27 +1964,18 @@ fn main() -> ExitCode {
         }
 
         if cli.watch_export {
-            let watched_paths = match resolve_watch_export_paths(&cli) {
+            let initial_watched_paths = match resolve_watch_export_paths(&cli) {
                 Ok(paths) => paths,
                 Err(error) => {
                     eprintln!("error: {error}");
                     return ExitCode::from(1);
                 }
             };
-            let watched_mtimes = watched_paths
+            let initial_watched_tokens = initial_watched_paths
                 .iter()
-                .map(|path| {
-                    file_watch_token(path)
-                        .map(|token| (path.clone(), token))
-                        .map_err(|error| {
-                            bvr::BvrError::InvalidArgument(format!(
-                                "failed to read watch source {}: {error}",
-                                path.display()
-                            ))
-                        })
-                })
+                .map(|path| watch_export_token_for_path(path).map(|token| (path.clone(), token)))
                 .collect::<bvr::Result<Vec<_>>>();
-            let mut watched_mtimes = match watched_mtimes {
+            let mut watched_mtimes = match initial_watched_tokens {
                 Ok(entries) => entries,
                 Err(error) => {
                     eprintln!("error: {error}");
@@ -2024,6 +2015,14 @@ fn main() -> ExitCode {
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(watch_interval_ms));
 
+                let path_set_changed = match reconcile_watch_export_paths(&cli, &mut watched_mtimes)
+                {
+                    Ok(changed) => changed,
+                    Err(error) => {
+                        eprintln!("warning: cannot refresh watch paths: {error}");
+                        false
+                    }
+                };
                 let mut changed_files: Vec<String> = Vec::new();
                 for (path, last_token) in &mut watched_mtimes {
                     let current_token = match file_watch_token(path) {
@@ -2037,6 +2036,15 @@ fn main() -> ExitCode {
                     if current_token != *last_token {
                         *last_token = current_token;
                         changed_files.push(path.display().to_string());
+                    }
+                }
+                if path_set_changed {
+                    eprintln!(
+                        "watch: refreshed source set ({} file(s) now tracked)",
+                        watched_mtimes.len()
+                    );
+                    if changed_files.is_empty() {
+                        changed_files.push("watch-set changed".to_string());
                     }
                 }
 
@@ -2566,6 +2574,42 @@ fn resolve_watch_export_paths(cli: &Cli) -> bvr::Result<Vec<PathBuf>> {
             Ok(vec![beads_path])
         }
     }
+}
+
+fn watch_export_token_for_path(path: &Path) -> bvr::Result<Option<FileWatchToken>> {
+    file_watch_token(path).map_err(|error| {
+        bvr::BvrError::InvalidArgument(format!(
+            "failed to read watch source {}: {error}",
+            path.display()
+        ))
+    })
+}
+
+fn reconcile_watch_export_paths(
+    cli: &Cli,
+    watched_tokens: &mut Vec<(PathBuf, Option<FileWatchToken>)>,
+) -> bvr::Result<bool> {
+    let previous_tokens = watched_tokens
+        .drain(..)
+        .collect::<BTreeMap<PathBuf, Option<FileWatchToken>>>();
+    let watched_paths = resolve_watch_export_paths(cli)?;
+    let mut path_set_changed = watched_paths.len() != previous_tokens.len();
+    let mut next_tokens = Vec::with_capacity(watched_paths.len());
+    let mut previous_tokens = previous_tokens;
+
+    for path in watched_paths {
+        let token = match previous_tokens.remove(&path) {
+            Some(existing) => existing,
+            None => {
+                path_set_changed = true;
+                watch_export_token_for_path(&path)?
+            }
+        };
+        next_tokens.push((path, token));
+    }
+
+    *watched_tokens = next_tokens;
+    Ok(path_set_changed)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5962,7 +6006,7 @@ mod tests {
         discover_workspace_config_from_starts, feedback_project_dir, file_watch_token,
         filter_by_repo, generate_daily_burndown_points, handle_operational_commands, load_issues,
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
-        resolve_background_mode, resolve_cli_path_from_project_dir,
+        reconcile_watch_export_paths, resolve_background_mode, resolve_cli_path_from_project_dir,
         resolve_cli_reference_file_path, resolve_git_toplevel, resolve_issue_load_target,
         resolve_reference_file_path, resolve_watch_export_paths, resolve_workspace_config_path,
     };
@@ -6443,6 +6487,73 @@ mod tests {
         assert_eq!(first.len_bytes, second.len_bytes);
         assert_ne!(first.content_fingerprint, second.content_fingerprint);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn reconcile_watch_export_paths_adds_new_workspace_repo_issue_file() {
+        let dir = tempdir().expect("tempdir");
+        let root = dir.path();
+        let workspace_dir = root.join(".bv");
+        let api_beads = root.join("services/api/.beads");
+        let web_beads = root.join("apps/web/.beads");
+        fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+        fs::create_dir_all(&api_beads).expect("create api beads");
+        let config_path = workspace_dir.join("workspace.yaml");
+        fs::write(
+            &config_path,
+            "repos:\n  - path: services/api\n    prefix: api-\n",
+        )
+        .expect("write workspace config");
+        let api_issues_path = api_beads.join("issues.jsonl");
+        fs::write(
+            &api_issues_path,
+            "{\"id\":\"AUTH-1\",\"title\":\"API issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write api issues");
+
+        let cli = Cli::parse_from([
+            "bvr",
+            "--export-pages",
+            "pages-out",
+            "--watch-export",
+            "--workspace",
+            ".",
+        ]);
+        let _guard = CurrentDirGuard::set(root);
+        let mut watched_tokens = resolve_watch_export_paths(&cli)
+            .expect("resolve watch paths")
+            .into_iter()
+            .map(|path| {
+                let token = file_watch_token(&path)
+                    .expect("read watch token")
+                    .expect("watch token present");
+                (path, Some(token))
+            })
+            .collect::<Vec<_>>();
+
+        fs::create_dir_all(&web_beads).expect("create web beads");
+        let web_issues_path = web_beads.join("issues.jsonl");
+        fs::write(
+            &web_issues_path,
+            "{\"id\":\"WEB-1\",\"title\":\"Web issue\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"task\"}\n",
+        )
+        .expect("write web issues");
+        fs::write(
+            &config_path,
+            "repos:\n  - path: services/api\n    prefix: api-\n  - path: apps/web\n    prefix: web-\n",
+        )
+        .expect("update workspace config");
+
+        let path_set_changed =
+            reconcile_watch_export_paths(&cli, &mut watched_tokens).expect("reconcile watch paths");
+
+        assert!(path_set_changed, "expected watch set to change");
+        assert!(
+            watched_tokens
+                .iter()
+                .any(|(path, token)| path == &web_issues_path && token.is_some()),
+            "expected new repo issues file in watch set, got {watched_tokens:?}"
+        );
     }
 
     #[test]

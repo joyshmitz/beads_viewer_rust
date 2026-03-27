@@ -12,6 +12,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::Utc;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::analysis::Analyzer;
 use crate::analysis::triage::TriageOptions;
@@ -559,7 +560,7 @@ fn handle_preview_request(
             return Ok(true);
         }
 
-        let token = latest_modified_token(bundle_dir)?.to_string();
+        let token = latest_modified_token(bundle_dir)?;
         write_http_response(
             &mut stream,
             "200 OK",
@@ -717,10 +718,18 @@ fn preview_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-fn latest_modified_token(path: &Path) -> Result<u64> {
+fn latest_modified_token(path: &Path) -> Result<String> {
     let bundle_root = fs::canonicalize(path)?;
     let mut visited_dirs = HashSet::new();
-    latest_modified_recursive(path, &bundle_root, 0, &mut visited_dirs)
+    let mut hasher = Sha256::new();
+    fingerprint_bundle_recursive(
+        path,
+        &bundle_root,
+        Path::new(""),
+        &mut visited_dirs,
+        &mut hasher,
+    )?;
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn count_files_recursive(path: &Path) -> Result<usize> {
@@ -775,45 +784,78 @@ fn count_files_recursive_inner(
     Ok(total)
 }
 
-fn latest_modified_recursive(
+fn fingerprint_bundle_recursive(
     path: &Path,
     bundle_root: &Path,
-    mut latest: u64,
+    relative: &Path,
     visited_dirs: &mut HashSet<PathBuf>,
-) -> Result<u64> {
+    hasher: &mut Sha256,
+) -> Result<()> {
     let link_metadata = fs::symlink_metadata(path)?;
-    latest = latest.max(metadata_modified_token(&link_metadata));
-
     let resolved_path = match fs::canonicalize(path) {
         Ok(resolved) => resolved,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(latest),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(BvrError::Io(error)),
     };
     if !resolved_path.starts_with(bundle_root) {
-        return Ok(latest);
+        return Ok(());
     }
 
     let target_metadata = match fs::metadata(&resolved_path) {
         Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(latest),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(BvrError::Io(error)),
     };
-    latest = latest.max(metadata_modified_token(&target_metadata));
+
+    hasher.update(relative.to_string_lossy().as_bytes());
+    hasher.update([0]);
+    if link_metadata.file_type().is_symlink() {
+        hasher.update(b"symlink");
+        hasher.update([0]);
+        hasher.update(resolved_path.to_string_lossy().as_bytes());
+        hasher.update([0]);
+    }
+
+    if target_metadata.is_file() {
+        hasher.update(b"file");
+        hasher.update([0]);
+        hasher.update(fs::read(&resolved_path)?);
+        return Ok(());
+    }
 
     if !target_metadata.is_dir() {
-        return Ok(latest);
+        hasher.update(b"other");
+        hasher.update([0]);
+        hasher.update(metadata_modified_token(&target_metadata).to_le_bytes());
+        return Ok(());
     }
 
+    hasher.update(b"dir");
+    hasher.update([0]);
     if !visited_dirs.insert(resolved_path) {
-        return Ok(latest);
+        hasher.update(b"visited");
+        hasher.update([0]);
+        return Ok(());
     }
 
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        latest = latest_modified_recursive(&entry.path(), bundle_root, latest, visited_dirs)?;
+    let mut entries = fs::read_dir(path)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let child_relative = if relative.as_os_str().is_empty() {
+            PathBuf::from(entry.file_name())
+        } else {
+            relative.join(entry.file_name())
+        };
+        fingerprint_bundle_recursive(
+            &entry.path(),
+            bundle_root,
+            &child_relative,
+            visited_dirs,
+            hasher,
+        )?;
     }
 
-    Ok(latest)
+    Ok(())
 }
 
 fn metadata_modified_token(metadata: &fs::Metadata) -> u64 {
@@ -1938,7 +1980,23 @@ mod tests {
         fs::write(temp.path().join("file.txt"), "hello").expect("write");
 
         let token = latest_modified_token(temp.path()).expect("token");
-        assert!(token > 0, "token must be nonzero for non-empty dir");
+        assert!(
+            !token.is_empty(),
+            "token must be non-empty for non-empty dir"
+        );
+    }
+
+    #[test]
+    fn latest_modified_token_changes_for_same_size_rewrite() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("file.txt");
+        fs::write(&path, "AAAA").expect("write first");
+        let first = latest_modified_token(temp.path()).expect("first token");
+
+        fs::write(&path, "BBBB").expect("write second");
+        let second = latest_modified_token(temp.path()).expect("second token");
+
+        assert_ne!(first, second, "same-size rewrites must change the token");
     }
 
     #[cfg(unix)]
@@ -1966,7 +2024,7 @@ mod tests {
         symlink(temp.path(), temp.path().join("loop")).expect("create loop symlink");
 
         let token = latest_modified_token(temp.path()).expect("token");
-        assert!(token > 0);
+        assert!(!token.is_empty());
     }
 
     #[cfg(unix)]

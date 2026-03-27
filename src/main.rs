@@ -28,6 +28,7 @@ use bvr::robot::{
 use chrono::{DateTime, Duration, Local, Utc};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 fn analysis_config_for_cli(cli: &Cli) -> AnalysisConfig {
     if cli.robot_next
@@ -2571,6 +2572,7 @@ fn resolve_watch_export_paths(cli: &Cli) -> bvr::Result<Vec<PathBuf>> {
 struct FileWatchToken {
     modified_millis: u64,
     len_bytes: u64,
+    content_fingerprint: [u8; 32],
 }
 
 fn file_watch_token(path: &Path) -> bvr::Result<Option<FileWatchToken>> {
@@ -2587,9 +2589,11 @@ fn file_watch_token(path: &Path) -> bvr::Result<Option<FileWatchToken>> {
             let millis = duration.as_millis().min(u128::from(u64::MAX));
             u64::try_from(millis).unwrap_or(u64::MAX)
         });
+    let content_fingerprint = Sha256::digest(fs::read(path)?).into();
     Ok(Some(FileWatchToken {
         modified_millis,
         len_bytes: metadata.len(),
+        content_fingerprint,
     }))
 }
 
@@ -5955,8 +5959,8 @@ mod tests {
     use super::{
         BackgroundModeSource, Cli, IssueLoadTarget, actionable_ids_for_recipe_filters,
         build_background_mode_config, compute_related_work_result,
-        discover_workspace_config_from_starts, feedback_project_dir, filter_by_repo,
-        generate_daily_burndown_points, handle_operational_commands, load_issues,
+        discover_workspace_config_from_starts, feedback_project_dir, file_watch_token,
+        filter_by_repo, generate_daily_burndown_points, handle_operational_commands, load_issues,
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
         resolve_background_mode, resolve_cli_path_from_project_dir,
         resolve_cli_reference_file_path, resolve_git_toplevel, resolve_issue_load_target,
@@ -6420,6 +6424,25 @@ mod tests {
             "expected workspace config path in watch set, got {watched_paths:?}"
         );
         assert!(watched_paths.contains(&issues_path));
+    }
+
+    #[test]
+    fn file_watch_token_changes_for_same_size_rewrite() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("issues.jsonl");
+        fs::write(&path, "AAAA").expect("write first payload");
+        let first = file_watch_token(&path)
+            .expect("first token")
+            .expect("first token present");
+
+        fs::write(&path, "BBBB").expect("write second payload");
+        let second = file_watch_token(&path)
+            .expect("second token")
+            .expect("second token present");
+
+        assert_eq!(first.len_bytes, second.len_bytes);
+        assert_ne!(first.content_fingerprint, second.content_fingerprint);
+        assert_ne!(first, second);
     }
 
     #[test]

@@ -4366,9 +4366,7 @@ impl BvrApp {
                     let issue_count = categories
                         .get(self.time_travel_category_cursor)
                         .map_or(0, |(_, count)| *count);
-                    if issue_count > 0
-                        && self.time_travel_issue_cursor + 1 < issue_count
-                    {
+                    if issue_count > 0 && self.time_travel_issue_cursor + 1 < issue_count {
                         self.time_travel_issue_cursor += 1;
                     }
                 }

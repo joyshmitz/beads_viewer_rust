@@ -665,19 +665,24 @@ pub fn compute_cross_label_flow(issues: &[Issue]) -> CrossLabelFlow {
 
             for from_label in &blocker.labels {
                 for to_label in &blocked.labels {
-                    if from_label.is_empty() || to_label.is_empty() || from_label == to_label {
+                    let canonical_from = canonical_label(from_label);
+                    let canonical_to = canonical_label(to_label);
+                    if canonical_from.is_empty()
+                        || canonical_to.is_empty()
+                        || canonical_from == canonical_to
+                    {
                         continue;
                     }
-                    let Some(&i_from) = label_index.get(from_label.as_str()) else {
+                    let Some(&i_from) = label_index.get(canonical_from.as_str()) else {
                         continue;
                     };
-                    let Some(&i_to) = label_index.get(to_label.as_str()) else {
+                    let Some(&i_to) = label_index.get(canonical_to.as_str()) else {
                         continue;
                     };
                     matrix[i_from][i_to] += 1;
                     total_deps += 1;
 
-                    let key = (from_label.clone(), to_label.clone());
+                    let key = (canonical_from.clone(), canonical_to.clone());
                     let entry = dep_map.entry(key).or_insert_with_key(|k| LabelDependency {
                         from_label: k.0.clone(),
                         to_label: k.1.clone(),
@@ -690,8 +695,8 @@ pub fn compute_cross_label_flow(issues: &[Issue]) -> CrossLabelFlow {
                     entry.blocking_pairs.push(BlockingPair {
                         blocker_id: blocker.id.clone(),
                         blocked_id: blocked.id.clone(),
-                        blocker_label: from_label.clone(),
-                        blocked_label: to_label.clone(),
+                        blocker_label: canonical_from,
+                        blocked_label: canonical_to,
                     });
                 }
             }
@@ -746,7 +751,7 @@ pub fn compute_label_attention(
     for issue in issues {
         for label in &issue.labels {
             if !label.is_empty() {
-                label_set.insert(label.clone());
+                label_set.insert(canonical_label(label));
             }
         }
     }
@@ -1040,7 +1045,7 @@ mod tests {
         assert_eq!(result.total_labels, 1);
         assert_eq!(result.labels.len(), 1);
         assert_eq!(result.labels[0].label, "backend");
-        assert_eq!(result.labels[0].issue_count, 2);
+        assert_eq!(result.labels[0].open_count, 2);
         assert_eq!(result.labels[0].open_count, 1);
         assert_eq!(result.labels[0].closed_count, 1);
     }
@@ -1172,6 +1177,22 @@ mod tests {
             .expect("backend score should exist");
 
         assert_eq!(backend.block_impact, 1.0);
+    }
+
+    #[test]
+    fn attention_merges_case_variants() {
+        let issues = vec![
+            make_issue("A", &["Backend"], "open"),
+            make_issue("B", &["backend"], "blocked"),
+        ];
+        let graph = super::super::graph::IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_label_attention(&issues, &metrics, 0);
+
+        assert_eq!(result.total_labels, 1);
+        assert_eq!(result.labels.len(), 1);
+        assert_eq!(result.labels[0].label, "backend");
+        assert_eq!(result.labels[0].issue_count, 2);
     }
 
     #[test]

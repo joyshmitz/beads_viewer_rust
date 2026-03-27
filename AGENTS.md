@@ -154,15 +154,15 @@ Every module includes inline `#[cfg(test)]` unit tests alongside the implementat
 - Edge cases (empty input, max values, boundary conditions)
 - Error conditions
 
-### Test Suite (1,780+ tests)
+### Test Suite (1,787+ tests)
 
 ```bash
 # Full suite via rch
 export TMPDIR=/data/tmp && rch exec -- cargo test --tests
 
 # Individual suites
-export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1321 unit tests
-export TMPDIR=/data/tmp && rch exec -- cargo test --test conformance           # 78 conformance
+export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1331 unit tests
+export TMPDIR=/data/tmp && rch exec -- cargo test --test conformance           # 79 conformance
 export TMPDIR=/data/tmp && rch exec -- cargo test --test schema_validation     # 61 schema
 export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 62 e2e robot
 export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 34 e2e workspace
@@ -178,8 +178,8 @@ export TMPDIR=/data/tmp && rch exec -- cargo bench --bench triage              #
 
 | Suite | Count | Purpose |
 |-------|-------|---------|
-| Unit tests (`--lib`) | 1321 | Module-level with inline `#[cfg(test)]` |
-| Conformance (`--test conformance`) | 78 | Go reference fixture parity (100%) |
+| Unit tests (`--lib`) | 1331 | Module-level with inline `#[cfg(test)]` |
+| Conformance (`--test conformance`) | 79 | Go reference fixture parity (100%) |
 | Schema validation | 61 | JSON schema compliance |
 | E2E robot matrix | 62 | Full robot command integration (39/39 commands) |
 | E2E workspace/history | 34 | Workspace and history flows |

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
@@ -347,6 +347,7 @@ fn run_hook(
     command.envs(build_hook_env(hook, context));
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
+    configure_hook_command(&mut command);
 
     let mut child = command.spawn()?;
 
@@ -372,8 +373,7 @@ fn run_hook(
         }
 
         if started.elapsed() > hook.timeout {
-            let _ = child.kill();
-            break (child.wait()?, true);
+            break (terminate_timed_out_hook(&mut child)?, true);
         }
 
         std::thread::sleep(Duration::from_millis(10));
@@ -410,6 +410,47 @@ fn run_hook(
         error,
         stderr,
     })
+}
+
+#[cfg(unix)]
+fn configure_hook_command(command: &mut Command) {
+    use std::os::unix::process::CommandExt;
+
+    command.process_group(0);
+}
+
+#[cfg(not(unix))]
+fn configure_hook_command(_command: &mut Command) {}
+
+fn terminate_timed_out_hook(child: &mut Child) -> Result<ExitStatus> {
+    #[cfg(unix)]
+    {
+        let pid = child.id();
+        send_signal_to_hook_process_group(pid, "-TERM");
+        let shutdown_started = Instant::now();
+        while shutdown_started.elapsed() <= Duration::from_millis(100) {
+            if let Some(status) = child.try_wait()? {
+                return Ok(status);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        send_signal_to_hook_process_group(pid, "-KILL");
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
+
+    Ok(child.wait()?)
+}
+
+#[cfg(unix)]
+fn send_signal_to_hook_process_group(pid: u32, signal: &str) {
+    let _ = Command::new("kill")
+        .args([signal, "--", &format!("-{pid}")])
+        .status();
 }
 
 fn build_hook_env(hook: &HookRuntime, context: &HookContext) -> BTreeMap<String, String> {
@@ -1067,6 +1108,36 @@ hooks:
     fn hook_phase_labels_match_yaml_keys() {
         assert_eq!(HookPhase::PreExport.label(), "pre-export");
         assert_eq!(HookPhase::PostExport.label(), "post-export");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_hook_timeout_kills_descendant_processes() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let marker = temp.path().join("leaked.txt");
+        let mut env = BTreeMap::new();
+        env.insert(
+            "MARKER_PATH".to_string(),
+            marker.to_string_lossy().to_string(),
+        );
+        let hook = HookRuntime {
+            name: "timeout".to_string(),
+            command: "sh -c 'sleep 0.2; printf leaked > \"$MARKER_PATH\"' & wait".to_string(),
+            timeout: Duration::from_millis(50),
+            env,
+            on_error: HookOnError::Fail,
+        };
+        let context = HookContext::new(&temp.path().join("report.md"), "markdown", 1);
+
+        let result = run_hook(&hook, &context, temp.path()).expect("run hook");
+        assert!(!result.success, "hook should time out");
+        assert_eq!(result.error.as_deref(), Some("timeout after 50ms"));
+
+        std::thread::sleep(Duration::from_millis(350));
+        assert!(
+            !marker.exists(),
+            "timed-out descendant process should not survive and write {marker:?}"
+        );
     }
 
     #[test]

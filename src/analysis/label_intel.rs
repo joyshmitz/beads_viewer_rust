@@ -434,6 +434,10 @@ fn composite_health(velocity: i32, freshness: i32, flow: i32, criticality: i32) 
     clamp_score(score)
 }
 
+fn label_matches(candidate: &str, target: &str) -> bool {
+    candidate.eq_ignore_ascii_case(target)
+}
+
 fn compute_label_health(
     label: &str,
     all_issues: &[Issue],
@@ -442,7 +446,7 @@ fn compute_label_health(
 ) -> LabelHealth {
     let labeled: Vec<&Issue> = all_issues
         .iter()
-        .filter(|i| i.labels.iter().any(|l| l == label))
+        .filter(|i| i.labels.iter().any(|l| label_matches(l, label)))
         .collect();
 
     let issue_count = labeled.len();
@@ -756,7 +760,7 @@ pub fn compute_label_attention(
     for label in &label_set {
         let labeled: Vec<&Issue> = issues
             .iter()
-            .filter(|i| i.labels.iter().any(|l| l == label))
+            .filter(|i| i.labels.iter().any(|l| label_matches(l, label)))
             .collect();
 
         let mut open_count = 0usize;
@@ -1350,6 +1354,18 @@ mod tests {
         assert_eq!(health.issue_count, 0);
         assert_eq!(health.health, 0);
         assert_eq!(health.health_level, "critical");
+    }
+
+    #[test]
+    fn single_label_health_matches_case_insensitively() {
+        let issue = make_issue("A", &["Backend"], "open");
+        let graph = super::super::graph::IssueGraph::build(&[issue.clone()]);
+        let metrics = graph.compute_metrics();
+
+        let health = compute_single_label_health("backend", &[issue], &metrics);
+
+        assert_eq!(health.issue_count, 1);
+        assert_eq!(health.label, "backend");
     }
 
     // ── cross_label_flow multi-label ────────────────────────────────

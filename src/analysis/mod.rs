@@ -572,7 +572,11 @@ impl Analyzer {
 
         results.retain(|rec| rec.confidence >= min_confidence);
         results.retain(|rec| {
-            by_label.is_none_or(|label| rec.labels.iter().any(|entry| entry == label))
+            by_label.is_none_or(|label| {
+                rec.labels
+                    .iter()
+                    .any(|entry| entry.eq_ignore_ascii_case(label))
+            })
         });
         results.retain(|rec| by_assignee.is_none_or(|assignee| rec.assignee == assignee));
 

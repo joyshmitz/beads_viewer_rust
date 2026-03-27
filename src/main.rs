@@ -3739,7 +3739,12 @@ fn build_robot_capacity_output(issues: &[bvr::model::Issue], cli: &Cli) -> Robot
     {
         issues
             .iter()
-            .filter(|issue| issue.labels.iter().any(|entry| entry == label))
+            .filter(|issue| {
+                issue
+                    .labels
+                    .iter()
+                    .any(|entry| entry.eq_ignore_ascii_case(label))
+            })
             .cloned()
             .collect::<Vec<_>>()
     } else {

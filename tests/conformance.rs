@@ -1112,6 +1112,23 @@ fn robot_capacity_estimated_days_drops_with_more_agents() {
     assert_eq!(backend["label"], "backend");
     assert_eq!(backend["open_issue_count"], 2);
 
+    let backend_mixed_case = run_bvr_json_in_dir(
+        &[
+            "--robot-capacity",
+            "--capacity-label",
+            "BACKEND",
+            "--agents",
+            "1",
+        ],
+        repo_dir,
+    );
+    assert_eq!(backend_mixed_case["label"], "BACKEND");
+    assert_eq!(backend_mixed_case["open_issue_count"], 2);
+    assert_eq!(
+        backend_mixed_case["total_minutes"],
+        backend["total_minutes"]
+    );
+
     let backend_forecast = run_bvr_json_in_dir(
         &[
             "--robot-forecast",
@@ -1141,6 +1158,26 @@ fn robot_capacity_estimated_days_drops_with_more_agents() {
     assert_eq!(spaced_label["label"], " backend ");
     assert_eq!(spaced_label["open_issue_count"], 0);
     assert_eq!(spaced_label["total_minutes"], 0);
+
+    let by_label = run_bvr_json_in_dir(
+        &[
+            "--robot-priority",
+            "--robot-by-label",
+            "BACKEND",
+            "--robot-max-results",
+            "10",
+        ],
+        repo_dir,
+    );
+    let by_label_ids = by_label["recommendations"]
+        .as_array()
+        .expect("priority recommendations")
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(by_label_ids.contains(&"A"));
+    assert!(by_label_ids.contains(&"B"));
+    assert!(!by_label_ids.contains(&"C"));
 }
 
 #[test]

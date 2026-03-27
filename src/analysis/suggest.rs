@@ -441,6 +441,7 @@ fn detect_label_suggestions(issues: &[Issue], generated_at: &str) -> Vec<Suggest
         return Vec::new();
     }
 
+    let canonical_labels = canonical_project_labels(issues);
     let all_labels = issues
         .iter()
         .flat_map(|issue| issue.labels.iter().map(|label| label.to_ascii_lowercase()))
@@ -514,6 +515,11 @@ fn detect_label_suggestions(issues: &[Issue], generated_at: &str) -> Vec<Suggest
                 continue;
             }
 
+            let display_label = canonical_labels
+                .get(&label)
+                .cloned()
+                .unwrap_or(label.clone());
+
             let matched_keywords = label_reasons
                 .get(&label)
                 .map(|values| values.iter().cloned().collect::<Vec<_>>())
@@ -524,14 +530,17 @@ fn detect_label_suggestions(issues: &[Issue], generated_at: &str) -> Vec<Suggest
                 generated_at,
                 SuggestionType::LabelSuggestion,
                 issue.id.clone(),
-                format!("Consider adding label '{label}'"),
+                format!("Consider adding label '{display_label}'"),
                 reason,
                 score.min(0.95),
             );
-            suggestion.action_command = Some(format!("br update {} --add-label={label}", issue.id));
+            suggestion.action_command = Some(format!(
+                "br update {} --add-label={display_label}",
+                issue.id
+            ));
             suggestion
                 .metadata
-                .insert("suggested_label".to_string(), json!(label));
+                .insert("suggested_label".to_string(), json!(display_label));
             suggestion
                 .metadata
                 .insert("matched_keywords".to_string(), json!(matched_keywords));
@@ -750,6 +759,31 @@ fn learn_label_mappings(issues: &[Issue]) -> BTreeMap<String, BTreeMap<String, u
     }
 
     mappings
+}
+
+fn canonical_project_labels(issues: &[Issue]) -> BTreeMap<String, String> {
+    let mut variants = BTreeMap::<String, BTreeMap<String, usize>>::new();
+
+    for issue in issues {
+        for label in &issue.labels {
+            let normalized = label.to_ascii_lowercase();
+            *variants
+                .entry(normalized)
+                .or_default()
+                .entry(label.clone())
+                .or_insert(0) += 1;
+        }
+    }
+
+    variants
+        .into_iter()
+        .filter_map(|(normalized, counts)| {
+            counts
+                .into_iter()
+                .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(&left.0)))
+                .map(|(canonical, _)| (normalized, canonical))
+        })
+        .collect()
 }
 
 fn has_dependency_between(left: &Issue, right: &Issue) -> bool {
@@ -1447,6 +1481,43 @@ mod tests {
     }
 
     #[test]
+    fn label_suggestion_preserves_canonical_project_label_casing() {
+        let mut labeled = make_issue(
+            "bd-1",
+            "Backend auth work",
+            "Previous backend login change",
+            "closed",
+        );
+        labeled.labels = vec!["Backend".to_string()];
+
+        let unlabeled = make_issue(
+            "bd-2",
+            "Backend login endpoint",
+            "Fix backend auth flow",
+            "open",
+        );
+
+        let now = Utc::now().to_rfc3339();
+        let results = detect_label_suggestions(&[labeled, unlabeled], &now);
+        let suggestion = results
+            .iter()
+            .find(|item| item.target_bead == "bd-2")
+            .expect("expected a backend label suggestion");
+        assert_eq!(
+            suggestion
+                .metadata
+                .get("suggested_label")
+                .and_then(|value| value.as_str()),
+            Some("Backend")
+        );
+        assert_eq!(
+            suggestion.action_command.as_deref(),
+            Some("br update bd-2 --add-label=Backend")
+        );
+        assert!(suggestion.summary.contains("'Backend'"));
+    }
+
+    #[test]
     fn label_suggestion_empty_labels_returns_empty() {
         // No issue has any label → no labels in the project → no suggestions
         let issues = vec![
@@ -1513,6 +1584,19 @@ mod tests {
             !integration_suggestions.is_empty(),
             "learned mapping from multiple shared keywords should suggest label"
         );
+    }
+
+    #[test]
+    fn canonical_project_labels_prefers_most_common_variant() {
+        let mut issue1 = make_issue("bd-1", "One", "Desc", "open");
+        issue1.labels = vec!["Backend".to_string()];
+        let mut issue2 = make_issue("bd-2", "Two", "Desc", "open");
+        issue2.labels = vec!["backend".to_string()];
+        let mut issue3 = make_issue("bd-3", "Three", "Desc", "open");
+        issue3.labels = vec!["Backend".to_string()];
+
+        let labels = canonical_project_labels(&[issue1, issue2, issue3]);
+        assert_eq!(labels.get("backend").map(String::as_str), Some("Backend"));
     }
 
     // ── detect_cycle_warnings ───────────────────────────────────────

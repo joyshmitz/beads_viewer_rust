@@ -488,6 +488,25 @@ mod tests {
     }
 
     #[test]
+    fn graph_runtime_cleans_up_keyboard_shortcuts_on_reinit() {
+        let graph = lookup_asset("graph.js").expect("graph.js");
+        let js = std::str::from_utf8(graph.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("let keyboardShortcutHandler = null;"),
+            "graph runtime must track a stable keyboard shortcut handler"
+        );
+        assert!(
+            js.contains("document.addEventListener('keydown', keyboardShortcutHandler);"),
+            "graph runtime must register keyboard shortcuts via the stable handler"
+        );
+        assert!(
+            js.contains("document.removeEventListener('keydown', keyboardShortcutHandler);"),
+            "graph runtime cleanup must remove keyboard shortcut listeners"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

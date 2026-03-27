@@ -2620,8 +2620,14 @@ function getDefaultExportPreset() {
 // KEYBOARD SHORTCUTS
 // ============================================================================
 
+let keyboardShortcutHandler = null;
+
 function setupKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => {
+    if (keyboardShortcutHandler) {
+        return;
+    }
+
+    keyboardShortcutHandler = (e) => {
         // Ignore if typing in input
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -2720,7 +2726,9 @@ function setupKeyboardShortcuts() {
                 navigateByKCore(e.key === 'ArrowUp' ? 1 : -1);
                 break;
         }
-    });
+    };
+
+    document.addEventListener('keydown', keyboardShortcutHandler);
 }
 
 /**
@@ -3194,6 +3202,10 @@ export function cleanup() {
     if (tooltipEl) {
         tooltipEl.remove();
         tooltipEl = null;
+    }
+    if (keyboardShortcutHandler) {
+        document.removeEventListener('keydown', keyboardShortcutHandler);
+        keyboardShortcutHandler = null;
     }
     if (store.wasmGraph) {
         store.wasmGraph.free();

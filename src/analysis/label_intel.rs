@@ -1093,6 +1093,26 @@ mod tests {
     }
 
     #[test]
+    fn cross_label_flow_merges_case_variants() {
+        let issues = vec![
+            make_issue("A", &["Backend"], "open"),
+            make_issue_with_dep("B", &["FRONTEND"], "open", "A"),
+            make_issue_with_dep("C", &["frontend"], "open", "A"),
+        ];
+        let flow = compute_cross_label_flow(&issues);
+
+        assert_eq!(
+            flow.labels,
+            vec!["backend".to_string(), "frontend".to_string()]
+        );
+        assert_eq!(flow.total_cross_label_deps, 2);
+        assert_eq!(flow.dependencies.len(), 1);
+        assert_eq!(flow.dependencies[0].from_label, "backend");
+        assert_eq!(flow.dependencies[0].to_label, "frontend");
+        assert_eq!(flow.dependencies[0].issue_count, 2);
+    }
+
+    #[test]
     fn attention_empty_issues() {
         let issues: Vec<Issue> = vec![];
         let graph = super::super::graph::IssueGraph::build(&issues);
@@ -1152,6 +1172,22 @@ mod tests {
             .expect("backend score should exist");
 
         assert_eq!(backend.block_impact, 1.0);
+    }
+
+    #[test]
+    fn all_label_health_merges_case_variants() {
+        let issues = vec![
+            make_issue("A", &["Backend"], "open"),
+            make_issue("B", &["backend"], "blocked"),
+        ];
+        let graph = super::super::graph::IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_all_label_health(&issues, &graph, &metrics);
+
+        assert_eq!(result.total_labels, 1);
+        assert_eq!(result.labels.len(), 1);
+        assert_eq!(result.labels[0].label, "backend");
+        assert_eq!(result.labels[0].issue_count, 2);
     }
 
     // ── compute_velocity ────────────────────────────────────────────

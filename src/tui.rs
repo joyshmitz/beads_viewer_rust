@@ -2648,7 +2648,8 @@ impl Model for BvrApp {
                 self.detail_panel_render_text()
             };
             let detail_scroll = if matches!(self.mode, ViewMode::Board) {
-                self.board_detail_scroll_offset
+                // Use the clamped offset to prevent scrolling past content end.
+                board_detail_line.map_or(0, |(o, _)| o)
             } else {
                 usize::from(saturating_scroll_offset(self.detail_scroll_offset))
             };
@@ -5767,7 +5768,11 @@ impl BvrApp {
             return false;
         }
         if let Some(ref label) = self.modal_label_filter {
-            if !issue.labels.iter().any(|l| l == label) {
+            if !issue
+                .labels
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(label))
+            {
                 return false;
             }
         }
@@ -9509,7 +9514,12 @@ impl BvrApp {
             .analyzer
             .issues
             .iter()
-            .filter(|i| i.is_open_like() && i.labels.iter().any(|l| l == &label.label))
+            .filter(|i| {
+                i.is_open_like()
+                    && i.labels
+                        .iter()
+                        .any(|candidate| candidate.eq_ignore_ascii_case(&label.label))
+            })
             .map(|i| i.id.as_str())
             .collect();
         if !issues_with_label.is_empty() {
@@ -10104,7 +10114,11 @@ impl BvrApp {
                 .analyzer
                 .issues
                 .iter()
-                .filter(|i| i.labels.iter().any(|l| l == from_label))
+                .filter(|i| {
+                    i.labels
+                        .iter()
+                        .any(|candidate| candidate.eq_ignore_ascii_case(from_label))
+                })
                 .collect();
             lines.push(format!("Issues with this label: {}", issue_ids.len()));
             for issue in &issue_ids {
@@ -10737,7 +10751,7 @@ impl BvrApp {
         if self
             .modal_label_filter
             .as_deref()
-            .is_some_and(|current| current == label)
+            .is_some_and(|current| current.eq_ignore_ascii_case(label))
         {
             self.modal_label_filter = None;
             self.status_msg = "Label filter cleared".into();
@@ -23527,6 +23541,31 @@ mod tests {
             filtered < total,
             "label filter should reduce visible issues: {filtered} < {total}"
         );
+    }
+
+    #[test]
+    fn label_filter_matches_case_insensitively() {
+        let mut app = new_app_with_issues(ViewMode::Main, 0, labeled_issues());
+        app.modal_label_filter = Some("FRONTEND".to_string());
+
+        let visible_ids = app
+            .visible_issue_indices()
+            .into_iter()
+            .map(|index| app.analyzer.issues[index].id.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(visible_ids, vec!["C"]);
+    }
+
+    #[test]
+    fn set_label_filter_toggles_case_insensitively() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.modal_label_filter = Some("backend".to_string());
+
+        app.set_label_filter("BACKEND");
+
+        assert!(app.modal_label_filter.is_none());
+        assert_eq!(app.status_msg, "Label filter cleared");
     }
 
     #[test]

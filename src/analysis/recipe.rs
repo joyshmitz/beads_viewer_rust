@@ -221,7 +221,7 @@ pub fn apply_recipe(
                     .filters
                     .labels
                     .iter()
-                    .any(|l| labels.iter().any(|il| il == l))
+                    .any(|l| labels.iter().any(|il| il.eq_ignore_ascii_case(l)))
                 {
                     return false;
                 }

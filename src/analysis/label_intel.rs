@@ -808,7 +808,14 @@ pub fn compute_label_attention(
                 for dep in &other.dependencies {
                     if dep.is_blocking() && dep.depends_on_id == issue.id {
                         // Check if the blocked issue has different labels
-                        if other.labels.iter().any(|l| l != label) || !other.labels.contains(label)
+                        if other
+                            .labels
+                            .iter()
+                            .any(|candidate| !label_matches(candidate, label))
+                            || !other
+                                .labels
+                                .iter()
+                                .any(|candidate| label_matches(candidate, label))
                         {
                             block_impact += 1.0;
                         }
@@ -1120,6 +1127,26 @@ mod tests {
         let result = compute_label_attention(&issues, &metrics, 2);
         assert_eq!(result.labels.len(), 2);
         assert_eq!(result.total_labels, 3);
+    }
+
+    #[test]
+    fn attention_block_impact_matches_labels_case_insensitively() {
+        let blocker = make_issue("A", &["Backend"], "open");
+        let blocked_same_label = make_issue_with_dep("B", &["backend"], "open", "A");
+        let blocked_other_label = make_issue_with_dep("C", &["frontend"], "open", "A");
+
+        let issues = vec![blocker, blocked_same_label, blocked_other_label];
+        let graph = super::super::graph::IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let result = compute_label_attention(&issues, &metrics, 0);
+
+        let backend = result
+            .labels
+            .iter()
+            .find(|score| score.label == "backend")
+            .expect("backend score should exist");
+
+        assert_eq!(backend.block_impact, 1.0);
     }
 
     // ── compute_velocity ────────────────────────────────────────────

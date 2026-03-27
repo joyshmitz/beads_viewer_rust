@@ -45,64 +45,64 @@ c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def
 ┌Beads With History [focus]────────┐┌Commits─────────────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
-│ Bead history list (3 beads) | v  ││ 1 commit(s) for B                      ││ History Summary: beads=3 closed-like=1 │
+│ Bead history list (3 beads) | v  ││ 2 commit(s) for B                      ││ History Summary: beads=3 closed-like=1 │
 │                                  ││                                        ││                                        │
-│   oT A             2▪ open       ││   d50d5c0  75% feat(tui): add InPr…    ││ Issue: B (Dependent)                   │
-│ ▸ oT B             3▪ open       ││                                        ││ Status: open                           │
+│   oT A             2▪ open       ││   aaaa111  95% feat: ui wiring         ││ Issue: B (Dependent)                   │
+│ ▸ oT B             3▪ open       ││   bbbb222  80% feat: graph core        ││ Status: open                           │
 │   xT C             3▪ closed     ││                                        ││ Min confidence filter: >= 0%           │
 │                                  ││                                        ││ Created/Updated/Closed: 2026-01-03 / 2 │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Timeline:                              │
-│                                  ││                                        ││   ○──├  1 commit                       │
+│                                  ││                                        ││   ├──├  2 commits                      │
+│                                  ││                                        ││ Last author: Test Author               │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││ Milestones:                            │
-│                                  ││                                        ││   Created:  2026-03-23T06:14:45Z by Di │
-│                                  ││                                        ││ Last author: Dicklesworthstone         │
+│                                  ││                                        ││ LIFECYCLE:                             │
+│                                  ││                                        ││   (no events)                          │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││ LIFECYCLE (1)                          │
-│                                  ││                                        ││   └ 🆕 4d ago  DI                      │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││ COMMIT DETAILS (1/1):                  │
-│                                  ││                                        ││   F d50d5c0  2026-03-23T06:14:45Z      │
-│                                  ││                                        ││   [D] Dicklesworthstone <jeff141421@gm │
-│                                  ││                                        ││   feat(tui): add InProgress and Blocke │
-│                                  ││                                        ││   75% confidence (explicit_id)         │
-│                                  ││                                        ││   Reason: Commit message references be │
-│                                  ││                                        ││   1 file(s) +0/-0                      │
-│                                  ││                                        ││     ~ src/tui.rs                       │
+│                                  ││                                        ││ COMMIT DETAILS (1/2):                  │
+│                                  ││                                        ││   F aaaa111  2026-01-10T00:00:00Z      │
+│                                  ││                                        ││   [TA] Test Author <test@example.com>  │
+│                                  ││                                        ││   feat: ui wiring                      │
+│                                  ││                                        ││   95% confidence (co_committed)        │
+│                                  ││                                        ││   Reason: fixture                      │
+│                                  ││                                        ││   2 file(s) +2/-0                      │
+│                                  ││                                        ││     ~ src/ui/app.rs +1/-0              │
+│                                  ││                                        ││     ~ src/ui/detail.rs +1/-0           │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Enter: backtrace selected commit | v:  │
-│                                  ││                                        ││ y: copy bead ID | o: open commit | f:  │
+│                                  ││                                        ││ y: copy bead ID | f: file tree         │
+│                                  ││                                        ││                                        │
+│                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 3: history_git_mode ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
 ┌Commits [focus]───────────────────┐┌Related Beads───────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
-│ Git commits (N/N correlated) | ││ 1 related bead(s) for AAAAAAA          ││ Commit 1/1 | confidence >= 0%          │
+│ Git commits (2/2 correlated) | v ││ 1 related bead(s) for aaaa111          ││ Commit 1/2 | confidence >= 0%          │
 │ Min confidence: >= 0%            ││                                        ││                                        │
 │                                  ││   [o] B        Dependent               ││ COMMIT DETAILS:                        │
-│ > F AAAAAAA B        feat(tui):  ││                                        ││   SHA: AAAAAAA │
-│                                  ││                                        ││   [D] Dicklesworthstone <jeff141421@gm │
-│                                  ││                                        ││   Date: YYYY-MM-DDTHH:MM:SSZ           │
-│                                  ││                                        ││   F feat(tui): add InProgress and Bloc │
-│                                  ││                                        ││   Files: 1 changed +0/-0               │
-│                                  ││                                        ││     ~ src/tui.rs                       │
+│ > F aaaa111 B        feat: ui wi ││                                        ││   SHA: aaaa1111                        │
+│   F bbbb222 B        feat: graph ││                                        ││   [TA] Test Author <test@example.com>  │
+│                                  ││                                        ││   Date: 2026-01-10T00:00:00Z           │
+│                                  ││                                        ││   F feat: ui wiring                    │
+│                                  ││                                        ││   Files: 2 changed +2/-0               │
+│                                  ││                                        ││     ~ src/ui/app.rs +1/-0              │
+│                                  ││                                        ││     ~ src/ui/detail.rs +1/-0           │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ RELATED BEADS:                         │
-│                                  ││                                        ││   [o] B (75%) Dependent                │
+│                                  ││                                        ││   [o] B (95%) Dependent                │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ SELECTED BEAD CHANGE (B):              │
 │                                  ││                                        ││   (no field-level bead changes detecte │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Enter: jump to related bead | J/K: cyc │
 │                                  ││                                        ││ v: switch to bead timeline | c: cycle  │
-│                                  ││                                        ││ y: copy SHA | o: open in browser | f:  │
+│                                  ││                                        ││ y: copy SHA | f: file tree             │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││ Browser Link: open selected commit (o  │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -113,32 +113,32 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=l
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 4: history_search ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
 ┌Commits [focus]───────────────────┐┌Related Beads───────────────────────────┐┌Commit Details──────────────────────────┐
 │                                  ││                                        ││                                        │
-│ (no commits match search: /test) ││ Select a commit to view related beads. ││ No correlated git commits available.   │
+│ Git commits (matches: 2/2) | v b ││ 1 related bead(s) for aaaa111          ││ Commit 1/2 | confidence >= 0%          │
+│ Min confidence: >= 0%            ││                                        ││                                        │
+│ Search [all]: /test (2 matches,  ││   [o] B        Dependent               ││ COMMIT DETAILS:                        │
+│                                  ││                                        ││   SHA: aaaa1111                        │
+│ > F aaaa111 B        feat: ui wi ││                                        ││   [TA] Test Author <test@example.com>  │
+│   F bbbb222 B        feat: graph ││                                        ││   Date: 2026-01-10T00:00:00Z           │
+│                                  ││                                        ││   F feat: ui wiring                    │
+│                                  ││                                        ││   Files: 2 changed +2/-0               │
+│                                  ││                                        ││     ~ src/ui/app.rs +1/-0              │
+│                                  ││                                        ││     ~ src/ui/detail.rs +1/-0           │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││ Browser Link: open selected commit (o  │
+│                                  ││                                        ││ RELATED BEADS:                         │
+│                                  ││                                        ││   [o] B (95%) Dependent                │
 │                                  ││                                        ││                                        │
+│                                  ││                                        ││ SELECTED BEAD CHANGE (B):              │
+│                                  ││                                        ││   (no field-level bead changes detecte │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
+│                                  ││                                        ││ Enter: jump to related bead | J/K: cyc │
+│                                  ││                                        ││ v: switch to bead timeline | c: cycle  │
+│                                  ││                                        ││ y: copy SHA | f: file tree             │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -150,7 +150,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=l
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 5: history_bead_return ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def

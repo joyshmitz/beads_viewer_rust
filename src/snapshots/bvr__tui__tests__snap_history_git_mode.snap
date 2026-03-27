@@ -5,30 +5,30 @@ expression: text
 bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all
 ┌Commits [focus]─────────────┐┌Related Beads────────────────────┐┌Commit Details───────────────────┐
 │                            ││                                 ││                                 │
-│ Git commits (N/N correla ││ 1 related bead(s) for AAAAAAA   ││ Commit 1/1 | confidence >= 0%   │
+│ Git commits (4/4 correlate ││ 1 related bead(s) for aaaa111   ││ Commit 1/4 | confidence >= 0%   │
 │ Min confidence: >= 0%      ││                                 ││                                 │
-│                            ││   [o] B        Dependent        ││ COMMIT DETAILS:                 │
-│ > F AAAAAAA B        feat( ││                                 ││   SHA: AAAAAAA │
-│                            ││                                 ││   [D] Dicklesworthstone <jeff14 │
-│                            ││                                 ││   Date: YYYY-MM-DDTHH:MM:SSZ    │
-│                            ││                                 ││   F feat(tui): add InProgress a │
-│                            ││                                 ││   Files: 1 changed +0/-0        │
-│                            ││                                 ││     ~ src/tui.rs                │
+│                            ││   [o] A        Root             ││ COMMIT DETAILS:                 │
+│ > F aaaa111 A        feat: ││                                 ││   SHA: aaaa1111                 │
+│   F bbbb222 A        feat: ││                                 ││   [TA] Test Author <test@exampl │
+│   D cccc333 B        docs: ││                                 ││   Date: 2026-01-10T00:00:00Z    │
+│   C dddd444 B        chore ││                                 ││   F feat: ui wiring             │
+│                            ││                                 ││   Files: 2 changed +2/-0        │
+│                            ││                                 ││     ~ src/ui/app.rs +1/-0       │
+│                            ││                                 ││     ~ src/ui/detail.rs +1/-0    │
 │                            ││                                 ││                                 │
 │                            ││                                 ││ RELATED BEADS:                  │
-│                            ││                                 ││   [o] B (75%) Dependent         │
+│                            ││                                 ││   [o] A (95%) Root              │
 │                            ││                                 ││                                 │
-│                            ││                                 ││ SELECTED BEAD CHANGE (B):       │
+│                            ││                                 ││ SELECTED BEAD CHANGE (A):       │
 │                            ││                                 ││   (no field-level bead changes  │
 │                            ││                                 ││                                 │
 │                            ││                                 ││ Enter: jump to related bead | J │
 │                            ││                                 ││ v: switch to bead timeline | c: │
-│                            ││                                 ││ y: copy SHA | o: open in browse │
+│                            ││                                 ││ y: copy SHA | f: file tree      │
 │                            ││                                 ││                                 │
-│                            ││                                 ││ Browser Link: open selected com │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 │                            ││                                 ││                                 │
 └────────────────────────────┘└─────────────────────────────────┘└─────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back

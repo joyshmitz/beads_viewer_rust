@@ -14637,6 +14637,59 @@ mod tests {
         app
     }
 
+    /// Pre-populate `history_git_cache` with deterministic fixture data so
+    /// tests that switch to git-history mode don't depend on real repo state.
+    fn inject_deterministic_git_cache(app: &mut BvrApp) {
+        let ui_commit = history_commit(
+            "aaaa1111",
+            "feat: ui wiring",
+            0.95,
+            &["src/ui/app.rs", "src/ui/detail.rs"],
+        );
+        let core_commit =
+            history_commit("bbbb2222", "feat: graph core", 0.80, &["src/core/graph.rs"]);
+
+        let mut histories = BTreeMap::new();
+        for issue in &app.analyzer.issues {
+            histories.insert(
+                issue.id.clone(),
+                HistoryBeadCompat {
+                    bead_id: issue.id.clone(),
+                    title: issue.title.clone(),
+                    status: issue.status.clone(),
+                    events: Vec::new(),
+                    milestones: HistoryMilestonesCompat::default(),
+                    commits: None,
+                    cycle_time: None,
+                    last_author: String::new(),
+                },
+            );
+        }
+
+        // Wire commits to issue "B" (Dependent) so git mode shows content.
+        if let Some(history) = histories.get_mut("B") {
+            history.commits = Some(vec![ui_commit.clone(), core_commit.clone()]);
+            history.last_author = "Test Author".to_string();
+        }
+
+        let mut commit_bead_confidence = BTreeMap::new();
+        commit_bead_confidence.insert("aaaa1111".to_string(), vec![("B".to_string(), 0.95)]);
+        commit_bead_confidence.insert("bbbb2222".to_string(), vec![("B".to_string(), 0.80)]);
+
+        app.history_git_cache = Some(HistoryGitCache {
+            commits: vec![
+                git_commit_record(
+                    "aaaa1111",
+                    "feat: ui wiring",
+                    &["src/ui/app.rs", "src/ui/detail.rs"],
+                ),
+                git_commit_record("bbbb2222", "feat: graph core", &["src/core/graph.rs"]),
+            ],
+            histories,
+            commit_bead_confidence,
+        });
+    }
+
     fn key(code: KeyCode) -> Msg {
         Msg::KeyPress(code, Modifiers::empty())
     }
@@ -21356,6 +21409,7 @@ mod tests {
 
     /// Redact non-deterministic git data from snapshot text.
     /// Handles: commit counts, 7-char SHAs, ISO dates, and author info.
+    #[allow(dead_code)]
     fn redact_git_volatile(text: &str) -> String {
         let mut result = String::with_capacity(text.len());
 
@@ -22092,12 +22146,9 @@ mod tests {
 
     #[test]
     fn snap_history_git_mode() {
-        let mut app = new_app(ViewMode::History, 0);
-        app.update(key(KeyCode::Char('v')));
+        let app = history_app_with_git_cache(HistoryViewMode::Git, 0);
 
-        // Redact the git commit count which changes with every commit to the repo.
         let text = render_app(&app, 100, 30);
-        let text = redact_git_volatile(&text);
         insta::assert_snapshot!(text);
     }
 
@@ -24850,6 +24901,7 @@ mod tests {
     #[test]
     fn e2e_journey_history_deep_dive() {
         let mut app = new_app(ViewMode::Main, 0);
+        inject_deterministic_git_cache(&mut app);
         let (w, h) = (120, 35);
         let mut caps: Vec<(String, String)> = Vec::new();
 
@@ -24890,9 +24942,7 @@ mod tests {
         assert_eq!(app.mode, ViewMode::Main);
         journey_capture(&app, w, h, "main_after_history", &mut caps);
 
-        // Redact git commit count which changes with every commit to the repo.
         let artifact = journey_artifact("history-deep-dive", w, h, &caps);
-        let artifact = redact_git_volatile(&artifact);
         insta::assert_snapshot!(artifact);
     }
 

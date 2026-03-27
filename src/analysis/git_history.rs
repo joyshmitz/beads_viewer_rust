@@ -237,10 +237,42 @@ pub fn correlate_histories_with_git(
     commit_index: &mut BTreeMap<String, Vec<String>>,
     method_distribution: &mut BTreeMap<String, usize>,
 ) {
-    let known_ids = histories_map
+    correlate_histories_with_git_aliases(
+        repo_root,
+        commits,
+        histories_map,
+        commit_index,
+        method_distribution,
+        &BTreeMap::new(),
+    );
+}
+
+/// Like [`correlate_histories_with_git`] but accepts `workspace_id_aliases`:
+/// a map from **raw (unprefixed, lowercase)** bead IDs to their canonical
+/// workspace-prefixed form.  This allows JSONL diffs from nested workspace
+/// repos (which store unprefixed IDs) to be matched against the prefixed IDs
+/// in the histories map.
+pub fn correlate_histories_with_git_aliases(
+    repo_root: &Path,
+    commits: &[GitCommitRecord],
+    histories_map: &mut BTreeMap<String, HistoryBeadCompat>,
+    commit_index: &mut BTreeMap<String, Vec<String>>,
+    method_distribution: &mut BTreeMap<String, usize>,
+    workspace_id_aliases: &BTreeMap<String, String>,
+) {
+    let mut known_ids: BTreeMap<String, String> = histories_map
         .keys()
         .map(|id| (id.to_ascii_lowercase(), id.clone()))
-        .collect::<BTreeMap<_, _>>();
+        .collect();
+
+    // Merge workspace aliases so raw (unprefixed) IDs resolve to their
+    // canonical prefixed form.  Only add aliases that don't shadow an
+    // already-known direct entry.
+    for (raw_lower, canonical) in workspace_id_aliases {
+        known_ids
+            .entry(raw_lower.clone())
+            .or_insert_with(|| canonical.clone());
+    }
 
     for commit in commits {
         let mut bead_ids = extract_ids_from_message(&commit.message, &known_ids);
@@ -321,6 +353,33 @@ pub fn correlate_histories_with_git(
         ids.sort();
         ids.dedup();
     }
+}
+
+/// Build a mapping from raw (unprefixed, lowercase) bead IDs to their
+/// canonical workspace-prefixed form.  For each issue whose `source_repo`
+/// is non-empty, the workspace prefix `lowercase(source_repo)-` is stripped
+/// from the issue ID to recover the raw ID, and the pair is added to the map.
+pub fn build_workspace_id_aliases(issues: &[Issue]) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::<String, String>::new();
+
+    for issue in issues {
+        let repo = issue.source_repo.trim();
+        if repo.is_empty() {
+            continue;
+        }
+
+        let prefix = format!("{}-", repo.to_ascii_lowercase());
+        let id_lower = issue.id.to_ascii_lowercase();
+        if let Some(raw) = id_lower.strip_prefix(&prefix) {
+            if !raw.is_empty() {
+                aliases
+                    .entry(raw.to_string())
+                    .or_insert_with(|| issue.id.clone());
+            }
+        }
+    }
+
+    aliases
 }
 
 pub fn extract_ids_from_message(
@@ -551,10 +610,12 @@ fn summarize_bead_snapshot(value: &serde_json::Value) -> String {
 
 fn is_beads_jsonl_path(path: &str) -> bool {
     let normalized = path.replace('\\', "/");
-    normalized.starts_with(".beads/")
-        && Path::new(&normalized)
-            .extension()
-            .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jsonl"))
+    let path = Path::new(&normalized);
+    path.extension()
+        .is_some_and(|ext| ext.to_string_lossy().eq_ignore_ascii_case("jsonl"))
+        && path
+            .components()
+            .any(|component| component.as_os_str() == ".beads")
 }
 
 fn is_closed_like_status(status: &str) -> bool {
@@ -984,6 +1045,132 @@ mod tests {
         assert!(
             !obj.contains_key("avg_cycle_time_days"),
             "None avg_cycle_time_days should be omitted"
+        );
+    }
+
+    #[test]
+    fn is_beads_jsonl_path_accepts_nested_workspace_beads_files() {
+        assert!(is_beads_jsonl_path("services/api/.beads/issues.jsonl"));
+        assert!(is_beads_jsonl_path("apps\\web\\.beads\\beads.jsonl"));
+        assert!(!is_beads_jsonl_path("services/api/beads/issues.jsonl"));
+        assert!(!is_beads_jsonl_path("services/api/.beads/issues.json"));
+    }
+
+    #[test]
+    fn build_workspace_id_aliases_maps_raw_to_prefixed() {
+        let issues = vec![
+            Issue {
+                id: "api-bd-1234".to_string(),
+                source_repo: "api".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "web-bd-5678".to_string(),
+                source_repo: "web".to_string(),
+                ..Issue::default()
+            },
+        ];
+
+        let aliases = build_workspace_id_aliases(&issues);
+        assert_eq!(aliases.get("bd-1234").unwrap(), "api-bd-1234");
+        assert_eq!(aliases.get("bd-5678").unwrap(), "web-bd-5678");
+    }
+
+    #[test]
+    fn build_workspace_id_aliases_skips_non_workspace_issues() {
+        let issues = vec![Issue {
+            id: "bd-abcd".to_string(),
+            source_repo: String::new(),
+            ..Issue::default()
+        }];
+
+        let aliases = build_workspace_id_aliases(&issues);
+        assert!(aliases.is_empty());
+    }
+
+    #[test]
+    fn build_workspace_id_aliases_handles_case_insensitive_prefix() {
+        let issues = vec![Issue {
+            id: "API-bd-1234".to_string(),
+            source_repo: "API".to_string(),
+            ..Issue::default()
+        }];
+
+        let aliases = build_workspace_id_aliases(&issues);
+        assert_eq!(aliases.get("bd-1234").unwrap(), "API-bd-1234");
+    }
+
+    #[test]
+    fn build_workspace_id_aliases_first_wins_on_collision() {
+        let issues = vec![
+            Issue {
+                id: "api-bd-same".to_string(),
+                source_repo: "api".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "web-bd-same".to_string(),
+                source_repo: "web".to_string(),
+                ..Issue::default()
+            },
+        ];
+
+        let aliases = build_workspace_id_aliases(&issues);
+        // First insertion wins (BTreeMap::entry + or_insert)
+        assert_eq!(aliases.get("bd-same").unwrap(), "api-bd-same");
+    }
+
+    #[test]
+    fn correlate_with_aliases_matches_raw_ids_from_commit_messages() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "api-bd-1234".to_string(),
+            HistoryBeadCompat {
+                bead_id: "api-bd-1234".to_string(),
+                title: "Test issue".to_string(),
+                status: "open".to_string(),
+                events: Vec::new(),
+                milestones: HistoryMilestonesCompat::default(),
+                commits: None,
+                cycle_time: None,
+                last_author: String::new(),
+            },
+        );
+
+        let commits = vec![GitCommitRecord {
+            sha: "abc123".to_string(),
+            short_sha: "abc".to_string(),
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            author: "dev".to_string(),
+            author_email: "dev@example.com".to_string(),
+            message: "fix: resolve bd-1234 bug".to_string(),
+            files: Vec::new(),
+            changed_beads: false,
+            changed_non_beads: true,
+        }];
+
+        let aliases: BTreeMap<String, String> =
+            [("bd-1234".to_string(), "api-bd-1234".to_string())]
+                .into_iter()
+                .collect();
+
+        let mut commit_index = BTreeMap::new();
+        let mut method_dist = BTreeMap::new();
+
+        // Without aliases, the raw ID "bd-1234" won't match "api-bd-1234"
+        correlate_histories_with_git_aliases(
+            Path::new("."),
+            &commits,
+            &mut histories,
+            &mut commit_index,
+            &mut method_dist,
+            &aliases,
+        );
+
+        let history = histories.get("api-bd-1234").unwrap();
+        assert!(
+            history.commits.as_ref().is_some_and(|c| !c.is_empty()),
+            "raw ID bd-1234 in commit message should match prefixed api-bd-1234 via alias"
         );
     }
 }

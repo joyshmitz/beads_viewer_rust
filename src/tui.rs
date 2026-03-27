@@ -9,7 +9,8 @@ use std::path::PathBuf;
 use crate::analysis::Analyzer;
 use crate::analysis::git_history::{
     GitCommitRecord, HistoryBeadCompat, HistoryCommitCompat, HistoryMilestonesCompat,
-    correlate_histories_with_git, finalize_history_entries, load_git_commits,
+    build_workspace_id_aliases, correlate_histories_with_git_aliases, finalize_history_entries,
+    load_git_commits,
 };
 use crate::analysis::history::IssueHistory;
 use crate::analysis::triage::TriageOptions;
@@ -5386,13 +5387,15 @@ impl BvrApp {
 
         let mut commit_index = BTreeMap::<String, Vec<String>>::new();
         let mut method_distribution = BTreeMap::<String, usize>::new();
+        let workspace_aliases = build_workspace_id_aliases(&self.analyzer.issues);
 
-        correlate_histories_with_git(
+        correlate_histories_with_git_aliases(
             &repo_root,
             &commits,
             &mut histories,
             &mut commit_index,
             &mut method_distribution,
+            &workspace_aliases,
         );
 
         finalize_history_entries(&mut histories);

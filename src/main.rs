@@ -12,8 +12,8 @@ use std::process::{Command, ExitCode};
 use bvr::analysis::alerts::AlertOptions;
 use bvr::analysis::git_history::{
     HistoryBeadCompat, HistoryEventCompat, HistoryMilestonesCompat, HistoryStatsCompat,
-    compute_history_stats, correlate_histories_with_git, finalize_history_entries,
-    load_git_commits,
+    build_workspace_id_aliases, compute_history_stats, correlate_histories_with_git_aliases,
+    finalize_history_entries, load_git_commits,
 };
 use bvr::analysis::graph::AnalysisConfig;
 use bvr::analysis::suggest::{SuggestOptions, SuggestionType};
@@ -3111,17 +3111,20 @@ fn build_robot_history_output(
     let mut method_distribution = BTreeMap::<String, usize>::new();
     let mut latest_sha = latest_commit_sha(cli);
 
+    let workspace_aliases = build_workspace_id_aliases(issues);
+
     if let Some(repo_root) = resolve_repo_root(cli) {
         let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
         if let Some(commit) = commits.first() {
             latest_sha = Some(commit.sha.clone());
         }
-        correlate_histories_with_git(
+        correlate_histories_with_git_aliases(
             &repo_root,
             &commits,
             &mut histories_map,
             &mut commit_index,
             &mut method_distribution,
+            &workspace_aliases,
         );
     }
 

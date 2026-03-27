@@ -322,6 +322,7 @@ fn compute_freshness(
 }
 
 fn compute_flow(label: &str, labeled_issues: &[&Issue], all_issues: &[Issue]) -> FlowMetrics {
+    let canonical_target = canonical_label(label);
     let issue_label_map: HashMap<&str, &[String]> = all_issues
         .iter()
         .map(|i| (i.id.as_str(), i.labels.as_slice()))
@@ -340,17 +341,17 @@ fn compute_flow(label: &str, labeled_issues: &[&Issue], all_issues: &[Issue]) ->
             // incoming: other label blocks this label
             if let Some(blocker_labels) = issue_label_map.get(dep.depends_on_id.as_str()) {
                 for bl in *blocker_labels {
-                    if bl != label {
+                    if !label_matches(bl, &canonical_target) {
                         incoming_deps += 1;
-                        incoming_labels.insert(bl.clone());
+                        incoming_labels.insert(canonical_label(bl));
                     }
                 }
             }
             // outgoing: this label's issues block others
             for tl in &issue.labels {
-                if tl != label {
+                if !label_matches(tl, &canonical_target) {
                     outgoing_deps += 1;
-                    outgoing_labels.insert(tl.clone());
+                    outgoing_labels.insert(canonical_label(tl));
                 }
             }
         }
@@ -436,6 +437,10 @@ fn composite_health(velocity: i32, freshness: i32, flow: i32, criticality: i32) 
 
 fn label_matches(candidate: &str, target: &str) -> bool {
     candidate.eq_ignore_ascii_case(target)
+}
+
+fn canonical_label(label: &str) -> String {
+    label.to_ascii_lowercase()
 }
 
 fn compute_label_health(
@@ -564,7 +569,7 @@ pub fn compute_all_label_health(
     for issue in issues {
         for label in &issue.labels {
             if !label.is_empty() {
-                label_set.insert(label.clone());
+                label_set.insert(canonical_label(label));
             }
         }
     }
@@ -624,7 +629,7 @@ pub fn compute_cross_label_flow(issues: &[Issue]) -> CrossLabelFlow {
     for issue in issues {
         for label in &issue.labels {
             if !label.is_empty() {
-                label_set.insert(label.clone());
+                label_set.insert(canonical_label(label));
             }
         }
     }

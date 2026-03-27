@@ -12,7 +12,7 @@ bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 │ ▸ ┌─ open [2] ██  ││ │ Lane: open                        │
 │   ▶ oT P0 A Root↓ ││ │ Assignee: alice                   │
 │   │ oT P0 B Depen ││ │ Labels: core, parity              │
-│   └────────────   ││ │ Age: 84d | Updated: 83d ago       │
+│   └────────────   ││ │ Age: 85d | Updated: 84d ago       │
 │                   ││ │ PR:0.481 Depth:2                  │
 │   ┌─ in_progress  ││ ├────────────────────────────────── │
 │   │ (empty)       ││ │ Top-level issue that unblocks dow │

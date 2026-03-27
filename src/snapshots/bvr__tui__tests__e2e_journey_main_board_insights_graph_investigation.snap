@@ -88,7 +88,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││ ├────────────────────────────────────────┤                             │
 │ ▸ ┌─ open [2] ██  clear                    ││ │ Lane: open                             │                             │
 │   │ oT P0 A Root↓1 @alice                  ││ │ Assignee:                              │                             │
-│   ▶ oT P0 B Dependent⊘1                    ││ │ Age: 82d | Updated: 81d ago            │                             │
+│   ▶ oT P0 B Dependent⊘1                    ││ │ Age: 83d | Updated: 82d ago            │                             │
 │   └────────────                            ││ │ PR:0.260 Depth:1                       │                             │
 │                                            ││ ├────────────────────────────────────────┤                             │
 │   ┌─ in_progress [0]   empty               ││ │ Depends on A and should report block…  │                             │
@@ -125,7 +125,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││ ├────────────────────────────────────────┤                             │
 │   ┌─ open [2] ██  clear                    ││ │ Lane: closed                           │                             │
 │   │ oT P0 A Root↓1 @alice                  ││ │ Assignee:                              │                             │
-│   │ oT P0 B Dependent⊘1                    ││ │ Age: 84d | Updated: 79d ago            │                             │
+│   │ oT P0 B Dependent⊘1                    ││ │ Age: 85d | Updated: 80d ago            │                             │
 │   └────────────                            ││ │ PR:0.260 Depth:1                       │                             │
 │                                            ││ └────────────────────────────────────────┘                             │
 │   ┌─ in_progress [0]   empty               ││                                                                        │

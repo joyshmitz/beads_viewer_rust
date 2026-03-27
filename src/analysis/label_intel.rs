@@ -1192,7 +1192,7 @@ mod tests {
         assert_eq!(result.total_labels, 1);
         assert_eq!(result.labels.len(), 1);
         assert_eq!(result.labels[0].label, "backend");
-        assert_eq!(result.labels[0].issue_count, 2);
+        assert_eq!(result.labels[0].open_count, 2);
     }
 
     #[test]

@@ -541,6 +541,29 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_binds_global_listeners_idempotently() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("globalListenersBound: false,"),
+            "viewer runtime must track whether global listeners are already bound"
+        );
+        assert!(
+            js.contains("if (!this.globalListenersBound) {"),
+            "viewer runtime must guard global listener binding inside init()"
+        );
+        assert!(
+            js.contains("this.globalListenersBound = true;"),
+            "viewer runtime must mark global listeners as bound"
+        );
+        assert!(
+            js.contains("hashChangeListenerBound: false,"),
+            "viewer runtime must track hashchange listener binding separately"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

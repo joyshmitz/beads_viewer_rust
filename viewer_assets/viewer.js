@@ -2293,6 +2293,10 @@ function beadsApp() {
     graphHeatmapActive: false,
     graphSizeMetric: 'pagerank', // pagerank | betweenness | critical | indegree
 
+    // Prevent duplicate global listener binding if init() runs more than once.
+    globalListenersBound: false,
+    hashChangeListenerBound: false,
+
     // Critical path highlighting
     showCriticalPath: false,
     criticalPathData: null, // { path: [issueIds], length: number, animating: boolean }
@@ -2352,120 +2356,124 @@ function beadsApp() {
         }
       });
 
-      // Listen for system preference changes (only if no stored preference)
-      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        if (localStorage.getItem('darkMode') === null) {
-          this.darkMode = e.matches;
-          document.documentElement.classList.toggle('dark', this.darkMode);
-          // Re-render Mermaid graphs if visible
-          if (this.showDepGraph && this.selectedIssue) {
-            this.renderDepGraph();
+      if (!this.globalListenersBound) {
+        this.globalListenersBound = true;
+
+        // Listen for system preference changes (only if no stored preference)
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+          if (localStorage.getItem('darkMode') === null) {
+            this.darkMode = e.matches;
+            document.documentElement.classList.toggle('dark', this.darkMode);
+            // Re-render Mermaid graphs if visible
+            if (this.showDepGraph && this.selectedIssue) {
+              this.renderDepGraph();
+            }
           }
-        }
-      });
+        });
 
-      // Listen for toast events
-      window.addEventListener('show-toast', (e) => {
-        // Validate toast data to prevent template errors
-        const toast = e.detail;
-        if (!toast || typeof toast.message !== 'string') {
-          console.warn('[Toast] Invalid toast data:', toast);
-          return;
-        }
-        // Ensure required properties
-        const validToast = {
-          id: toast.id || Date.now(),
-          message: toast.message,
-          type: toast.type || 'info'
-        };
-        this.toasts.push(validToast);
-        setTimeout(() => {
-          this.toasts = this.toasts.filter(t => t.id !== validToast.id);
-        }, 5000);
-      });
-
-      // Listen for keyboard shortcuts (vim-style navigation)
-      window.addEventListener('keydown', (e) => {
-        // Skip if typing in input fields
-        const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName);
-
-        // '/' focuses search (works globally)
-        if (e.key === '/' && !isInput) {
-          e.preventDefault();
-          const searchInput = document.querySelector('input[x-model="searchQuery"]');
-          if (searchInput) {
-            searchInput.focus();
-            searchInput.select();
+        // Listen for toast events
+        window.addEventListener('show-toast', (e) => {
+          // Validate toast data to prevent template errors
+          const toast = e.detail;
+          if (!toast || typeof toast.message !== 'string') {
+            console.warn('[Toast] Invalid toast data:', toast);
+            return;
           }
-          return;
-        }
+          // Ensure required properties
+          const validToast = {
+            id: toast.id || Date.now(),
+            message: toast.message,
+            type: toast.type || 'info'
+          };
+          this.toasts.push(validToast);
+          setTimeout(() => {
+            this.toasts = this.toasts.filter(t => t.id !== validToast.id);
+          }, 5000);
+        });
 
-        // '?' shows keyboard help
-        if (e.key === '?' && !isInput) {
-          e.preventDefault();
-          this.showKeyboardHelp = true;
-          return;
-        }
+        // Listen for keyboard shortcuts (vim-style navigation)
+        window.addEventListener('keydown', (e) => {
+          // Skip if typing in input fields
+          const isInput = ['INPUT', 'TEXTAREA'].includes(e.target.tagName);
 
-        // 'd' toggles diagnostics panel
-        if (e.key === 'd' && !isInput) {
-          this.showDiagnostics = !this.showDiagnostics;
-          return;
-        }
-
-        // 'c' toggles critical path highlighting
-        if (e.key === 'c' && !isInput) {
-          this.toggleCriticalPath();
-          return;
-        }
-
-        // 'h' navigates to first blocker (blocked-by) - when issue modal open
-        if (e.key === 'h' && !isInput && this.selectedIssue) {
-          const deps = getIssueDependencies(this.selectedIssue.id);
-          if (deps && deps.blockedBy && deps.blockedBy.length > 0) {
-            this.selectIssue(deps.blockedBy[0].id);
+          // '/' focuses search (works globally)
+          if (e.key === '/' && !isInput) {
+            e.preventDefault();
+            const searchInput = document.querySelector('input[x-model="searchQuery"]');
+            if (searchInput) {
+              searchInput.focus();
+              searchInput.select();
+            }
+            return;
           }
-          return;
-        }
 
-        // 'l' navigates to first dependent (blocks) - when issue modal open
-        if (e.key === 'l' && !isInput && this.selectedIssue) {
-          const deps = getIssueDependencies(this.selectedIssue.id);
-          if (deps && deps.blocks && deps.blocks.length > 0) {
-            this.selectIssue(deps.blocks[0].id);
+          // '?' shows keyboard help
+          if (e.key === '?' && !isInput) {
+            e.preventDefault();
+            this.showKeyboardHelp = true;
+            return;
           }
-          return;
-        }
 
-        // 'o' opens issue detail in list view (when row is focused)
-        if (e.key === 'o' && !isInput && this.view === 'issues' && !this.selectedIssue) {
-          // Focus the first issue if none selected
-          if (this.issues.length > 0) {
-            this.selectIssue(this.issues[0].id);
+          // 'd' toggles diagnostics panel
+          if (e.key === 'd' && !isInput) {
+            this.showDiagnostics = !this.showDiagnostics;
+            return;
           }
-          return;
-        }
-      });
 
-      // Force-graph integration: clicking a node opens the issue modal without changing routes.
-      document.addEventListener('bv-graph:nodeClick', (e) => {
-        const nodeId = e?.detail?.node?.id;
-        const ev = e?.detail?.event;
-        if (!nodeId) return;
+          // 'c' toggles critical path highlighting
+          if (e.key === 'c' && !isInput) {
+            this.toggleCriticalPath();
+            return;
+          }
 
-        // In graph view, the dedicated graph detail pane handles node selection.
-        if (this.view === 'graph') return;
+          // 'h' navigates to first blocker (blocked-by) - when issue modal open
+          if (e.key === 'h' && !isInput && this.selectedIssue) {
+            const deps = getIssueDependencies(this.selectedIssue.id);
+            if (deps && deps.blockedBy && deps.blockedBy.length > 0) {
+              this.selectIssue(deps.blockedBy[0].id);
+            }
+            return;
+          }
 
-        // Let graph interactions work:
-        // - Shift+click triggers what-if
-        // - Ctrl/Meta+click highlights dependency paths
-        if (ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey)) return;
+          // 'l' navigates to first dependent (blocks) - when issue modal open
+          if (e.key === 'l' && !isInput && this.selectedIssue) {
+            const deps = getIssueDependencies(this.selectedIssue.id);
+            if (deps && deps.blocks && deps.blocks.length > 0) {
+              this.selectIssue(deps.blocks[0].id);
+            }
+            return;
+          }
 
-        // Open the issue modal on double-click.
-        if (ev && typeof ev.detail === 'number' && ev.detail < 2) return;
+          // 'o' opens issue detail in list view (when row is focused)
+          if (e.key === 'o' && !isInput && this.view === 'issues' && !this.selectedIssue) {
+            // Focus the first issue if none selected
+            if (this.issues.length > 0) {
+              this.selectIssue(this.issues[0].id);
+            }
+            return;
+          }
+        });
 
-        this.selectIssue(nodeId);
-      });
+        // Force-graph integration: clicking a node opens the issue modal without changing routes.
+        document.addEventListener('bv-graph:nodeClick', (e) => {
+          const nodeId = e?.detail?.node?.id;
+          const ev = e?.detail?.event;
+          if (!nodeId) return;
+
+          // In graph view, the dedicated graph detail pane handles node selection.
+          if (this.view === 'graph') return;
+
+          // Let graph interactions work:
+          // - Shift+click triggers what-if
+          // - Ctrl/Meta+click highlights dependency paths
+          if (ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey)) return;
+
+          // Open the issue modal on double-click.
+          if (ev && typeof ev.detail === 'number' && ev.detail < 2) return;
+
+          this.selectIssue(nodeId);
+        });
+      }
 
       try {
         this.loadingMessage = 'Loading sql.js WebAssembly...';
@@ -2543,7 +2551,10 @@ function beadsApp() {
         }
 
         // Listen for hash changes (browser back/forward)
-        window.addEventListener('hashchange', () => this.handleHashChange());
+        if (!this.hashChangeListenerBound) {
+          this.hashChangeListenerBound = true;
+          window.addEventListener('hashchange', () => this.handleHashChange());
+        }
 
         // Record load time
         DIAGNOSTICS.loadTimeMs = Date.now() - DIAGNOSTICS.startTime;

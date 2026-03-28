@@ -569,8 +569,12 @@ mod tests {
         let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
 
         assert!(
-            js.contains("this.view = 'issues';\n          this.graphDetailNode = null;"),
-            "viewer runtime must clear graph detail state before issue/issue-list transitions"
+            js.contains("case 'issue':\n          // Issue detail view\n          this.view = 'issues'; // Keep issues as backdrop\n          this.graphDetailNode = null;"),
+            "viewer runtime must clear graph detail state before issue-detail transitions"
+        );
+        assert!(
+            js.contains("case 'issues':\n          this.view = 'issues';\n          this.selectedIssue = null;\n          this.graphDetailNode = null;"),
+            "viewer runtime must clear graph detail state before issue-list transitions"
         );
         assert!(
             js.contains("this.view = 'insights';\n          this.selectedIssue = null;\n          this.graphDetailNode = null;"),
@@ -579,6 +583,71 @@ mod tests {
         assert!(
             js.contains("this.view = 'dashboard';\n          this.selectedIssue = null;\n          this.graphDetailNode = null;"),
             "viewer runtime must clear graph detail state when returning to dashboard"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_tears_down_force_graph_on_route_exit_without_rebinding_bridge_listeners() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("graphBridgeListenersBound: false,"),
+            "viewer runtime must track graph bridge listener binding separately from graph readiness"
+        );
+        assert!(
+            js.contains("if (previousView === 'graph' && route.view !== 'graph') {\n        this.teardownForceGraph();\n      }"),
+            "viewer runtime must tear down the force graph when leaving graph view"
+        );
+        assert!(
+            js.contains("teardownForceGraph() {\n      if (this.forceGraphModule?.cleanup) {\n        this.forceGraphModule.cleanup();\n      }\n      this.forceGraphReady = false;"),
+            "viewer runtime must call graph cleanup and reset graph readiness on teardown"
+        );
+        assert!(
+            js.contains("if (!this.graphBridgeListenersBound) {\n          this.graphBridgeListenersBound = true;"),
+            "viewer runtime must avoid rebinding graph bridge listeners after teardown"
+        );
+    }
+
+    #[test]
+    fn graph_runtime_cancels_deferred_callbacks_during_cleanup() {
+        let graph = lookup_asset("graph.js").expect("graph.js");
+        let js = std::str::from_utf8(graph.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("const pendingTimeouts = new Set();"),
+            "graph runtime must track deferred timeout callbacks"
+        );
+        assert!(
+            js.contains("function scheduleTimeout(callback, delay) {"),
+            "graph runtime must route deferred callbacks through a tracked scheduler"
+        );
+        assert!(
+            js.contains("function clearScheduledTimeouts() {"),
+            "graph runtime must expose bulk timeout cleanup"
+        );
+        assert!(
+            js.contains("scheduleTimeout(() => {\n            store.graph?.zoomToFit(400, 50);\n        }, 500);"),
+            "graph runtime must guard delayed zoom-to-fit after teardown"
+        );
+        assert!(
+            js.contains("export function cleanup() {\n    clearScheduledTimeouts();"),
+            "graph cleanup must cancel deferred callbacks before tearing down graph state"
+        );
+        assert!(
+            js.contains("export function cleanup() {\n    clearScheduledTimeouts();\n    document.removeEventListener('mousemove', positionTooltip);"),
+            "graph cleanup must tear down tooltip listeners synchronously instead of scheduling fresh timeout work"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_uses_canonical_dashboard_route_when_closing_issue_modal() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("if (currentView === 'issues') {\n        navigateToIssues(this.filters, this.sort, this.searchQuery);\n      } else if (currentView === 'dashboard') {\n        navigateToDashboard();\n      } else {\n        navigate('/' + currentView);"),
+            "viewer runtime must use the canonical dashboard route when closing issue modal from dashboard view"
         );
     }
 

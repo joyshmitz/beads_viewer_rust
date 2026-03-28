@@ -91,6 +91,31 @@ const LABEL_COLORS = [
     '#F8F8F2'  // Foreground
 ];
 
+const pendingTimeouts = new Set();
+
+function scheduleTimeout(callback, delay) {
+    let timeoutId = null;
+    timeoutId = setTimeout(() => {
+        pendingTimeouts.delete(timeoutId);
+        callback();
+    }, delay);
+    pendingTimeouts.add(timeoutId);
+    return timeoutId;
+}
+
+function clearScheduledTimeout(timeoutId) {
+    if (!timeoutId) return;
+    clearTimeout(timeoutId);
+    pendingTimeouts.delete(timeoutId);
+}
+
+function clearScheduledTimeouts() {
+    pendingTimeouts.forEach(timeoutId => {
+        clearTimeout(timeoutId);
+    });
+    pendingTimeouts.clear();
+}
+
 // ============================================================================
 // LAYOUT PRESETS (bv-97)
 // ============================================================================
@@ -947,7 +972,9 @@ export function loadData(issues, dependencies, layout = precomputedLayout) {
     if (layout?.positions) {
         store.graph.zoomToFit(200, 50);
     } else {
-        setTimeout(() => store.graph.zoomToFit(400, 50), 500);
+        scheduleTimeout(() => {
+            store.graph?.zoomToFit(400, 50);
+        }, 500);
     }
 
     // Emit event
@@ -1663,7 +1690,7 @@ function animateWhatIfCascade(sourceNode, result) {
     let delay = 300;
 
     unblockedIds.forEach((id, i) => {
-        setTimeout(() => {
+        scheduleTimeout(() => {
             whatIfState.unblockedNodes.add(id);
             store.highlightedNodes.add(id);
 
@@ -1692,7 +1719,7 @@ function animateWhatIfCascade(sourceNode, result) {
 
     // Phase 3: Show summary after animations complete
     const summaryDelay = delay + unblockedIds.length * 150 + 200;
-    whatIfState.animationTimer = setTimeout(() => {
+    whatIfState.animationTimer = scheduleTimeout(() => {
         whatIfState.animationPhase = 2;
         showWhatIfSummary(sourceNode, result, unblockedIds);
     }, summaryDelay);
@@ -1731,7 +1758,7 @@ function showWhatIfSummary(sourceNode, result, unblockedIds) {
  */
 export function resetWhatIf() {
     if (whatIfState.animationTimer) {
-        clearTimeout(whatIfState.animationTimer);
+        clearScheduledTimeout(whatIfState.animationTimer);
         whatIfState.animationTimer = null;
     }
 
@@ -1869,7 +1896,7 @@ function animateCriticalPathTraversal() {
     function animateStep() {
         if (!criticalPathState.active || criticalPathState.currentStep >= path.length) {
             // Animation complete
-            criticalPathState.animationTimer = setTimeout(() => {
+            criticalPathState.animationTimer = scheduleTimeout(() => {
                 showCriticalPathSummary();
             }, 300);
             return;
@@ -1899,7 +1926,7 @@ function animateCriticalPathTraversal() {
         });
 
         criticalPathState.currentStep++;
-        criticalPathState.animationTimer = setTimeout(animateStep, 250);
+        criticalPathState.animationTimer = scheduleTimeout(animateStep, 250);
     }
 
     animateStep();
@@ -1944,7 +1971,7 @@ function showCriticalPathSummary() {
  */
 export function resetCriticalPath() {
     if (criticalPathState.animationTimer) {
-        clearTimeout(criticalPathState.animationTimer);
+        clearScheduledTimeout(criticalPathState.animationTimer);
         criticalPathState.animationTimer = null;
     }
 
@@ -2496,7 +2523,7 @@ function applyLabelGalaxyLayout() {
     showLabelLegend();
 
     // Schedule hull computation after layout settles
-    setTimeout(() => {
+    scheduleTimeout(() => {
         computeClusterHulls();
         refreshGraph();
     }, 1000);
@@ -2962,7 +2989,7 @@ function hideTooltip() {
     if (tooltipEl) {
         tooltipEl.style.opacity = '0';
         document.removeEventListener('mousemove', positionTooltip);
-        setTimeout(() => {
+        scheduleTimeout(() => {
             if (tooltipEl) tooltipEl.style.display = 'none';
         }, 150);
     }
@@ -3198,7 +3225,8 @@ export function setConfig(key, value) {
 }
 
 export function cleanup() {
-    hideTooltip();
+    clearScheduledTimeouts();
+    document.removeEventListener('mousemove', positionTooltip);
     if (tooltipEl) {
         tooltipEl.remove();
         tooltipEl = null;

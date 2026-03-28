@@ -2296,6 +2296,7 @@ function beadsApp() {
     // Prevent duplicate global listener binding if init() runs more than once.
     globalListenersBound: false,
     hashChangeListenerBound: false,
+    graphBridgeListenersBound: false,
 
     // Critical path highlighting
     showCriticalPath: false,
@@ -2599,9 +2600,14 @@ function beadsApp() {
     handleHashChange() {
       const urlState = filtersFromURL();
       const hash = window.location.hash;
+      const previousView = this.view;
 
       // Parse route
       const route = parseRoute(hash);
+
+      if (previousView === 'graph' && route.view !== 'graph') {
+        this.teardownForceGraph();
+      }
 
       // Handle route
       switch (route.view) {
@@ -2731,9 +2737,13 @@ function beadsApp() {
         if (!this.forceGraphReady) {
           await this.forceGraphModule.initGraph('graph-container');
           this.forceGraphReady = true;
+        }
 
-          // Register event listeners once (inside forceGraphReady check to avoid duplicates)
-          // Events are dispatched on document, so listen there
+        if (!this.graphBridgeListenersBound) {
+          this.graphBridgeListenersBound = true;
+
+          // Register viewer-side graph bridge listeners once.
+          // Events are dispatched on document, so listen there.
           document.addEventListener('bv-graph:nodeClick', (e) => {
             const node = e.detail?.node;
             if (node) {
@@ -2817,6 +2827,18 @@ function beadsApp() {
       } finally {
         this.forceGraphLoading = false;
       }
+    },
+
+    teardownForceGraph() {
+      if (this.forceGraphModule?.cleanup) {
+        this.forceGraphModule.cleanup();
+      }
+      this.forceGraphReady = false;
+      this.graphDetailNode = null;
+      this.graphLoadingStage = null;
+      this.graphSimulationProgress = null;
+      this.graphSimulationDone = false;
+      this.graphHeatmapActive = false;
     },
 
     /**
@@ -3072,6 +3094,8 @@ function beadsApp() {
       const currentView = this.view;
       if (currentView === 'issues') {
         navigateToIssues(this.filters, this.sort, this.searchQuery);
+      } else if (currentView === 'dashboard') {
+        navigateToDashboard();
       } else {
         navigate('/' + currentView);
       }

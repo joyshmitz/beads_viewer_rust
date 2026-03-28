@@ -32,7 +32,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │ ▸ ┌─ open  ││ │ Lane: open           │
 │   ▶ oT P0  ││ │ Assignee: alice      │
 │   │ oT P0  ││ │ Labels: core, parity │
-│   └─────── ││ │ Age: 85d | Updated:  │
+│   └─────── ││ │ Age: 86d | Updated:  │
 │            ││ │ PR:0.481 Depth:2     │
 │            ││                        │
 └────────────┘└────────────────────────┘
@@ -48,7 +48,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │   │ (empty ││ ├───────────────────── │
 │   └─────── ││ │ Lane: closed         │
 │            ││ │ Assignee:            │
-│   ┌─ block ││ │ Age: 85d | Updated:  │
+│   ┌─ block ││ │ Age: 86d | Updated:  │
 │   │ (empty ││ │ PR:0.260 Depth:1     │
 │   └─────── ││ └───────────────────── │
 │            ││                        │

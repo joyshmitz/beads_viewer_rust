@@ -2608,6 +2608,7 @@ function beadsApp() {
         case 'issue':
           // Issue detail view
           this.view = 'issues'; // Keep issues as backdrop
+          this.graphDetailNode = null;
           if (route.params.id) {
             // Reset state when switching issues
             this.showDepGraph = false;
@@ -2623,6 +2624,7 @@ function beadsApp() {
         case 'issues':
           this.view = 'issues';
           this.selectedIssue = null;
+          this.graphDetailNode = null;
           this.showDepGraph = false;
           this.whatIfResult = null;
           this.filters = { ...this.filters, ...urlState.filters };
@@ -2635,6 +2637,7 @@ function beadsApp() {
         case 'insights':
           this.view = 'insights';
           this.selectedIssue = null;
+          this.graphDetailNode = null;
           break;
 
         case 'graph':
@@ -2648,6 +2651,7 @@ function beadsApp() {
         default:
           this.view = 'dashboard';
           this.selectedIssue = null;
+          this.graphDetailNode = null;
       }
     },
 

@@ -564,6 +564,25 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_clears_graph_detail_state_when_leaving_graph_view() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("this.view = 'issues';\n          this.graphDetailNode = null;"),
+            "viewer runtime must clear graph detail state before issue/issue-list transitions"
+        );
+        assert!(
+            js.contains("this.view = 'insights';\n          this.selectedIssue = null;\n          this.graphDetailNode = null;"),
+            "viewer runtime must clear graph detail state when entering insights"
+        );
+        assert!(
+            js.contains("this.view = 'dashboard';\n          this.selectedIssue = null;\n          this.graphDetailNode = null;"),
+            "viewer runtime must clear graph detail state when returning to dashboard"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

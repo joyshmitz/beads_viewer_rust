@@ -3214,6 +3214,22 @@ export function cleanup() {
     if (store.animationFrame) {
         cancelAnimationFrame(store.animationFrame);
     }
+    hideLabelLegend();
+    if (timeTravelState.playing) {
+        timeTravelState.playing = false;
+    }
+    if (timeTravelState.animationFrame) {
+        cancelAnimationFrame(timeTravelState.animationFrame);
+        timeTravelState.animationFrame = null;
+    }
+    if (timeTravelState.controlsEl) {
+        timeTravelState.controlsEl.remove();
+        timeTravelState.controlsEl = null;
+    }
+    if (timeTravelState.styleEl) {
+        timeTravelState.styleEl.remove();
+        timeTravelState.styleEl = null;
+    }
     store.graph = null;
 }
 
@@ -3263,6 +3279,7 @@ const timeTravelState = {
     originalLinks: [],    // Snapshot of links before time-travel
     nodeStates: new Map(), // node.id -> { visible, opacity, animation }
     controlsEl: null,
+    styleEl: null,
 };
 
 /**
@@ -3299,6 +3316,11 @@ function createTimelineControls() {
     // Remove existing controls if any
     if (timeTravelState.controlsEl) {
         timeTravelState.controlsEl.remove();
+        timeTravelState.controlsEl = null;
+    }
+    if (timeTravelState.styleEl) {
+        timeTravelState.styleEl.remove();
+        timeTravelState.styleEl = null;
     }
 
     const controls = document.createElement('div');
@@ -3444,6 +3466,7 @@ function createTimelineControls() {
         }
     `;
     document.head.appendChild(style);
+    timeTravelState.styleEl = style;
 
     // Append controls to graph container
     if (store.container) {

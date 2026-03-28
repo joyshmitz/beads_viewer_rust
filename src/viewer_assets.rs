@@ -507,6 +507,25 @@ mod tests {
     }
 
     #[test]
+    fn graph_runtime_cleans_up_time_travel_styles_and_controls() {
+        let graph = lookup_asset("graph.js").expect("graph.js");
+        let js = std::str::from_utf8(graph.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("styleEl: null,"),
+            "graph runtime must track the injected time-travel style element"
+        );
+        assert!(
+            js.contains("timeTravelState.styleEl.remove();"),
+            "graph runtime must remove leaked time-travel style elements during rebuild/cleanup"
+        );
+        assert!(
+            js.contains("timeTravelState.controlsEl.remove();"),
+            "graph runtime cleanup must remove time-travel controls"
+        );
+    }
+
+    #[test]
     fn viewer_runtime_avoids_duplicate_graph_detail_surfaces() {
         let viewer = lookup_asset("viewer.js").expect("viewer.js");
         let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");

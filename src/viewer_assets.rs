@@ -507,6 +507,21 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_avoids_duplicate_graph_detail_surfaces() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("if (this.view === 'graph') return;"),
+            "viewer runtime must keep the global graph click modal handler out of graph view"
+        );
+        assert!(
+            js.contains("this.graphDetailNode = node;"),
+            "viewer runtime must still route graph-view node clicks to the graph detail pane"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

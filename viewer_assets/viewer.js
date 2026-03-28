@@ -2453,6 +2453,9 @@ function beadsApp() {
         const ev = e?.detail?.event;
         if (!nodeId) return;
 
+        // In graph view, the dedicated graph detail pane handles node selection.
+        if (this.view === 'graph') return;
+
         // Let graph interactions work:
         // - Shift+click triggers what-if
         // - Ctrl/Meta+click highlights dependency paths

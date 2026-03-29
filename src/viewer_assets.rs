@@ -652,6 +652,67 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_preserves_issue_backdrop_view_for_routed_issue_flows() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("const ISSUE_BACKDROP_VIEWS = new Set(['dashboard', 'issues', 'insights', 'graph']);"),
+            "viewer runtime must define the allowed routed issue backdrop views"
+        );
+        assert!(
+            js.contains("function navigateToIssue(id, backdropView = null) {"),
+            "viewer runtime must allow routed issue navigation to carry backdrop context"
+        );
+        assert!(
+            js.contains("const from = validBackdrop && validBackdrop !== 'issues'\n    ? `?from=${encodeURIComponent(validBackdrop)}`\n    : '';"),
+            "viewer runtime must encode non-default backdrop views into the issue route"
+        );
+        assert!(
+            js.contains("this.view = ISSUE_BACKDROP_VIEWS.has(route.query.get('from'))\n            ? route.query.get('from')\n            : 'issues';"),
+            "viewer runtime must restore routed issue backdrop context from the route"
+        );
+        assert!(
+            js.contains("showIssue(id) {\n      navigateToIssue(id, this.view);\n    },"),
+            "viewer runtime must preserve the current view when opening routed issue detail"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_preserves_backdrop_for_mermaid_issue_navigation() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("const mermaidBackdropView = JSON.stringify(this.view);"),
+            "viewer runtime must capture the current backdrop view when wiring Mermaid issue links"
+        );
+        assert!(
+            js.contains("diagram += `  click ${nodeId} call window.beadsViewer.navigateToIssue(\"${id}\", ${mermaidBackdropView})\\n`;"),
+            "viewer runtime must preserve backdrop context for Mermaid issue-to-issue navigation"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_limits_issue_nav_list_to_issues_view() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("function issueNavListForView(view, issues) {\n  return view === 'issues' ? issues.map(issue => issue.id) : [];\n}"),
+            "viewer runtime must scope issue navigation lists to the issues view"
+        );
+        assert!(
+            js.contains("this.issueNavList = issueNavListForView(this.view, this.issues);"),
+            "viewer runtime must avoid seeding issue navigation from hidden issue-list data in other views"
+        );
+        assert!(
+            js.contains("if (!this.issueNavList.length) {\n        return;\n      }"),
+            "viewer runtime must not navigate through stale issue-list state when no valid issues-view navigation list exists"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

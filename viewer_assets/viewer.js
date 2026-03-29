@@ -1895,6 +1895,12 @@ const ROUTES = [
   { pattern: '/graph', view: 'graph' },
 ];
 
+const ISSUE_BACKDROP_VIEWS = new Set(['dashboard', 'issues', 'insights', 'graph']);
+
+function issueNavListForView(view, issues) {
+  return view === 'issues' ? issues.map(issue => issue.id) : [];
+}
+
 /**
  * Parse hash into view and params
  */
@@ -1966,8 +1972,12 @@ function navigate(path) {
 /**
  * Navigate to issue detail
  */
-function navigateToIssue(id) {
-  navigate(`/issue/${encodeURIComponent(id)}`);
+function navigateToIssue(id, backdropView = null) {
+  const validBackdrop = ISSUE_BACKDROP_VIEWS.has(backdropView) ? backdropView : null;
+  const from = validBackdrop && validBackdrop !== 'issues'
+    ? `?from=${encodeURIComponent(validBackdrop)}`
+    : '';
+  navigate(`/issue/${encodeURIComponent(id)}${from}`);
 }
 
 /**
@@ -2613,17 +2623,16 @@ function beadsApp() {
       switch (route.view) {
         case 'issue':
           // Issue detail view
-          this.view = 'issues'; // Keep issues as backdrop
+          this.view = ISSUE_BACKDROP_VIEWS.has(route.query.get('from'))
+            ? route.query.get('from')
+            : 'issues';
           this.graphDetailNode = null;
           if (route.params.id) {
             // Reset state when switching issues
             this.showDepGraph = false;
             this.whatIfResult = null;
             this.selectedIssue = getIssue(route.params.id);
-            // Update nav list from current issues
-            if (this.issues.length) {
-              this.issueNavList = this.issues.map(i => i.id);
-            }
+            this.issueNavList = issueNavListForView(this.view, this.issues);
           }
           break;
 
@@ -3068,17 +3077,14 @@ function beadsApp() {
       this.showDepGraph = false;
       this.whatIfResult = null;
       this.selectedIssue = issue;
-
-      if (this.issues.length) {
-        this.issueNavList = this.issues.map(i => i.id);
-      }
+      this.issueNavList = issueNavListForView(this.view, this.issues);
     },
 
     /**
      * Show issue detail (navigates to issue route)
      */
     showIssue(id) {
-      navigateToIssue(id);
+      navigateToIssue(id, this.view);
     },
 
     /**
@@ -3110,7 +3116,11 @@ function beadsApp() {
 
       // Build navigation list from current issues if not set
       if (!this.issueNavList.length && this.issues.length) {
-        this.issueNavList = this.issues.map(i => i.id);
+        this.issueNavList = issueNavListForView(this.view, this.issues);
+      }
+
+      if (!this.issueNavList.length) {
+        return;
       }
 
       // Find current position
@@ -3131,7 +3141,7 @@ function beadsApp() {
       this.whatIfResult = null;
       const route = parseRoute(window.location.hash);
       if (route.view === 'issue') {
-        navigateToIssue(newId);
+        navigateToIssue(newId, this.view);
       } else {
         this.selectIssue(newId);
       }
@@ -3194,9 +3204,10 @@ function beadsApp() {
 
       // Add click handlers
       const allIds = [issue.id, ...blockedBy, ...blocks];
+      const mermaidBackdropView = JSON.stringify(this.view);
       for (const id of allIds) {
         const nodeId = sanitizeId(id);
-        diagram += `  click ${nodeId} call window.beadsViewer.navigateToIssue("${id}")\n`;
+        diagram += `  click ${nodeId} call window.beadsViewer.navigateToIssue("${id}", ${mermaidBackdropView})\n`;
       }
 
       try {

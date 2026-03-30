@@ -811,6 +811,29 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_scopes_cycle_navigator_window_events_to_insights_view() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        assert!(
+            html.contains("$watch('view', newView => {"),
+            "cycle navigator must reset itself when the active view changes"
+        );
+        assert!(
+            html.contains("if (newView !== 'insights') {"),
+            "cycle navigator must clear stale active state when leaving insights"
+        );
+        assert!(
+            html.contains("@bv-graph:cycle-highlight-change.window=\"\n               if (view === 'insights') {"),
+            "cycle navigator must ignore graph highlight events while insights is hidden"
+        );
+        assert!(
+            html.contains("@bv-graph:cycle-navigator-reset.window=\"\n               if (view === 'insights') {"),
+            "cycle navigator reset handling must be scoped to the visible insights view"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

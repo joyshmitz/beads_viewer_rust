@@ -1970,14 +1970,21 @@ function navigate(path) {
 }
 
 /**
- * Navigate to issue detail
+ * Build a backdrop-aware issue route
  */
-function navigateToIssue(id, backdropView = null) {
+function issueRouteFor(id, backdropView = null) {
   const validBackdrop = ISSUE_BACKDROP_VIEWS.has(backdropView) ? backdropView : null;
   const from = validBackdrop && validBackdrop !== 'issues'
     ? `?from=${encodeURIComponent(validBackdrop)}`
     : '';
-  navigate(`/issue/${encodeURIComponent(id)}${from}`);
+  return `/issue/${encodeURIComponent(id)}${from}`;
+}
+
+/**
+ * Navigate to issue detail
+ */
+function navigateToIssue(id, backdropView = null) {
+  navigate(issueRouteFor(id, backdropView));
 }
 
 /**
@@ -2441,7 +2448,12 @@ function beadsApp() {
           if (e.key === 'h' && !isInput && this.selectedIssue) {
             const deps = getIssueDependencies(this.selectedIssue.id);
             if (deps && deps.blockedBy && deps.blockedBy.length > 0) {
-              this.selectIssue(deps.blockedBy[0].id);
+              const route = parseRoute(window.location.hash);
+              if (route.view === 'issue') {
+                navigateToIssue(deps.blockedBy[0].id, this.view);
+              } else {
+                this.selectIssue(deps.blockedBy[0].id);
+              }
             }
             return;
           }
@@ -2450,7 +2462,12 @@ function beadsApp() {
           if (e.key === 'l' && !isInput && this.selectedIssue) {
             const deps = getIssueDependencies(this.selectedIssue.id);
             if (deps && deps.blocks && deps.blocks.length > 0) {
-              this.selectIssue(deps.blocks[0].id);
+              const route = parseRoute(window.location.hash);
+              if (route.view === 'issue') {
+                navigateToIssue(deps.blocks[0].id, this.view);
+              } else {
+                this.selectIssue(deps.blocks[0].id);
+              }
             }
             return;
           }
@@ -3502,6 +3519,7 @@ window.beadsViewer = {
   parseRoute,
   matchPattern,
   navigate,
+  issueRouteFor,
   navigateToIssue,
   navigateToIssues,
   navigateToDashboard,

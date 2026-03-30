@@ -2958,7 +2958,7 @@
       <div x-show="graphDetailNode"
            style="display: none"
            x-data="{ touchStartY: 0, touchStartX: 0, touchCurrentY: 0, touchCurrentX: 0, swiping: false, isMobile: window.innerWidth < 768 }"
-           x-init="window.addEventListener('resize', () => isMobile = window.innerWidth < 768)"
+           @resize.window="isMobile = window.innerWidth < 768"
            x-transition:enter="transition ease-out duration-300"
            x-transition:enter-start="md:translate-x-full translate-y-full"
            x-transition:enter-end="md:translate-x-0 translate-y-0"
@@ -3300,7 +3300,7 @@
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-50 overflow-y-auto"
-         @keydown.escape.window="closeIssue()"
+         @keydown.escape.window="selectedIssue && closeIssue()"
          @keydown.j.window="selectedIssue && navigateIssue(1)"
          @keydown.k.window="selectedIssue && navigateIssue(-1)"
          @keydown.g.window="selectedIssue && (showDepGraph = !showDepGraph)">
@@ -3314,7 +3314,7 @@
                 <div class="flex items-start justify-between">
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-3 mb-2">
-                      <a :href="'#/issue/' + encodeURIComponent(selectedIssue.id)"
+                      <a :href="'#' + issueRouteFor(selectedIssue.id, view)"
                          class="font-mono text-sm font-medium text-beads-600 dark:text-beads-400 hover:underline bg-beads-50 dark:bg-beads-900/20 px-2 py-0.5 rounded"
                          x-text="selectedIssue.id"></a>
                       <span class="px-2.5 py-1 text-xs font-semibold rounded-full" :class="'status-' + selectedIssue.status" x-text="selectedIssue.status?.replace('_', ' ')"></span>
@@ -3680,7 +3680,24 @@
             <summary class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               WASM Memory
             </summary>
-            <div class="mt-1 space-y-1 pl-2" x-data="{ memStats: window.beadsViewer?.getWasmMemoryStats?.() || {} }" x-init="setInterval(() => memStats = window.beadsViewer?.getWasmMemoryStats?.() || {}, 5000)">
+            <div class="mt-1 space-y-1 pl-2"
+                 x-data="{ memStats: window.beadsViewer?.getWasmMemoryStats?.() || {}, memStatsPoll: null }"
+                 x-init="
+                   const syncMemStats = () => memStats = window.beadsViewer?.getWasmMemoryStats?.() || {};
+                   $watch('showDiagnostics', visible => {
+                     if (visible && !memStatsPoll) {
+                       syncMemStats();
+                       memStatsPoll = setInterval(syncMemStats, 5000);
+                     } else if (!visible && memStatsPoll) {
+                       clearInterval(memStatsPoll);
+                       memStatsPoll = null;
+                     }
+                   });
+                   if (showDiagnostics) {
+                     syncMemStats();
+                     memStatsPoll = setInterval(syncMemStats, 5000);
+                   }
+                 ">
               <div class="flex items-center justify-between">
                 <span class="text-gray-500 dark:text-gray-400">Tracked</span>
                 <span class="text-gray-300" x-text="memStats.tracked || 0"></span>
@@ -3777,7 +3794,7 @@
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
          class="fixed inset-0 z-[60]"
-         @keydown.escape.window="showKeyboardHelp = false">
+         @keydown.escape.window="showKeyboardHelp && (showKeyboardHelp = false)">
 
       <!-- Backdrop -->
       <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="showKeyboardHelp = false"></div>

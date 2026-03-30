@@ -713,6 +713,104 @@ mod tests {
     }
 
     #[test]
+    fn viewer_runtime_uses_backdrop_aware_issue_routes_for_modal_permalinks() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let viewer_js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        assert!(
+            viewer_js.contains("function issueRouteFor(id, backdropView = null) {"),
+            "viewer runtime must centralize backdrop-aware issue route generation"
+        );
+        assert!(
+            viewer_js.contains("navigate(issueRouteFor(id, backdropView));"),
+            "viewer runtime must route imperative issue navigation through the shared issue route builder"
+        );
+        assert!(
+            html.contains(":href=\"'#' + issueRouteFor(selectedIssue.id, view)\""),
+            "issue modal permalink must preserve backdrop context through the shared issue route builder"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_preserves_routed_issue_urls_for_keyboard_dependency_navigation() {
+        let viewer = lookup_asset("viewer.js").expect("viewer.js");
+        let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
+
+        assert!(
+            js.contains("const route = parseRoute(window.location.hash);\n              if (route.view === 'issue') {\n                navigateToIssue(deps.blockedBy[0].id, this.view);\n              } else {\n                this.selectIssue(deps.blockedBy[0].id);\n              }"),
+            "viewer runtime must preserve routed issue URLs when keyboard navigation jumps to blocker issues"
+        );
+        assert!(
+            js.contains("const route = parseRoute(window.location.hash);\n              if (route.view === 'issue') {\n                navigateToIssue(deps.blocks[0].id, this.view);\n              } else {\n                this.selectIssue(deps.blocks[0].id);\n              }"),
+            "viewer runtime must preserve routed issue URLs when keyboard navigation jumps to dependent issues"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_only_handles_escape_when_issue_modal_is_visible() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        assert!(
+            html.contains("@keydown.escape.window=\"selectedIssue && closeIssue()\""),
+            "issue modal Escape handling must be gated on a visible selected issue instead of always binding globally"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_only_handles_escape_when_keyboard_help_is_visible() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        assert!(
+            html.contains(
+                "@keydown.escape.window=\"showKeyboardHelp && (showKeyboardHelp = false)\""
+            ),
+            "keyboard help Escape handling must be gated on the help modal actually being visible"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_only_polls_diagnostics_memory_stats_while_panel_is_visible() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        assert!(
+            html.contains("x-data=\"{ memStats: window.beadsViewer?.getWasmMemoryStats?.() || {}, memStatsPoll: null }\""),
+            "diagnostics memory widget must track its polling interval explicitly"
+        );
+        assert!(
+            html.contains("$watch('showDiagnostics', visible => {"),
+            "diagnostics memory widget must watch the diagnostics panel visibility"
+        );
+        assert!(
+            html.contains("if (visible && !memStatsPoll) {"),
+            "diagnostics memory widget must only start polling when the panel becomes visible"
+        );
+        assert!(
+            html.contains("} else if (!visible && memStatsPoll) {"),
+            "diagnostics memory widget must stop polling when the panel is hidden"
+        );
+    }
+
+    #[test]
+    fn viewer_runtime_uses_alpine_managed_resize_binding_for_graph_detail_pane() {
+        let index = lookup_asset("index.html").expect("index.html");
+        let html = std::str::from_utf8(index.bytes).expect("valid utf8");
+
+        assert!(
+            html.contains("@resize.window=\"isMobile = window.innerWidth < 768\""),
+            "graph detail pane must use Alpine-managed resize binding instead of a raw window resize listener"
+        );
+        assert!(
+            !html.contains("x-init=\"window.addEventListener('resize', () => isMobile = window.innerWidth < 768)\""),
+            "graph detail pane must not install an untracked global resize listener from x-init"
+        );
+    }
+
+    #[test]
     fn index_html_registers_service_worker() {
         let index = lookup_asset("index.html").expect("index.html");
         let html = std::str::from_utf8(index.bytes).expect("valid utf8");

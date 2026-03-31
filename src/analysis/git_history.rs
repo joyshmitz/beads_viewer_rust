@@ -359,21 +359,31 @@ pub fn correlate_histories_with_git_aliases(
 /// Build a mapping from raw (unprefixed, lowercase) bead IDs to their canonical
 /// workspace-prefixed form.
 ///
-/// For each issue whose `source_repo` is non-empty, the workspace prefix
-/// `lowercase(source_repo)-` is stripped from the issue ID to recover the raw
-/// ID, and the pair is added to the map.
+/// For each issue with a known workspace prefix, strip that prefix from the
+/// issue ID to recover the raw ID. Older callers that only populated
+/// `source_repo` still get a best-effort fallback of `lowercase(source_repo)-`.
 pub fn build_workspace_id_aliases(issues: &[Issue]) -> BTreeMap<String, String> {
     let mut aliases = BTreeMap::<String, String>::new();
 
     for issue in issues {
-        let repo = issue.source_repo.trim();
-        if repo.is_empty() {
-            continue;
-        }
+        let prefix = issue
+            .workspace_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|prefix| !prefix.is_empty())
+            .map(std::borrow::ToOwned::to_owned)
+            .or_else(|| {
+                let repo = issue.source_repo.trim();
+                (!repo.is_empty()).then(|| format!("{repo}-"))
+            });
 
-        let prefix = format!("{}-", repo.to_ascii_lowercase());
+        let Some(prefix) = prefix else {
+            continue;
+        };
+
         let id_lower = issue.id.to_ascii_lowercase();
-        if let Some(raw) = id_lower.strip_prefix(&prefix) {
+        let prefix_lower = prefix.to_ascii_lowercase();
+        if let Some(raw) = id_lower.strip_prefix(&prefix_lower) {
             if !raw.is_empty() {
                 aliases
                     .entry(raw.to_string())
@@ -1121,6 +1131,19 @@ mod tests {
         let aliases = build_workspace_id_aliases(&issues);
         // First insertion wins (BTreeMap::entry + or_insert)
         assert_eq!(aliases.get("bd-same").unwrap(), "api-bd-same");
+    }
+
+    #[test]
+    fn build_workspace_id_aliases_uses_workspace_prefix_when_repo_name_differs() {
+        let issues = vec![Issue {
+            id: "api-bd-1234".to_string(),
+            source_repo: "payments-service".to_string(),
+            workspace_prefix: Some("api-".to_string()),
+            ..Issue::default()
+        }];
+
+        let aliases = build_workspace_id_aliases(&issues);
+        assert_eq!(aliases.get("bd-1234").unwrap(), "api-bd-1234");
     }
 
     #[test]

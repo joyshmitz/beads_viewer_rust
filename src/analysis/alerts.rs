@@ -393,6 +393,7 @@ mod tests {
             comments: Vec::new(),
             dependencies: Vec::new(),
             source_repo: String::new(),
+            workspace_prefix: None,
             content_hash: None,
             external_ref: None,
         }

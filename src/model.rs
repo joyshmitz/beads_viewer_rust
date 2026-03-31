@@ -55,6 +55,10 @@ pub struct Issue {
     pub dependencies: Vec<Dependency>,
     #[serde(default)]
     pub source_repo: String,
+    /// Internal workspace prefix used to recover raw IDs from namespaced
+    /// workspace issues. Computed during workspace loading and never emitted.
+    #[serde(skip)]
+    pub workspace_prefix: Option<String>,
     /// Internal content hash for dedup — computed, not serialized to JSON output.
     #[serde(default, skip_serializing)]
     pub content_hash: Option<String>,
@@ -404,6 +408,7 @@ mod tests {
     #[test]
     fn content_hash_and_external_ref_defaults() {
         let issue = Issue::default();
+        assert!(issue.workspace_prefix.is_none());
         assert!(issue.content_hash.is_none());
         assert!(issue.external_ref.is_none());
 
@@ -414,6 +419,29 @@ mod tests {
         assert_eq!(
             issue_with_ref.external_ref.as_deref(),
             Some("https://github.com/org/repo/issues/42")
+        );
+    }
+
+    #[test]
+    fn workspace_prefix_is_never_serialized_or_deserialized() {
+        let issue = Issue {
+            id: "api-1".to_string(),
+            workspace_prefix: Some("api-".to_string()),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&issue).unwrap();
+        assert!(
+            json.get("workspace_prefix").is_none(),
+            "internal workspace_prefix must not be serialized"
+        );
+
+        let parsed: Issue = serde_json::from_str(
+            r#"{"id":"api-1","title":"T","status":"open","issue_type":"task","workspace_prefix":"evil-"}"#,
+        )
+        .unwrap();
+        assert!(
+            parsed.workspace_prefix.is_none(),
+            "internal workspace_prefix must not be accepted from external JSON"
         );
     }
 

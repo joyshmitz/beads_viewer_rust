@@ -493,6 +493,7 @@ pub fn namespace_workspace_issues(
         let local_issue_id = issue.id.trim().to_string();
         issue.id = qualify_id(&local_issue_id, prefix);
         issue.source_repo = repo_name.to_string();
+        issue.workspace_prefix = Some(prefix.trim().to_string());
 
         for dependency in &mut issue.dependencies {
             let dep_issue_id = dependency.issue_id.trim();

@@ -308,6 +308,7 @@ pub fn export_pages_bundle(
         files.push(chunk.path.clone());
     }
 
+    let history_path = output_dir.join("data/history.json");
     if options.include_history {
         let history_limit = filtered.len().max(500);
         let histories = analyzer.history(None, history_limit);
@@ -347,8 +348,10 @@ pub fn export_pages_bundle(
                 )
             })
             .collect();
-        write_json(output_dir.join("data/history.json"), &history_compat)?;
+        write_json(history_path.clone(), &history_compat)?;
         files.push("data/history.json".to_string());
+    } else if history_path.exists() {
+        fs::remove_file(&history_path)?;
     }
 
     // Deploy-facing README so the bundle is self-describing.
@@ -1091,6 +1094,7 @@ mod tests {
             comments: Vec::new(),
             dependencies: Vec::new(),
             source_repo: ".".to_string(),
+            workspace_prefix: None,
             content_hash: None,
             external_ref: None,
         }
@@ -1941,6 +1945,43 @@ mod tests {
 
         assert_eq!(s1.issue_count, s2.issue_count);
         assert_eq!(s1.files.len(), s2.files.len());
+    }
+
+    #[test]
+    fn export_reexport_without_history_removes_stale_history_file() {
+        let temp = tempdir().expect("tempdir");
+        let out = temp.path().join("pages");
+        let issues = vec![make_issue("A", "open")];
+
+        export_pages_bundle(
+            &issues,
+            &out,
+            &ExportPagesOptions {
+                title: None,
+                subtitle: None,
+                include_closed: false,
+                include_history: true,
+            },
+        )
+        .expect("initial export with history");
+        assert!(out.join("data/history.json").is_file());
+
+        export_pages_bundle(
+            &issues,
+            &out,
+            &ExportPagesOptions {
+                title: None,
+                subtitle: None,
+                include_closed: false,
+                include_history: false,
+            },
+        )
+        .expect("re-export without history");
+
+        assert!(
+            !out.join("data/history.json").exists(),
+            "stale history.json should be removed when history export is disabled"
+        );
     }
 
     // ── SQLite DB table validation ────────────────────────────────────

@@ -1277,11 +1277,11 @@ fn priority_badge(priority: i32) -> RichSpan<'static> {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-/// Type badge: single-letter issue type with dim styling.
+/// Type badge: single-letter issue type with type-specific colour.
 /// Example output: `T` (task), `B` (bug), `E` (epic).
 fn type_badge(issue_type: &str) -> RichSpan<'static> {
     let icon = type_icon(issue_type);
-    RichSpan::styled(icon, tokens::dim())
+    RichSpan::styled(icon, ftui::Style::new().fg(tokens::type_fg(issue_type)))
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -19874,16 +19874,16 @@ mod tests {
         let wrapped = wrap_command_hints(&hints, 18);
         assert_eq!(wrapped.lines().len(), 2);
         assert_eq!(wrapped.lines()[0].to_plain_text(), "Tab mode");
-        assert_eq!(wrapped.lines()[1].to_plain_text(), "/ search | O edit");
+        assert_eq!(wrapped.lines()[1].to_plain_text(), "/ search │ O edit");
 
         let first_line = wrapped.lines()[0].spans();
         let second_line = wrapped.lines()[1].spans();
         assert_eq!(
             first_line[0].style,
-            Some(tokens::chip_style(SemanticTone::Accent))
+            Some(tokens::footer_key())
         );
-        assert_eq!(first_line[2].style, Some(tokens::help_desc()));
-        assert_eq!(second_line[3].style, Some(tokens::dim()));
+        assert_eq!(first_line[2].style, Some(tokens::footer_hint()));
+        assert_eq!(second_line[3].style, Some(tokens::footer_sep()));
     }
 
     #[test]
@@ -19930,9 +19930,9 @@ mod tests {
             plain_lines,
             vec![
                 "b/i/g/h modes".to_string(),
-                "/ search | s sort".to_string(),
-                "p hints | C copy".to_string(),
-                "x export | O edit".to_string(),
+                "/ search │ s sort".to_string(),
+                "p hints │ C copy".to_string(),
+                "x export │ O edit".to_string(),
             ]
         );
     }

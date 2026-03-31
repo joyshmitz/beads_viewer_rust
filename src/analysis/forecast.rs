@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 
@@ -116,13 +118,33 @@ pub fn estimate_forecast(
 #[must_use]
 pub fn estimate_eta_for_issue(
     issues: &[Issue],
-    _graph: &IssueGraph,
+    graph: &IssueGraph,
     metrics: &GraphMetrics,
     issue_id: &str,
     agents: usize,
     now: DateTime<Utc>,
 ) -> Option<EtaEstimate> {
-    let issue = issues.iter().find(|issue| issue.id == issue_id)?;
+    let mut active = HashSet::<String>::new();
+    estimate_eta_for_issue_inner(issues, graph, metrics, issue_id, agents, now, &mut active)
+}
+
+fn estimate_eta_for_issue_inner(
+    issues: &[Issue],
+    graph: &IssueGraph,
+    metrics: &GraphMetrics,
+    issue_id: &str,
+    agents: usize,
+    now: DateTime<Utc>,
+    active: &mut HashSet<String>,
+) -> Option<EtaEstimate> {
+    if !active.insert(issue_id.to_string()) {
+        return None;
+    }
+
+    let Some(issue) = issues.iter().find(|issue| issue.id == issue_id) else {
+        active.remove(issue_id);
+        return None;
+    };
     let agents = agents.max(1);
 
     let median_minutes = compute_median_estimated_minutes(issues);
@@ -152,6 +174,22 @@ pub fn estimate_eta_for_issue(
         estimated_days = 0.0;
     }
 
+    let blocker_wait_days = graph
+        .open_blockers(issue_id)
+        .into_iter()
+        .filter_map(|blocker_id| {
+            estimate_eta_for_issue_inner(issues, graph, metrics, &blocker_id, agents, now, active)
+        })
+        .map(|eta| eta.estimated_days)
+        .fold(0.0_f64, f64::max);
+    if blocker_wait_days > 0.0 {
+        estimated_days += blocker_wait_days;
+        factors.push(format!(
+            "blocked: waits {:.1}d on dependencies",
+            blocker_wait_days
+        ));
+    }
+
     let confidence = estimate_eta_confidence(issue, velocity_samples);
     let delta_days = 0.5_f64.max(estimated_days * (1.0 - confidence) * 0.8);
 
@@ -164,7 +202,7 @@ pub fn estimate_eta_for_issue(
         factors.truncate(8);
     }
 
-    Some(EtaEstimate {
+    let estimate = EtaEstimate {
         estimated_minutes: complexity_minutes,
         estimated_days,
         eta_date: eta.to_rfc3339(),
@@ -174,7 +212,9 @@ pub fn estimate_eta_for_issue(
         velocity_minutes_per_day: velocity_per_day,
         agents,
         factors,
-    })
+    };
+    active.remove(issue_id);
+    Some(estimate)
 }
 
 fn estimate_complexity_minutes(
@@ -774,6 +814,54 @@ mod tests {
         assert!(
             eta3.estimated_days < eta1.estimated_days || eta1.estimated_days == 0.0,
             "3 agents should complete faster than 1"
+        );
+    }
+
+    #[test]
+    fn blocked_issue_eta_includes_blocker_wait_time() {
+        let issues = vec![
+            Issue {
+                id: "BLOCKER".to_string(),
+                title: "Blocker".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                estimated_minutes: Some(240),
+                ..Issue::default()
+            },
+            Issue {
+                id: "BLOCKED".to_string(),
+                title: "Blocked".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                estimated_minutes: Some(60),
+                dependencies: vec![crate::model::Dependency {
+                    issue_id: "BLOCKED".to_string(),
+                    depends_on_id: "BLOCKER".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..crate::model::Dependency::default()
+                }],
+                ..Issue::default()
+            },
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now();
+
+        let blocker_eta =
+            estimate_eta_for_issue(&issues, &graph, &metrics, "BLOCKER", 1, now).unwrap();
+        let dependent_eta =
+            estimate_eta_for_issue(&issues, &graph, &metrics, "BLOCKED", 1, now).unwrap();
+
+        assert!(
+            dependent_eta.estimated_days > blocker_eta.estimated_days,
+            "blocked work should include at least the blocker wait plus its own work"
+        );
+        assert!(
+            dependent_eta
+                .factors
+                .iter()
+                .any(|factor| factor.contains("blocked: waits")),
+            "forecast factors should explain blocker wait time"
         );
     }
 

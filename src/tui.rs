@@ -688,95 +688,395 @@ enum SemanticTone {
     Muted,
 }
 
-/// Semantic colour tokens (dark-background palette).
+/// Semantic colour tokens with light/dark palette support.
+///
+/// Detects terminal background via `BV_THEME` env var (`light` | `dark`)
+/// with dark-mode default.  All 9+ issue statuses, 5 priority levels,
+/// 5 issue types, and distinct footer styling tokens are included.
 #[allow(dead_code)]
 mod tokens {
     use super::SemanticTone;
     use ftui::{PackedRgba, Style};
 
-    // -- Palette primitives --------------------------------------------------
-    pub const FG_DEFAULT: PackedRgba = PackedRgba::rgb(204, 204, 204); // #cccccc
+    // ── Theme detection ──────────────────────────────────────────────
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ThemeMode {
+        Dark,
+        Light,
+    }
+
+    /// Detect theme from `BV_THEME` env var.  Falls back to dark.
+    pub fn detect_theme() -> ThemeMode {
+        match std::env::var("BV_THEME").as_deref() {
+            Ok("light") => ThemeMode::Light,
+            _ => ThemeMode::Dark,
+        }
+    }
+
+    fn is_light() -> bool {
+        detect_theme() == ThemeMode::Light
+    }
+
+    /// Runtime light/dark picker.
+    fn p(light: PackedRgba, dark: PackedRgba) -> PackedRgba {
+        if is_light() { light } else { dark }
+    }
+
+    // ── Palette primitives (dark defaults, light alternatives) ───────
+
+    // Foreground
+    pub const FG_DEFAULT: PackedRgba = PackedRgba::rgb(248, 248, 242); // #f8f8f2
+    pub const FG_DEFAULT_LIGHT: PackedRgba = PackedRgba::rgb(26, 26, 26); // #1a1a1a
     pub const FG_DIM: PackedRgba = PackedRgba::rgb(136, 136, 136); // #888888
-    pub const FG_ACCENT: PackedRgba = PackedRgba::rgb(97, 175, 239); // #61afef blue
-    pub const FG_SUCCESS: PackedRgba = PackedRgba::rgb(152, 195, 121); // #98c379 green
-    pub const FG_WARNING: PackedRgba = PackedRgba::rgb(229, 192, 123); // #e5c07b yellow
-    pub const FG_ERROR: PackedRgba = PackedRgba::rgb(224, 108, 117); // #e06c75 red
-    pub const FG_MUTED: PackedRgba = PackedRgba::rgb(92, 99, 112); // #5c6370
+    pub const FG_ACCENT: PackedRgba = PackedRgba::rgb(189, 147, 249); // #bd93f9 purple
+    pub const FG_ACCENT_LIGHT: PackedRgba = PackedRgba::rgb(107, 71, 217); // #6b47d9
+    pub const FG_SUCCESS: PackedRgba = PackedRgba::rgb(80, 250, 123); // #50fa7b green
+    pub const FG_SUCCESS_LIGHT: PackedRgba = PackedRgba::rgb(0, 119, 0); // #007700
+    pub const FG_WARNING: PackedRgba = PackedRgba::rgb(255, 184, 108); // #ffb86c orange
+    pub const FG_WARNING_LIGHT: PackedRgba = PackedRgba::rgb(176, 104, 0); // #b06800
+    pub const FG_ERROR: PackedRgba = PackedRgba::rgb(255, 85, 85); // #ff5555 red
+    pub const FG_ERROR_LIGHT: PackedRgba = PackedRgba::rgb(204, 0, 0); // #cc0000
+    pub const FG_INFO: PackedRgba = PackedRgba::rgb(139, 233, 253); // #8be9fd cyan
+    pub const FG_INFO_LIGHT: PackedRgba = PackedRgba::rgb(0, 96, 128); // #006080
+    pub const FG_MUTED: PackedRgba = PackedRgba::rgb(98, 114, 164); // #6272a4
+    pub const FG_MUTED_LIGHT: PackedRgba = PackedRgba::rgb(102, 102, 102); // #666666
+    pub const FG_SUBTEXT: PackedRgba = PackedRgba::rgb(191, 191, 191); // #bfbfbf
+    pub const FG_SUBTEXT_LIGHT: PackedRgba = PackedRgba::rgb(85, 85, 85); // #555555
 
-    pub const BG_BASE: PackedRgba = PackedRgba::rgb(40, 44, 52); // #282c34
-    pub const BG_SURFACE: PackedRgba = PackedRgba::rgb(50, 56, 66); // #323842
-    pub const BG_HIGHLIGHT: PackedRgba = PackedRgba::rgb(62, 68, 81); // #3e4451
-    pub const BG_SURFACE_ACCENT: PackedRgba = PackedRgba::rgb(36, 68, 96);
-    pub const BG_SURFACE_SUCCESS: PackedRgba = PackedRgba::rgb(44, 74, 40);
-    pub const BG_SURFACE_WARNING: PackedRgba = PackedRgba::rgb(86, 63, 28);
-    pub const BG_SURFACE_DANGER: PackedRgba = PackedRgba::rgb(94, 47, 53);
-    pub const BG_SURFACE_MUTED: PackedRgba = PackedRgba::rgb(61, 67, 77);
+    // Background
+    pub const BG_BASE: PackedRgba = PackedRgba::rgb(40, 42, 54); // #282a36
+    pub const BG_BASE_LIGHT: PackedRgba = PackedRgba::rgb(255, 255, 255); // #ffffff
+    pub const BG_SURFACE: PackedRgba = PackedRgba::rgb(54, 57, 73); // #363949
+    pub const BG_SURFACE_LIGHT: PackedRgba = PackedRgba::rgb(232, 232, 232); // #e8e8e8
+    pub const BG_HIGHLIGHT: PackedRgba = PackedRgba::rgb(68, 71, 90); // #44475a
+    pub const BG_HIGHLIGHT_LIGHT: PackedRgba = PackedRgba::rgb(208, 208, 208); // #d0d0d0
+    pub const BG_DARK: PackedRgba = PackedRgba::rgb(30, 31, 41); // #1e1f29
+    pub const BG_DARK_LIGHT: PackedRgba = PackedRgba::rgb(245, 245, 245); // #f5f5f5
 
-    // -- Status colours ------------------------------------------------------
-    pub const STATUS_OPEN: PackedRgba = FG_ACCENT;
-    pub const STATUS_IN_PROGRESS: PackedRgba = FG_WARNING;
+    // Semantic surface tints (dark)
+    pub const BG_SURFACE_ACCENT: PackedRgba = PackedRgba::rgb(42, 26, 68); // #2a1a44
+    pub const BG_SURFACE_SUCCESS: PackedRgba = PackedRgba::rgb(26, 61, 42); // #1a3d2a
+    pub const BG_SURFACE_WARNING: PackedRgba = PackedRgba::rgb(61, 42, 26); // #3d2a1a
+    pub const BG_SURFACE_DANGER: PackedRgba = PackedRgba::rgb(61, 26, 26); // #3d1a1a
+    pub const BG_SURFACE_INFO: PackedRgba = PackedRgba::rgb(26, 51, 68); // #1a3344
+    pub const BG_SURFACE_MUTED: PackedRgba = PackedRgba::rgb(42, 42, 61); // #2a2a3d
+
+    // Semantic surface tints (light)
+    pub const BG_SURFACE_ACCENT_L: PackedRgba = PackedRgba::rgb(232, 221, 255); // #e8ddff
+    pub const BG_SURFACE_SUCCESS_L: PackedRgba = PackedRgba::rgb(212, 237, 218); // #d4edda
+    pub const BG_SURFACE_WARNING_L: PackedRgba = PackedRgba::rgb(255, 232, 204); // #ffe8cc
+    pub const BG_SURFACE_DANGER_L: PackedRgba = PackedRgba::rgb(248, 215, 218); // #f8d7da
+    pub const BG_SURFACE_INFO_L: PackedRgba = PackedRgba::rgb(209, 236, 241); // #d1ecf1
+    pub const BG_SURFACE_MUTED_L: PackedRgba = PackedRgba::rgb(226, 227, 229); // #e2e3e5
+
+    // ── Status colours (9 statuses, matching Go bv) ──────────────────
+
+    pub fn status_fg(status: &str) -> PackedRgba {
+        let s = status.to_ascii_lowercase();
+        let s = s.as_str();
+        match s {
+            "open" => p(FG_SUCCESS_LIGHT, FG_SUCCESS),
+            "in_progress" => p(FG_INFO_LIGHT, FG_INFO),
+            "blocked" => p(FG_ERROR_LIGHT, FG_ERROR),
+            "deferred" | "draft" => p(FG_WARNING_LIGHT, FG_WARNING),
+            "pinned" => p(PackedRgba::rgb(0, 102, 204), PackedRgba::rgb(102, 153, 255)),
+            "hooked" => p(PackedRgba::rgb(0, 128, 128), PackedRgba::rgb(0, 206, 209)),
+            "review" => p(FG_ACCENT_LIGHT, FG_ACCENT),
+            "closed" => p(FG_SUBTEXT_LIGHT, FG_MUTED),
+            "tombstone" => p(FG_DIM, PackedRgba::rgb(68, 71, 90)),
+            _ => p(FG_DIM, FG_DIM),
+        }
+    }
+
+    pub fn status_bg(status: &str) -> PackedRgba {
+        let s = status.to_ascii_lowercase();
+        let s = s.as_str();
+        match s {
+            "open" => p(BG_SURFACE_SUCCESS_L, BG_SURFACE_SUCCESS),
+            "in_progress" => p(BG_SURFACE_INFO_L, BG_SURFACE_INFO),
+            "blocked" => p(BG_SURFACE_DANGER_L, BG_SURFACE_DANGER),
+            "deferred" | "draft" => p(BG_SURFACE_WARNING_L, BG_SURFACE_WARNING),
+            "pinned" => p(PackedRgba::rgb(204, 229, 255), PackedRgba::rgb(26, 42, 68)),
+            "hooked" => p(PackedRgba::rgb(204, 255, 255), PackedRgba::rgb(26, 61, 61)),
+            "review" => p(BG_SURFACE_ACCENT_L, BG_SURFACE_ACCENT),
+            "closed" => p(BG_SURFACE_MUTED_L, BG_SURFACE_MUTED),
+            "tombstone" => p(BG_HIGHLIGHT_LIGHT, BG_DARK),
+            _ => p(BG_SURFACE_LIGHT, BG_SURFACE),
+        }
+    }
+
+    /// Short status badge label (4 chars).
+    pub fn status_badge_label(status: &str) -> &'static str {
+        let s = status.to_ascii_lowercase();
+        match s.as_str() {
+            "open" => "OPEN",
+            "in_progress" => "PROG",
+            "blocked" => "BLKD",
+            "deferred" => "DEFR",
+            "draft" => "DRFT",
+            "pinned" => " PIN",
+            "hooked" => "HOOK",
+            "review" => "REVW",
+            "closed" => "DONE",
+            "tombstone" => "TOMB",
+            _ => "????",
+        }
+    }
+
+    /// Semantic tone for a status string.
+    pub fn tone_for_status(status: &str) -> SemanticTone {
+        let s = status.to_ascii_lowercase();
+        match s.as_str() {
+            "open" => SemanticTone::Success,
+            "in_progress" => SemanticTone::Accent,
+            "blocked" => SemanticTone::Danger,
+            "deferred" | "draft" => SemanticTone::Warning,
+            "pinned" | "hooked" | "review" => SemanticTone::Accent,
+            "closed" | "tombstone" => SemanticTone::Muted,
+            _ => SemanticTone::Neutral,
+        }
+    }
+
+    // Backward-compatible status constants (dark-mode defaults).
+    pub const STATUS_OPEN: PackedRgba = FG_SUCCESS;
+    pub const STATUS_IN_PROGRESS: PackedRgba = FG_INFO;
     pub const STATUS_BLOCKED: PackedRgba = FG_ERROR;
-    pub const STATUS_CLOSED: PackedRgba = FG_SUCCESS;
+    pub const STATUS_CLOSED: PackedRgba = FG_MUTED;
 
-    // -- Priority colours ----------------------------------------------------
-    pub const PRIO_P0: PackedRgba = FG_ERROR;
-    pub const PRIO_P1: PackedRgba = FG_WARNING;
-    pub const PRIO_P2: PackedRgba = FG_ACCENT;
-    pub const PRIO_P3: PackedRgba = FG_DIM;
-    pub const PRIO_P4: PackedRgba = FG_MUTED;
+    // ── Priority colours (P0-P4 with bg) ─────────────────────────────
 
-    // -- Semantic styles -----------------------------------------------------
+    pub const PRIO_P0: PackedRgba = FG_ERROR; // critical red
+    pub const PRIO_P1: PackedRgba = FG_WARNING; // high orange
+    pub const PRIO_P2: PackedRgba = PackedRgba::rgb(241, 250, 140); // #f1fa8c medium yellow
+    pub const PRIO_P3: PackedRgba = FG_SUCCESS; // low green
+    pub const PRIO_P4: PackedRgba = FG_MUTED; // backlog gray
+
+    pub fn priority_fg(prio: u8) -> PackedRgba {
+        match prio {
+            0 => p(FG_ERROR_LIGHT, PRIO_P0),
+            1 => p(FG_WARNING_LIGHT, PRIO_P1),
+            2 => p(PackedRgba::rgb(128, 128, 0), PRIO_P2),
+            3 => p(FG_SUCCESS_LIGHT, PRIO_P3),
+            _ => p(FG_MUTED_LIGHT, PRIO_P4),
+        }
+    }
+
+    pub fn priority_bg(prio: u8) -> PackedRgba {
+        match prio {
+            0 => p(BG_SURFACE_DANGER_L, BG_SURFACE_DANGER),
+            1 => p(BG_SURFACE_WARNING_L, BG_SURFACE_WARNING),
+            2 => p(PackedRgba::rgb(255, 243, 205), PackedRgba::rgb(61, 61, 26)),
+            3 => p(BG_SURFACE_SUCCESS_L, BG_SURFACE_SUCCESS),
+            _ => p(BG_SURFACE_LIGHT, BG_SURFACE),
+        }
+    }
+
+    pub fn priority_style(prio: u8) -> Style {
+        Style::new().fg(priority_fg(prio)).bold()
+    }
+
+    /// Priority badge style with background.
+    pub fn priority_badge(prio: u8) -> Style {
+        Style::new()
+            .fg(priority_fg(prio))
+            .bg(priority_bg(prio))
+            .bold()
+    }
+
+    // ── Type colours and icons ───────────────────────────────────────
+
+    pub fn type_fg(issue_type: &str) -> PackedRgba {
+        let t = issue_type.to_ascii_lowercase();
+        match t.as_str() {
+            "bug" => p(FG_ERROR_LIGHT, FG_ERROR),
+            "feature" => p(FG_WARNING_LIGHT, FG_WARNING),
+            "task" => p(PackedRgba::rgb(128, 128, 0), PackedRgba::rgb(241, 250, 140)),
+            "epic" => p(FG_ACCENT_LIGHT, FG_ACCENT),
+            "docs" => p(FG_INFO_LIGHT, FG_INFO),
+            _ => p(FG_SUBTEXT_LIGHT, FG_SUBTEXT),
+        }
+    }
+
+    pub fn type_icon(issue_type: &str) -> &'static str {
+        let t = issue_type.to_ascii_lowercase();
+        match t.as_str() {
+            "bug" => "🐛",
+            "feature" => "✨",
+            "task" => "📋",
+            "epic" => "🚀",
+            "docs" => "📖",
+            "question" => "❓",
+            "refactor" => "🔧",
+            _ => "•",
+        }
+    }
+
+    // ── Footer tokens (4 distinct styles matching Go bv) ─────────────
+
+    /// Footer keybinding label (bright, bold).
+    pub fn footer_key() -> Style {
+        Style::new()
+            .fg(p(PackedRgba::rgb(51, 51, 51), PackedRgba::rgb(224, 224, 232)))
+            .bold()
+    }
+
+    /// Footer navigation hint text (medium brightness).
+    pub fn footer_hint() -> Style {
+        Style::new().fg(p(
+            PackedRgba::rgb(68, 68, 68),
+            PackedRgba::rgb(200, 200, 208),
+        ))
+    }
+
+    /// Footer separator (`│` between hints).
+    pub fn footer_sep() -> Style {
+        Style::new().fg(p(
+            PackedRgba::rgb(136, 136, 136),
+            PackedRgba::rgb(136, 136, 160),
+        ))
+    }
+
+    /// Footer secondary text (issue counts, dim info).
+    pub fn footer_dim() -> Style {
+        Style::new().fg(p(
+            PackedRgba::rgb(85, 85, 85),
+            PackedRgba::rgb(160, 160, 184),
+        ))
+    }
+
+    // ── Heatmap gradient for sparkline/importance ─────────────────────
+
+    /// Map a 0.0–1.0 score to a heatmap colour.
+    pub fn heatmap_color(score: f64) -> PackedRgba {
+        if score > 0.8 {
+            p(FG_ACCENT_LIGHT, FG_ACCENT)
+        } else if score > 0.5 {
+            p(FG_WARNING_LIGHT, FG_WARNING)
+        } else if score > 0.2 {
+            p(FG_INFO_LIGHT, FG_INFO)
+        } else {
+            p(FG_SUBTEXT_LIGHT, FG_MUTED)
+        }
+    }
+
+    // ── Sparkline characters ─────────────────────────────────────────
+
+    const SPARK_CHARS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+    /// Render a sparkline string for a 0.0–1.0 value at the given width.
+    pub fn render_sparkline(value: f64, width: usize) -> String {
+        let clamped = value.clamp(0.0, 1.0);
+        let total = (clamped * width as f64 * 8.0) as usize;
+        let full_blocks = total / 8;
+        let remainder = total % 8;
+        let mut s = String::with_capacity(width);
+        for _ in 0..full_blocks.min(width) {
+            s.push('█');
+        }
+        if full_blocks < width && remainder > 0 {
+            s.push(SPARK_CHARS[remainder.saturating_sub(1)]);
+        }
+        let drawn = s.chars().count();
+        for _ in drawn..width {
+            s.push(' ');
+        }
+        s
+    }
+
+    // ── Priority hint arrows ─────────────────────────────────────────
+
+    pub const PRIO_ARROW_UP: PackedRgba = PackedRgba::rgb(255, 107, 107); // #ff6b6b
+    pub const PRIO_ARROW_DOWN: PackedRgba = PackedRgba::rgb(78, 205, 196); // #4ecdc4
+
+    // ── Triage indicator colours ─────────────────────────────────────
+
+    pub const TRIAGE_STAR: PackedRgba = PackedRgba::rgb(255, 215, 0); // #ffd700 gold
+    pub const TRIAGE_UNBLOCKS: PackedRgba = FG_SUCCESS; // green
+    pub const TRIAGE_UNBLOCKS_ALT: PackedRgba = FG_MUTED; // gray
+
+    // ── Repo badge colours (8-colour rotation) ───────────────────────
+
+    const REPO_COLORS: [PackedRgba; 8] = [
+        PackedRgba::rgb(255, 111, 97),  // coral red
+        PackedRgba::rgb(0, 206, 209),   // teal
+        PackedRgba::rgb(100, 181, 246), // sky blue
+        PackedRgba::rgb(129, 199, 132), // sage green
+        PackedRgba::rgb(206, 147, 216), // plum
+        PackedRgba::rgb(255, 213, 79),  // gold
+        PackedRgba::rgb(179, 157, 219), // lavender
+        PackedRgba::rgb(128, 222, 234), // light blue
+    ];
+
+    /// Get a deterministic repo colour from the repo name.
+    pub fn repo_color(repo: &str) -> PackedRgba {
+        let hash = repo.bytes().fold(0_usize, |acc, b| acc.wrapping_mul(31).wrapping_add(b as usize));
+        REPO_COLORS[hash % REPO_COLORS.len()]
+    }
+
+    // ── Preserved original API (backward compat) ─────────────────────
+
+    pub fn fg_default() -> PackedRgba { p(FG_DEFAULT_LIGHT, FG_DEFAULT) }
+    pub fn fg_dim() -> PackedRgba { p(FG_MUTED_LIGHT, FG_DIM) }
+    pub fn fg_accent() -> PackedRgba { p(FG_ACCENT_LIGHT, FG_ACCENT) }
+    pub fn fg_muted() -> PackedRgba { p(FG_MUTED_LIGHT, FG_MUTED) }
+    pub fn bg_base() -> PackedRgba { p(BG_BASE_LIGHT, BG_BASE) }
+    pub fn bg_surface() -> PackedRgba { p(BG_SURFACE_LIGHT, BG_SURFACE) }
+    pub fn bg_highlight() -> PackedRgba { p(BG_HIGHLIGHT_LIGHT, BG_HIGHLIGHT) }
+
+    // ── Semantic styles (runtime theme-aware) ────────────────────────
+
     pub fn header() -> Style {
-        Style::new().fg(FG_ACCENT).bold()
+        Style::new().fg(fg_accent()).bold()
     }
 
     pub fn header_bg() -> Style {
-        Style::new().fg(FG_ACCENT).bg(BG_SURFACE).bold()
+        Style::new().fg(fg_accent()).bg(bg_surface()).bold()
     }
 
     pub fn footer() -> Style {
-        Style::new().fg(FG_DIM)
+        footer_hint()
     }
 
     pub fn selected() -> Style {
-        Style::new().fg(FG_DEFAULT).bg(BG_HIGHLIGHT).bold()
+        Style::new().fg(fg_default()).bg(bg_highlight()).bold()
     }
 
     pub fn panel_border() -> Style {
-        Style::new().fg(FG_MUTED)
+        Style::new().fg(fg_muted())
     }
 
     pub fn panel_border_focused() -> Style {
-        Style::new().fg(FG_ACCENT)
+        Style::new().fg(fg_accent())
     }
 
     pub fn panel_title() -> Style {
-        Style::new().fg(FG_DEFAULT).bold()
+        Style::new().fg(fg_default()).bold()
     }
 
     pub fn panel_title_focused() -> Style {
-        Style::new().fg(FG_ACCENT).bold()
+        Style::new().fg(fg_accent()).bold()
     }
 
     pub fn semantic_fg(tone: SemanticTone) -> PackedRgba {
         match tone {
-            SemanticTone::Neutral => FG_DEFAULT,
-            SemanticTone::Accent => FG_ACCENT,
-            SemanticTone::Success => FG_SUCCESS,
-            SemanticTone::Warning => FG_WARNING,
-            SemanticTone::Danger => FG_ERROR,
-            SemanticTone::Muted => FG_DIM,
+            SemanticTone::Neutral => fg_default(),
+            SemanticTone::Accent => fg_accent(),
+            SemanticTone::Success => p(FG_SUCCESS_LIGHT, FG_SUCCESS),
+            SemanticTone::Warning => p(FG_WARNING_LIGHT, FG_WARNING),
+            SemanticTone::Danger => p(FG_ERROR_LIGHT, FG_ERROR),
+            SemanticTone::Muted => fg_dim(),
         }
     }
 
     pub fn semantic_bg(tone: SemanticTone) -> PackedRgba {
         match tone {
-            SemanticTone::Neutral => BG_SURFACE,
-            SemanticTone::Accent => BG_SURFACE_ACCENT,
-            SemanticTone::Success => BG_SURFACE_SUCCESS,
-            SemanticTone::Warning => BG_SURFACE_WARNING,
-            SemanticTone::Danger => BG_SURFACE_DANGER,
-            SemanticTone::Muted => BG_SURFACE_MUTED,
+            SemanticTone::Neutral => bg_surface(),
+            SemanticTone::Accent => p(BG_SURFACE_ACCENT_L, BG_SURFACE_ACCENT),
+            SemanticTone::Success => p(BG_SURFACE_SUCCESS_L, BG_SURFACE_SUCCESS),
+            SemanticTone::Warning => p(BG_SURFACE_WARNING_L, BG_SURFACE_WARNING),
+            SemanticTone::Danger => p(BG_SURFACE_DANGER_L, BG_SURFACE_DANGER),
+            SemanticTone::Muted => p(BG_SURFACE_MUTED_L, BG_SURFACE_MUTED),
         }
     }
 
@@ -798,51 +1098,34 @@ mod tokens {
     }
 
     pub fn status_style(status: &str) -> Style {
-        let fg = if status.eq_ignore_ascii_case("open") {
-            STATUS_OPEN
-        } else if status.eq_ignore_ascii_case("in_progress") {
-            STATUS_IN_PROGRESS
-        } else if status.eq_ignore_ascii_case("blocked") {
-            STATUS_BLOCKED
-        } else if status.eq_ignore_ascii_case("closed") {
-            STATUS_CLOSED
-        } else {
-            FG_DIM
-        };
-        Style::new().fg(fg)
+        Style::new().fg(status_fg(status))
     }
 
-    pub fn priority_fg(prio: u8) -> PackedRgba {
-        match prio {
-            0 => PRIO_P0,
-            1 => PRIO_P1,
-            2 => PRIO_P2,
-            3 => PRIO_P3,
-            _ => PRIO_P4,
-        }
-    }
-
-    pub fn priority_style(prio: u8) -> Style {
-        Style::new().fg(priority_fg(prio))
+    /// Status badge style with foreground and background.
+    pub fn status_badge(status: &str) -> Style {
+        Style::new()
+            .fg(status_fg(status))
+            .bg(status_bg(status))
+            .bold()
     }
 
     pub fn search_highlight() -> Style {
         Style::new()
             .fg(PackedRgba::rgb(0, 0, 0))
-            .bg(FG_WARNING)
+            .bg(p(FG_WARNING_LIGHT, FG_WARNING))
             .bold()
     }
 
     pub fn help_key() -> Style {
-        Style::new().fg(FG_ACCENT).bold()
+        Style::new().fg(fg_accent()).bold()
     }
 
     pub fn help_desc() -> Style {
-        Style::new().fg(FG_DEFAULT)
+        Style::new().fg(fg_default())
     }
 
     pub fn dim() -> Style {
-        Style::new().fg(FG_DIM)
+        Style::new().fg(fg_dim())
     }
 }
 
@@ -12958,40 +13241,30 @@ fn mini_bar(value: f64, max: f64) -> String {
 }
 
 fn status_icon(status: &str) -> &'static str {
-    if status.eq_ignore_ascii_case("open") {
-        "o"
-    } else if status.eq_ignore_ascii_case("in_progress") {
-        "*"
-    } else if status.eq_ignore_ascii_case("blocked") {
-        "!"
-    } else if status.eq_ignore_ascii_case("closed") {
-        "x"
-    } else if status.eq_ignore_ascii_case("deferred") {
-        "~"
-    } else if status.eq_ignore_ascii_case("review") {
-        "r"
-    } else if status.eq_ignore_ascii_case("pinned") {
-        "^"
-    } else {
-        "?"
+    match status.to_ascii_lowercase().as_str() {
+        "open" => "o",
+        "in_progress" => "*",
+        "blocked" => "!",
+        "closed" => "x",
+        "deferred" | "draft" => "~",
+        "review" => "r",
+        "pinned" => "^",
+        "hooked" => "&",
+        "tombstone" => "#",
+        _ => "?",
     }
 }
 
 fn type_icon(issue_type: &str) -> &'static str {
-    if issue_type.eq_ignore_ascii_case("bug") {
-        "B"
-    } else if issue_type.eq_ignore_ascii_case("feature") {
-        "F"
-    } else if issue_type.eq_ignore_ascii_case("task") {
-        "T"
-    } else if issue_type.eq_ignore_ascii_case("epic") {
-        "E"
-    } else if issue_type.eq_ignore_ascii_case("question") {
-        "Q"
-    } else if issue_type.eq_ignore_ascii_case("docs") {
-        "D"
-    } else {
-        "-"
+    match issue_type.to_ascii_lowercase().as_str() {
+        "bug" => "B",
+        "feature" => "F",
+        "task" => "T",
+        "epic" => "E",
+        "question" => "Q",
+        "docs" => "D",
+        "refactor" => "R",
+        _ => "-",
     }
 }
 
@@ -13569,11 +13842,11 @@ fn command_hint_line(hints: &[CommandHint<'_>]) -> RichLine {
     let mut line = RichLine::new();
     for (index, hint) in hints.iter().enumerate() {
         if index > 0 {
-            line.push_span(RichSpan::styled(" | ", tokens::dim()));
+            line.push_span(RichSpan::styled(" │ ", tokens::footer_sep()));
         }
-        push_chip(&mut line, hint.key, SemanticTone::Accent);
+        line.push_span(RichSpan::styled(hint.key, tokens::footer_key()));
         line.push_span(RichSpan::raw(" "));
-        line.push_span(RichSpan::styled(hint.desc, tokens::help_desc()));
+        line.push_span(RichSpan::styled(hint.desc, tokens::footer_hint()));
     }
     line
 }

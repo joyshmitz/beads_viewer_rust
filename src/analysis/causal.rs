@@ -366,6 +366,8 @@ pub fn build_impact_network(
     };
     let n = nodes.len();
     let density = if n > 1 {
+        // Impact-network edges are canonicalized into undirected pairs, so use
+        // the undirected density formula 2E / (N * (N - 1)).
         (2.0 * edges.len() as f64) / (n as f64 * (n as f64 - 1.0))
     } else {
         0.0
@@ -572,6 +574,8 @@ pub fn get_subnetwork(network: &ImpactNetwork, bead_id: &str, depth: usize) -> I
     };
     let n = sub_nodes.len();
     let density = if n > 1 {
+        // Subnetworks preserve the same undirected edge semantics as the full
+        // impact network, so density must stay on the same normalized scale.
         (2.0 * sub_edges.len() as f64) / (n as f64 * (n as f64 - 1.0))
     } else {
         0.0
@@ -1265,6 +1269,10 @@ mod tests {
         assert_eq!(network.stats.total_edges, 1);
         let edge = &network.edges[0];
         assert_eq!(edge.edge_type, "dependency");
+        assert!(
+            (network.stats.density - 1.0).abs() < f64::EPSILON,
+            "two connected nodes in an undirected network should have density 1.0"
+        );
     }
 
     #[test]
@@ -1718,6 +1726,30 @@ mod tests {
         assert_eq!(network.stats.total_edges, 1);
         assert_eq!(network.stats.isolated_nodes, 1); // C is isolated
         assert_eq!(network.stats.max_degree, 1);
+        assert!(
+            (0.0..=1.0).contains(&network.stats.density),
+            "undirected density must remain normalized into [0, 1]"
+        );
+    }
+
+    #[test]
+    fn subnetwork_density_matches_undirected_formula() {
+        let issues = vec![
+            make_issue("A", "A", "open", 1),
+            make_issue_with_deps("B", "B", "open", 1, &["A"]),
+            make_issue_with_deps("C", "C", "open", 1, &["B"]),
+        ];
+        let graph = IssueGraph::build(&issues);
+        let histories = BTreeMap::new();
+        let full = build_impact_network(&graph, &histories);
+
+        let sub = get_subnetwork(&full, "B", 1);
+        assert_eq!(sub.stats.total_nodes, 3);
+        assert_eq!(sub.stats.total_edges, 2);
+        assert!(
+            (sub.stats.density - (2.0 / 3.0)).abs() < 1e-9,
+            "3-node undirected path with 2 edges should have density 2/3"
+        );
     }
 
     // --- Causality insights ---

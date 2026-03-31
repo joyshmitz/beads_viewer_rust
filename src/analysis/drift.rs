@@ -103,7 +103,7 @@ impl Baseline {
         let n = graph.node_count();
         let e = graph.edge_count();
         let density = if n > 1 {
-            (2.0 * e as f64) / (n as f64 * (n as f64 - 1.0))
+            e as f64 / (n as f64 * (n as f64 - 1.0))
         } else {
             0.0
         };

@@ -414,7 +414,8 @@ fn truncate_f64_to_i64(value: f64) -> Option<i64> {
         return Some(i64::MIN);
     }
 
-    value.trunc().to_string().parse::<i64>().ok()
+    #[allow(clippy::cast_possible_truncation)]
+    Some(value.trunc() as i64)
 }
 
 #[cfg(test)]

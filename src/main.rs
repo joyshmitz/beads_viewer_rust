@@ -1695,7 +1695,7 @@ fn main() -> ExitCode {
     // ---- Search commands ----
     if cli.robot_search {
         let query = match cli.search.as_deref() {
-            Some(q) if !q.is_empty() => q,
+            Some(q) if !q.trim().is_empty() => q.trim(),
             _ => {
                 eprintln!("error: --robot-search requires --search <query>");
                 return ExitCode::from(1);

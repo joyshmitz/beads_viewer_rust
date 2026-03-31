@@ -327,6 +327,11 @@ pub fn execute_search(
     weights: &SearchWeights,
     limit: usize,
 ) -> Vec<SearchResult> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Vec::new();
+    }
+
     let max_blocks = metrics.blocks_count.values().copied().max().unwrap_or(0);
 
     let effective_weights = if mode == SearchMode::Hybrid && is_short_query(query) {
@@ -506,6 +511,15 @@ mod tests {
     }
 
     #[test]
+    fn text_search_whitespace_query_returns_no_results() {
+        let (issues, metrics) = make_issues_and_metrics();
+        let weights = SearchWeights::default_preset();
+        let results = execute_search("   \t  ", &issues, &metrics, SearchMode::Text, &weights, 10);
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
     fn text_search_limit() {
         let (issues, metrics) = make_issues_and_metrics();
         let weights = SearchWeights::default_preset();
@@ -533,6 +547,15 @@ mod tests {
         assert!(!results.is_empty());
         assert!(results[0].text_score.is_some());
         assert!(results[0].component_scores.is_some());
+    }
+
+    #[test]
+    fn hybrid_search_whitespace_query_returns_no_results() {
+        let (issues, metrics) = make_issues_and_metrics();
+        let weights = SearchWeights::default_preset();
+        let results = execute_search("   \n", &issues, &metrics, SearchMode::Hybrid, &weights, 10);
+
+        assert!(results.is_empty());
     }
 
     #[test]

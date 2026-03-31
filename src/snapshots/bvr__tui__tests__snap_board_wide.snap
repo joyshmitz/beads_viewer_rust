@@ -12,7 +12,7 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 │ ▸ ┌─ open [2] ██  clear                           ││ │ Lane: open                             │                                          │
 │   ▶ oT P0 A Root↓1 @alice                         ││ │ Assignee: alice                        │                                          │
 │   │ oT P0 B Dependent⊘1                           ││ │ Labels: core, parity                   │                                          │
-│   └────────────                                   ││ │ Age: 86d | Updated: 85d ago            │                                          │
+│   └────────────                                   ││ │ Age: 89d | Updated: 88d ago            │                                          │
 │                                                   ││ │ PR:0.481 Depth:2                       │                                          │
 │   ┌─ in_progress [0]   empty                      ││ ├────────────────────────────────────────┤                                          │
 │   │ (empty)                                       ││ │ Top-level issue that unblocks downst…  │                                          │

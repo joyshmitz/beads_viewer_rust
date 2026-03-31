@@ -1,5 +1,6 @@
 ---
 source: src/tui.rs
+assertion_line: 24847
 expression: artifact
 ---
 === E2E Journey: narrow-geometry-stress | 40x15 ===
@@ -32,7 +33,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │ ▸ ┌─ open  ││ │ Lane: open           │
 │   ▶ oT P0  ││ │ Assignee: alice      │
 │   │ oT P0  ││ │ Labels: core, parity │
-│   └─────── ││ │ Age: 86d | Updated:  │
+│   └─────── ││ │ Age: 89d | Updated:  │
 │            ││ │ PR:0.481 Depth:2     │
 │            ││                        │
 └────────────┘└────────────────────────┘
@@ -48,7 +49,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │   │ (empty ││ ├───────────────────── │
 │   └─────── ││ │ Lane: closed         │
 │            ││ │ Assignee:            │
-│   ┌─ block ││ │ Age: 86d | Updated:  │
+│   ┌─ block ││ │ Age: 89d | Updated:  │
 │   │ (empty ││ │ PR:0.260 Depth:1     │
 │   └─────── ││ └───────────────────── │
 │            ││                        │
@@ -114,7 +115,7 @@ bvr 1 Main b Board i In a Act  | 3/3 | a
 │ RECOMMENDE ││ completing A unblocks  │
 │            ││ 1 actionable item      │
 │ ▸ TRACK 1  ││                        │
-│   1 item   ││ ▸ A  score 0.693       │
+│   1 item   ││ ▸ A  score 0.692       │
 │    └─ P0 A ││   Root                 │
 │            ││   Unblocks: B          │
 │            ││   Claim: br update A - │

@@ -247,11 +247,12 @@ pub fn correlate_histories_with_git(
     );
 }
 
-/// Like [`correlate_histories_with_git`] but accepts `workspace_id_aliases`:
-/// a map from **raw (unprefixed, lowercase)** bead IDs to their canonical
-/// workspace-prefixed form.  This allows JSONL diffs from nested workspace
-/// repos (which store unprefixed IDs) to be matched against the prefixed IDs
-/// in the histories map.
+/// Like [`correlate_histories_with_git`] but accepts `workspace_id_aliases`.
+///
+/// The alias map goes from **raw (unprefixed, lowercase)** bead IDs to their
+/// canonical workspace-prefixed form.  This allows JSONL diffs from nested
+/// workspace repos (which store unprefixed IDs) to be matched against the
+/// prefixed IDs in the histories map.
 pub fn correlate_histories_with_git_aliases(
     repo_root: &Path,
     commits: &[GitCommitRecord],
@@ -355,10 +356,12 @@ pub fn correlate_histories_with_git_aliases(
     }
 }
 
-/// Build a mapping from raw (unprefixed, lowercase) bead IDs to their
-/// canonical workspace-prefixed form.  For each issue whose `source_repo`
-/// is non-empty, the workspace prefix `lowercase(source_repo)-` is stripped
-/// from the issue ID to recover the raw ID, and the pair is added to the map.
+/// Build a mapping from raw (unprefixed, lowercase) bead IDs to their canonical
+/// workspace-prefixed form.
+///
+/// For each issue whose `source_repo` is non-empty, the workspace prefix
+/// `lowercase(source_repo)-` is stripped from the issue ID to recover the raw
+/// ID, and the pair is added to the map.
 pub fn build_workspace_id_aliases(issues: &[Issue]) -> BTreeMap<String, String> {
     let mut aliases = BTreeMap::<String, String>::new();
 
@@ -1150,8 +1153,7 @@ mod tests {
         }];
 
         let aliases: BTreeMap<String, String> =
-            [("bd-1234".to_string(), "api-bd-1234".to_string())]
-                .into_iter()
+            std::iter::once(("bd-1234".to_string(), "api-bd-1234".to_string()))
                 .collect();
 
         let mut commit_index = BTreeMap::new();

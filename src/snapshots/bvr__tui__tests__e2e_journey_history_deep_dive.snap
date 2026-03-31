@@ -1,5 +1,6 @@
 ---
 source: src/tui.rs
+assertion_line: 24946
 expression: artifact
 ---
 === E2E Journey: history-deep-dive | 120x35 ===
@@ -70,13 +71,13 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus
 │                                  ││                                        ││     ~ src/ui/detail.rs +1/-0           │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Enter: backtrace selected commit | v:  │
-│                                  ││                                        ││ y: copy bead ID | f: file tree         │
+│                                  ││                                        ││ y: copy bead ID | o: open commit | f:  │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
+│                                  ││                                        ││ Browser Link: open selected commit (o  │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 3: history_git_mode ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
@@ -101,9 +102,9 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=l
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Enter: jump to related bead | J/K: cyc │
 │                                  ││                                        ││ v: switch to bead timeline | c: cycle  │
-│                                  ││                                        ││ y: copy SHA | f: file tree             │
+│                                  ││                                        ││ y: copy SHA | o: open in browser | f:  │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
+│                                  ││                                        ││ Browser Link: open selected commit (o  │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -113,7 +114,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=l
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 4: history_search ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all | sort=defau
@@ -138,9 +139,9 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=l
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││ Enter: jump to related bead | J/K: cyc │
 │                                  ││                                        ││ v: switch to bead timeline | c: cycle  │
-│                                  ││                                        ││ y: copy SHA | f: file tree             │
+│                                  ││                                        ││ y: copy SHA | o: open in browser | f:  │
 │                                  ││                                        ││                                        │
-│                                  ││                                        ││                                        │
+│                                  ││                                        ││ Browser Link: open selected commit (o  │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
@@ -150,7 +151,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=History ◉ Git | focus=l
 │                                  ││                                        ││                                        │
 │                                  ││                                        ││                                        │
 └──────────────────────────────────┘└────────────────────────────────────────┘└────────────────────────────────────────┘
-c confidence >= 0% | v bead/git | / search | Tab mode | y copy | f file-tree | h/Esc back | ^←/→ resize
+c confidence >= 0% | v bead/git | / search | Tab mode | y copy | o open commit | f file-tree | h/Esc back | ^←/→ resize
 
 --- Step 5: history_bead_return ---
 bvr 1 Main b Board i Insights g Graph h History | mode=History ◈ Beads | focus=list | issues=3/3 | filter=all | sort=def

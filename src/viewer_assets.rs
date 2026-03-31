@@ -569,7 +569,7 @@ mod tests {
         let js = std::str::from_utf8(viewer.bytes).expect("valid utf8");
 
         assert!(
-            js.contains("case 'issue':\n          // Issue detail view\n          this.view = 'issues'; // Keep issues as backdrop\n          this.graphDetailNode = null;"),
+            js.contains("case 'issue':\n          // Issue detail view\n          this.view = ISSUE_BACKDROP_VIEWS.has(route.query.get('from'))\n            ? route.query.get('from')\n            : 'issues';\n          this.graphDetailNode = null;"),
             "viewer runtime must clear graph detail state before issue-detail transitions"
         );
         assert!(

@@ -3065,11 +3065,17 @@ impl Model for BvrApp {
             }
             ViewMode::History => {
                 if self.history_search_active {
-                    Some(RichText::raw(format!(
-                        "History ({}): [{}] Tab cycles mode | Enter confirm | Esc cancel",
-                        self.history_view_mode.label(),
-                        self.history_search_mode.label(),
-                    )))
+                    let mode_label = self.history_view_mode.label();
+                    let search_label = self.history_search_mode.label();
+                    Some(styled_mode_footer(
+                        &format!("History ({mode_label}): [{search_label}]"),
+                        &[
+                            CommandHint { key: "Tab", desc: "cycles mode" },
+                            CommandHint { key: "Enter", desc: "confirm" },
+                            CommandHint { key: "Esc", desc: "cancel" },
+                        ],
+                        rows[2].width,
+                    ))
                 } else {
                     None
                 }

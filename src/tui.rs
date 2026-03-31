@@ -1371,13 +1371,14 @@ struct ScanSegment {
     kind: ScanSegmentKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct ScanLineContext {
     open_blockers: usize,
     blocks_count: usize,
     triage_rank: usize,
     pagerank_rank: usize,
     critical_depth: usize,
+    graph_score: f64,
     search_match_position: Option<usize>,
     total_search_matches: usize,
     diff_tag: Option<DiffTag>,
@@ -1401,6 +1402,7 @@ enum ScanSegmentKind {
     Priority,
     Type,
     StatusBadge,
+    Sparkline,
 }
 
 fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: bool) {
@@ -1444,6 +1446,12 @@ fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: b
             ftui::Style::new().fg(tokens::type_fg(type_name))
         }
         ScanSegmentKind::StatusBadge => tokens::status_badge(&segment.label),
+        ScanSegmentKind::Sparkline => {
+            // Parse sparkline value from the bar characters to get heatmap colour
+            let filled = segment.label.chars().filter(|c| *c != ' ').count();
+            let score = filled as f64 / segment.label.len().max(1) as f64;
+            ftui::Style::new().fg(tokens::heatmap_color(score))
+        }
     };
     // Apply highlight background to entire row when selected
     let style = if row_selected {
@@ -1568,6 +1576,13 @@ fn issue_scan_line(
             label: tokens::status_badge_label(&issue.status).to_string(),
             kind: ScanSegmentKind::StatusBadge,
         });
+        // Sparkline for graph importance (5 chars)
+        if context.graph_score > 0.0 {
+            prefix.push(ScanSegment {
+                label: tokens::render_sparkline(context.graph_score, 5),
+                kind: ScanSegmentKind::Sparkline,
+            });
+        }
     }
 
     let mut suffix =
@@ -8084,6 +8099,13 @@ impl BvrApp {
                 .copied()
                 .unwrap_or_default();
             let pagerank_rank = metric_rank(&self.analyzer.metrics.pagerank, &issue.id);
+            let graph_score = self
+                .analyzer
+                .metrics
+                .pagerank
+                .get(&issue.id)
+                .copied()
+                .unwrap_or_default();
             let critical_depth = self
                 .analyzer
                 .metrics
@@ -8100,6 +8122,7 @@ impl BvrApp {
                     triage_rank: slot + 1,
                     pagerank_rank,
                     critical_depth,
+                    graph_score,
                     search_match_position: search_positions.get(&index).copied(),
                     total_search_matches: search_matches.len(),
                     diff_tag: self.issue_diff_tag(&issue.id),
@@ -25440,6 +25463,7 @@ mod tests {
                 triage_rank: 3,
                 pagerank_rank: 2,
                 critical_depth: 1,
+                graph_score: 0.0,
                 search_match_position: None,
                 total_search_matches: 0,
                 diff_tag: None,
@@ -25472,6 +25496,7 @@ mod tests {
                     triage_rank: 1,
                     pagerank_rank: 1,
                     critical_depth: 0,
+                    graph_score: 0.0,
                     search_match_position: None,
                     total_search_matches: 0,
                     diff_tag: None,
@@ -25501,6 +25526,7 @@ mod tests {
                 triage_rank: 4,
                 pagerank_rank: 3,
                 critical_depth: 2,
+                graph_score: 0.0,
                 search_match_position: None,
                 total_search_matches: 0,
                 diff_tag: None,

@@ -1400,6 +1400,7 @@ enum ScanSegmentKind {
     Title { selected: bool },
     Priority,
     Type,
+    StatusBadge,
 }
 
 fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: bool) {
@@ -1442,6 +1443,7 @@ fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: b
             };
             ftui::Style::new().fg(tokens::type_fg(type_name))
         }
+        ScanSegmentKind::StatusBadge => tokens::status_badge(&segment.label),
     };
     // Apply highlight background to entire row when selected
     let style = if row_selected {
@@ -1563,8 +1565,8 @@ fn issue_scan_line(
     }
     if matches!(variant, ScanLineVariant::Wide) {
         prefix.push(ScanSegment {
-            label: format!("{}{}", status_icon(&issue.status), issue.status),
-            kind: ScanSegmentKind::Chip(tone_for_status(&issue.status)),
+            label: tokens::status_badge_label(&issue.status).to_string(),
+            kind: ScanSegmentKind::StatusBadge,
         });
     }
 
@@ -1582,6 +1584,14 @@ fn issue_scan_line(
         });
     }
     if matches!(variant, ScanLineVariant::Medium | ScanLineVariant::Wide) {
+        // Comment count (only if > 0)
+        if !issue.comments.is_empty() {
+            suffix.push(ScanSegment {
+                label: format!("💬{}", issue.comments.len()),
+                kind: ScanSegmentKind::Dim,
+            });
+        }
+        // Updated timestamp
         suffix.push(ScanSegment {
             label: format!(
                 "↻{}",
@@ -2971,55 +2981,62 @@ impl Model for BvrApp {
                 }
             }
             ViewMode::Board => {
-                let detail_hint = board_detail_line.map_or_else(
-                    || "Ctrl+j/k detail scroll".to_string(),
+                let detail_hint_desc = board_detail_line.map_or_else(
+                    || "detail scroll".to_string(),
                     |(offset, total_lines)| {
                         if total_lines > detail_viewport_height {
-                            format!(
-                                "Ctrl+j/k detail scroll | line {}/{}",
-                                offset + 1,
-                                total_lines
-                            )
+                            format!("detail scroll ({}/{})", offset + 1, total_lines)
                         } else {
-                            "Ctrl+j/k detail scroll".to_string()
+                            "detail scroll".to_string()
                         }
                     },
                 );
                 if self.status_msg.is_empty() {
-                    let mut footer = format!(
-                        "Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | grouping={} (s cycles) | empty-lanes={} (e toggles) | H/L lanes | 0/$ lane edges | {}",
-                        self.board_grouping.label(),
-                        self.board_empty_visibility.label(),
-                        detail_hint,
-                    );
+                    let grouping_label = self.board_grouping.label();
+                    let empty_label = self.board_empty_visibility.label();
+                    let mut hints = vec![
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "/", desc: "search" },
+                    ];
+                    let grouping_desc = format!("grouping={grouping_label}");
+                    let empty_desc = format!("empty-lanes={empty_label}");
+                    hints.push(CommandHint { key: "s", desc: &grouping_desc });
+                    hints.push(CommandHint { key: "e", desc: &empty_desc });
+                    hints.push(CommandHint { key: "H/L", desc: "lanes" });
+                    hints.push(CommandHint { key: "0/$", desc: "edges" });
+                    hints.push(CommandHint { key: "^j/k", desc: &detail_hint_desc });
                     if self.should_open_selected_issue_external_ref() {
-                        footer.push_str(" | o open link | y copy link");
+                        hints.push(CommandHint { key: "o", desc: "open link" });
+                        hints.push(CommandHint { key: "y", desc: "copy link" });
                     }
-                    Some(RichText::raw(footer))
+                    Some(styled_mode_footer("Board", &hints, rows[2].width))
                 } else {
                     Some(RichText::raw(self.status_msg.clone()))
                 }
             }
             ViewMode::Insights => {
                 if self.status_msg.is_empty() {
-                    let mut footer = format!(
-                        "Insights [{}] | Tab focus | / search | s/S panel | e explanations={} | x proof={}",
-                        self.insights_panel.short_label(),
-                        if self.insights_show_explanations {
-                            "on"
-                        } else {
-                            "off"
-                        },
-                        if self.insights_show_calc_proof {
-                            "on"
-                        } else {
-                            "off"
-                        }
-                    );
+                    let panel_label = self.insights_panel.short_label();
+                    let expl_flag = if self.insights_show_explanations { "on" } else { "off" };
+                    let proof_flag = if self.insights_show_calc_proof { "on" } else { "off" };
+                    let expl_desc = format!("explanations={expl_flag}");
+                    let proof_desc = format!("proof={proof_flag}");
+                    let mut hints = vec![
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "/", desc: "search" },
+                        CommandHint { key: "s/S", desc: "panel" },
+                        CommandHint { key: "e", desc: &expl_desc },
+                        CommandHint { key: "x", desc: &proof_desc },
+                    ];
                     if self.should_open_selected_issue_external_ref() {
-                        footer.push_str(" | o open link | y copy link");
+                        hints.push(CommandHint { key: "o", desc: "open link" });
+                        hints.push(CommandHint { key: "y", desc: "copy link" });
                     }
-                    Some(RichText::raw(footer))
+                    Some(styled_mode_footer(
+                        &format!("Insights [{panel_label}]"),
+                        &hints,
+                        rows[2].width,
+                    ))
                 } else {
                     Some(RichText::raw(self.status_msg.clone()))
                 }
@@ -18785,7 +18802,7 @@ mod tests {
         assert!(text.contains('▸'), "selected row marker missing: {text}");
         assert!(text.contains("P0"), "priority badge text missing: {text}");
         assert!(text.contains("#01"), "triage rank missing: {text}");
-        assert!(text.contains("oopen"), "status chip text missing: {text}");
+        assert!(text.contains("OPEN"), "status badge text missing: {text}");
         assert!(text.contains("⊘1"), "blocker indicator missing: {text}");
         assert!(text.contains("B"), "selected issue id missing: {text}");
         assert!(

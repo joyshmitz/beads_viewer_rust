@@ -31,4 +31,4 @@ bvr 1 Main b Board i In g Graph h Hist  | 3/3 | all
 │   └────────────   ││                                     │
 │                   ││                                     │
 └───────────────────┘└─────────────────────────────────────┘
-Board mode: lane counts, queued IDs, and selected issue deli
+Board │ Tab focus │ / search │ s grouping=status

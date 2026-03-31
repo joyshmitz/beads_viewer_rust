@@ -37,7 +37,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │            ││ │ PR:0.481 Depth:2     │
 │            ││                        │
 └────────────┘└────────────────────────┘
-Board mode: lane counts, queued IDs, and
+Board │ Tab focus │ / search
 
 --- Step 3: narrow_board_nav ---
 bvr 1 Main b Board i In  | 3/3 | all
@@ -54,7 +54,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │   └─────── ││ └───────────────────── │
 │            ││                        │
 └────────────┘└────────────────────────┘
-Board mode: lane counts, queued IDs, and
+Board │ Tab focus │ / search
 
 --- Step 4: narrow_graph ---
 bvr 1 Main b Board i In g Graph  | 3/3 |
@@ -88,7 +88,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │ [Rank ] in ││ [HITS ] hub=0.0000 aut │
 │            ││                        │
 └────────────┘└────────────────────────┘
-Insights [bottlenecks] | Tab focus | / s
+Insights [bottlenecks] │ Tab focus
 
 --- Step 6: narrow_insights_cycle ---
 bvr 1 Main b Board i In  | 3/3 | all
@@ -105,7 +105,7 @@ bvr 1 Main b Board i In  | 3/3 | all
 │ [Rank ] in ││ [HITS ] hub=0.0000 aut │
 │            ││                        │
 └────────────┘└────────────────────────┘
-Insights [keystones] | Tab focus | / sea
+Insights [keystones] │ Tab focus
 
 --- Step 7: narrow_actionable ---
 bvr 1 Main b Board i In a Act  | 3/3 | a

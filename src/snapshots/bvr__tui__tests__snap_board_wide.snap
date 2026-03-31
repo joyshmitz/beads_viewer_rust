@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 │   └────────────                                   ││                                                                                     │
 │                                                   ││                                                                                     │
 └───────────────────────────────────────────────────┘└─────────────────────────────────────────────────────────────────────────────────────┘
-Board mode: lane counts, queued IDs, and selected issue delivery context | Tab focus | / search | grouping=status (s cycles) | empty-lanes=A
+Board │ Tab focus │ / search │ s grouping=status │ e empty-lanes=Auto │ H/L lanes │ 0/$ edges │ ^j/k detail scroll

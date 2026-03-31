@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights t TimeTravel | mode=TimeTravel | focus=list | issu
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Time-travel: j/k navigate | Tab focus | T reload | t/Esc back
+Time-travel │ j/k navigate │ Tab focus │ T reload │ t/Esc back

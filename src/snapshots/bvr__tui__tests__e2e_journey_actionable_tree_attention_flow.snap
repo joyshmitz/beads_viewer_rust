@@ -76,7 +76,7 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable | mode=Actionable |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Actionable: 3 tracks, 3 items | j/k navigate | Tab focus | a/Esc back
+Actionable: 3 tracks, 3 items │ j/k navigate │ Tab focus │ a/Esc back
 
 --- Step 3: actionable_detail_nav ---
 bvr 1 Main b Board i Insights g Graph h History a Actionable | mode=Actionable | focus=detail | issues=3/3 | filter=all
@@ -113,7 +113,7 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable | mode=Actionable |
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Actionable: 3 tracks, 3 items | j/k navigate | Tab focus | a/Esc back
+Actionable: 3 tracks, 3 items │ j/k navigate │ Tab focus │ a/Esc back
 
 --- Step 4: tree_entry ---
 bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default
@@ -150,7 +150,7 @@ bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list 
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Tree: 3 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
+Tree: 3 nodes │ j/k navigate │ Enter expand/collapse │ Tab focus │ T/Esc back
 
 --- Step 5: tree_navigate ---
 bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default
@@ -187,7 +187,7 @@ bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list 
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Tree: 3 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
+Tree: 3 nodes │ j/k navigate │ Enter expand/collapse │ Tab focus │ T/Esc back
 
 --- Step 6: attention_entry ---
 bvr 1 Main b Board i Insights g Graph h History ! Attention | mode=Attention | focus=list | issues=3/3 | filter=all | so
@@ -224,7 +224,7 @@ bvr 1 Main b Board i Insights g Graph h History ! Attention | mode=Attention | f
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Attention: 3 labels ranked | j/k navigate | Tab focus | !/Esc back
+Attention: 3 labels ranked │ j/k navigate │ Tab focus │ !/Esc back
 
 --- Step 7: attention_detail ---
 bvr 1 Main b Board i Insights g Graph h History ! Attention | mode=Attention | focus=detail | issues=3/3 | filter=all |
@@ -261,7 +261,7 @@ bvr 1 Main b Board i Insights g Graph h History ! Attention | mode=Attention | f
 │                                            ││                                                                        │
 │                                            ││                                                                        │
 └────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────────┘
-Attention: 3 labels ranked | j/k navigate | Tab focus | !/Esc back
+Attention: 3 labels ranked │ j/k navigate │ Tab focus │ !/Esc back
 
 --- Step 8: main_return ---
 bvr 1 Main b Board i Insights g Graph h History | mode=Main | focus=list | issues=3/3 | filter=all | sort=default |

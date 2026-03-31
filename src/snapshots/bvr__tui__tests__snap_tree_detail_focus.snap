@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights T Tree | mode=Tree | focus=detail | issues=3/3 | f
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Tree: 3 nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back
+Tree: 3 nodes │ j/k navigate │ Enter expand/collapse │ Tab focus │ T/Esc back

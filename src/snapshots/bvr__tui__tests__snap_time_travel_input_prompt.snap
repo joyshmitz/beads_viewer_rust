@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights t TimeTravel | mode=TimeTravel | focus=list | issu
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Time-travel: enter git ref or file path | Enter confirm | Esc cancel
+Time-travel: enter git ref or file path │ Enter confirm │ Esc cancel

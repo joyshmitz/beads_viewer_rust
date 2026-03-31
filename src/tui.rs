@@ -1426,13 +1426,26 @@ fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: b
                 .trim_start_matches('P')
                 .parse::<i32>()
                 .unwrap_or_default();
-            tokens::priority_style(prio as u8).bold()
+            tokens::priority_badge(prio as u8)
         }
-        ScanSegmentKind::Type => tokens::dim(),
+        ScanSegmentKind::Type => {
+            // Use type-specific colour from label (B/F/T/E/Q/D/R)
+            let type_name = match segment.label.as_str() {
+                "B" => "bug",
+                "F" => "feature",
+                "T" => "task",
+                "E" => "epic",
+                "Q" => "question",
+                "D" => "docs",
+                "R" => "refactor",
+                _ => "",
+            };
+            ftui::Style::new().fg(tokens::type_fg(type_name))
+        }
     };
     // Apply highlight background to entire row when selected
     let style = if row_selected {
-        base_style.bg(tokens::BG_HIGHLIGHT)
+        base_style.bg(tokens::bg_highlight())
     } else {
         base_style
     };
@@ -3033,27 +3046,52 @@ impl Model for BvrApp {
                 let plan = self.actionable_plan.as_ref();
                 let track_count = plan.map_or(0, |p| p.tracks.len());
                 let item_count = plan.map_or(0, |p| p.summary.actionable_count);
-                Some(RichText::raw(format!(
-                    "Actionable: {track_count} tracks, {item_count} items | j/k navigate | Tab focus | a/Esc back"
-                )))
+                Some(styled_mode_footer(
+                    &format!("Actionable: {track_count} tracks, {item_count} items"),
+                    &[
+                        CommandHint { key: "j/k", desc: "navigate" },
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "a/Esc", desc: "back" },
+                    ],
+                    rows[2].width,
+                ))
             }
             ViewMode::Attention => {
                 let label_count = self.attention_result.as_ref().map_or(0, |r| r.labels.len());
-                Some(RichText::raw(format!(
-                    "Attention: {label_count} labels ranked | j/k navigate | Tab focus | !/Esc back"
-                )))
+                Some(styled_mode_footer(
+                    &format!("Attention: {label_count} labels ranked"),
+                    &[
+                        CommandHint { key: "j/k", desc: "navigate" },
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "!/Esc", desc: "back" },
+                    ],
+                    rows[2].width,
+                ))
             }
             ViewMode::Tree => {
                 let node_count = self.tree_flat_nodes.len();
-                Some(RichText::raw(format!(
-                    "Tree: {node_count} nodes | j/k navigate | Enter expand/collapse | Tab focus | T/Esc back"
-                )))
+                Some(styled_mode_footer(
+                    &format!("Tree: {node_count} nodes"),
+                    &[
+                        CommandHint { key: "j/k", desc: "navigate" },
+                        CommandHint { key: "Enter", desc: "expand/collapse" },
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "T/Esc", desc: "back" },
+                    ],
+                    rows[2].width,
+                ))
             }
             ViewMode::LabelDashboard => {
                 let label_count = self.label_dashboard.as_ref().map_or(0, |r| r.labels.len());
-                Some(RichText::raw(format!(
-                    "Labels: {label_count} | j/k navigate | Tab focus | [/Esc back"
-                )))
+                Some(styled_mode_footer(
+                    &format!("Labels: {label_count}"),
+                    &[
+                        CommandHint { key: "j/k", desc: "navigate" },
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "[/Esc", desc: "back" },
+                    ],
+                    rows[2].width,
+                ))
             }
             ViewMode::FlowMatrix => {
                 let label_count = self.flow_matrix.as_ref().map_or(0, |f| f.labels.len());
@@ -3061,30 +3099,60 @@ impl Model for BvrApp {
                     .flow_matrix
                     .as_ref()
                     .map_or(0, |f| f.total_cross_label_deps);
-                Some(RichText::raw(format!(
-                    "Flow: {label_count} labels, {dep_count} cross-deps | j/k rows | h/l cols | Tab focus | ]/Esc back"
-                )))
+                Some(styled_mode_footer(
+                    &format!("Flow: {label_count} labels, {dep_count} cross-deps"),
+                    &[
+                        CommandHint { key: "j/k", desc: "rows" },
+                        CommandHint { key: "h/l", desc: "cols" },
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "]/Esc", desc: "back" },
+                    ],
+                    rows[2].width,
+                ))
             }
             ViewMode::TimeTravelDiff => {
                 if self.time_travel_input_active {
-                    Some(RichText::raw(
-                        "Time-travel: enter git ref or file path | Enter confirm | Esc cancel",
+                    Some(styled_mode_footer(
+                        "Time-travel: enter git ref or file path",
+                        &[
+                            CommandHint { key: "Enter", desc: "confirm" },
+                            CommandHint { key: "Esc", desc: "cancel" },
+                        ],
+                        rows[2].width,
                     ))
                 } else if self.time_travel_diff.is_some() {
-                    Some(RichText::raw(
-                        "Time-travel: j/k navigate | Tab focus | T reload | t/Esc back",
+                    Some(styled_mode_footer(
+                        "Time-travel",
+                        &[
+                            CommandHint { key: "j/k", desc: "navigate" },
+                            CommandHint { key: "Tab", desc: "focus" },
+                            CommandHint { key: "T", desc: "reload" },
+                            CommandHint { key: "t/Esc", desc: "back" },
+                        ],
+                        rows[2].width,
                     ))
                 } else {
-                    Some(RichText::raw(
-                        "Time-travel: no diff loaded | t to enter ref | Esc back",
+                    Some(styled_mode_footer(
+                        "Time-travel: no diff loaded",
+                        &[
+                            CommandHint { key: "t", desc: "enter ref" },
+                            CommandHint { key: "Esc", desc: "back" },
+                        ],
+                        rows[2].width,
                     ))
                 }
             }
             ViewMode::Sprint => {
                 let sprint_count = self.sprint_data.len();
-                Some(RichText::raw(format!(
-                    "Sprint: {sprint_count} sprint(s) | j/k navigate | Tab focus | S/Esc back"
-                )))
+                Some(styled_mode_footer(
+                    &format!("Sprint: {sprint_count} sprint(s)"),
+                    &[
+                        CommandHint { key: "j/k", desc: "navigate" },
+                        CommandHint { key: "Tab", desc: "focus" },
+                        CommandHint { key: "S/Esc", desc: "back" },
+                    ],
+                    rows[2].width,
+                ))
             }
         };
         let footer_text = footer_text.unwrap_or_else(|| match self.mode {
@@ -13876,6 +13944,30 @@ fn wrap_command_hints(hints: &[CommandHint<'_>], width: usize) -> RichText {
         lines.push(command_hint_line(&hints[line_start..]));
     }
 
+    RichText::from_lines(lines)
+}
+
+/// Build a styled footer with a dim prefix label and styled command hints.
+fn styled_mode_footer(prefix: &str, hints: &[CommandHint<'_>], width: u16) -> RichText {
+    let mut first_line = RichLine::new();
+    first_line.push_span(RichSpan::styled(prefix, tokens::footer_dim()));
+    first_line.push_span(RichSpan::styled(" │ ", tokens::footer_sep()));
+
+    // Append the first line of hints inline after the prefix
+    let avail = width.saturating_sub(1) as usize;
+    let prefix_width = display_width(prefix) + 3; // " │ " = 3
+    let hint_text = wrap_command_hints(hints, avail.saturating_sub(prefix_width));
+
+    if let Some(first_hint_line) = hint_text.lines().first() {
+        for span in first_hint_line.spans() {
+            first_line.push_span(span.clone());
+        }
+    }
+
+    let mut lines = vec![first_line];
+    for extra in hint_text.lines().iter().skip(1) {
+        lines.push(extra.clone());
+    }
     RichText::from_lines(lines)
 }
 

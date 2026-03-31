@@ -32,4 +32,4 @@ bvr 1 Main b Board i Insights a Actionable | mode=Actionable | focus=detail | is
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Actionable: 1 tracks, 1 items | j/k navigate | Tab focus | a/Esc back
+Actionable: 1 tracks, 1 items │ j/k navigate │ Tab focus │ a/Esc back

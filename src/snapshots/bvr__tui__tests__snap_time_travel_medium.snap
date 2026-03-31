@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights t TimeTravel | mode=TimeTravel | focus=list | issu
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Time-travel: no diff loaded | t to enter ref | Esc back
+Time-travel: no diff loaded │ t enter ref │ Esc back

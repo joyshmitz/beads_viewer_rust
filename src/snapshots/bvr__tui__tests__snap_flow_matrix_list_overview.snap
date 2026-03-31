@@ -31,4 +31,4 @@ bvr 1 Main b Board i Insights ] Flow | mode=Flow | focus=list | issues=3/3 | fil
 │                                        ││                                                        │
 │                                        ││                                                        │
 └────────────────────────────────────────┘└────────────────────────────────────────────────────────┘
-Flow: 3 labels, 0 cross-deps | j/k rows | h/l cols | Tab focus | ]/Esc back
+Flow: 3 labels, 0 cross-deps │ j/k rows │ h/l cols │ Tab focus │ ]/Esc back

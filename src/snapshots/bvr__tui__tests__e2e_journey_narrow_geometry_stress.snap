@@ -122,7 +122,7 @@ bvr 1 Main b Board i In a Act  | 3/3 | a
 │            ││                        │
 │            ││                        │
 └────────────┘└────────────────────────┘
-Actionable: 1 tracks, 1 items | j/k navi
+Actionable: 1 tracks, 1 items │ j/k navi
 
 --- Step 8: narrow_tree ---
 bvr 1 Main b Board i In T Tree  | 3/3 |
@@ -139,7 +139,7 @@ bvr 1 Main b Board i In T Tree  | 3/3 |
 │            ││   B - Dependent        │
 │            ││                        │
 └────────────┘└────────────────────────┘
-Tree: 3 nodes | j/k navigate | Enter exp
+Tree: 3 nodes │ j/k navigate
 
 --- Step 9: narrow_main_return ---
 bvr 1 Main b Board i In  | 3/3 | all

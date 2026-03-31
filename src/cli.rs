@@ -420,6 +420,10 @@ pub struct Cli {
     #[arg(long)]
     pub pages_title: Option<String>,
 
+    /// Custom subtitle for exported pages bundle.
+    #[arg(long)]
+    pub pages_subtitle: Option<String>,
+
     /// Disable live reload when previewing pages.
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_live_reload: bool,
@@ -679,6 +683,8 @@ mod tests {
             "--watch-export",
             "--pages-title",
             "Dashboard",
+            "--pages-subtitle",
+            "Triage View",
             "--pages-include-closed=false",
             "--pages-include-history=false",
         ]);
@@ -691,6 +697,7 @@ mod tests {
         );
         assert!(cli.watch_export);
         assert_eq!(cli.pages_title.as_deref(), Some("Dashboard"));
+        assert_eq!(cli.pages_subtitle.as_deref(), Some("Triage View"));
         assert!(!cli.pages_include_closed);
         assert!(!cli.pages_include_history);
     }

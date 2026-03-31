@@ -81,6 +81,7 @@ const LIVE_RELOAD_SCRIPT: &str = r"<script>
 #[derive(Debug, Clone)]
 pub struct ExportPagesOptions {
     pub title: Option<String>,
+    pub subtitle: Option<String>,
     pub include_closed: bool,
     pub include_history: bool,
 }
@@ -98,6 +99,8 @@ pub struct ExportPagesSummary {
 #[derive(Debug, Clone, Serialize)]
 struct PagesMeta {
     title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subtitle: Option<String>,
     generated_at: String,
     issue_count: usize,
     include_closed: bool,
@@ -215,6 +218,12 @@ pub fn export_pages_bundle(
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_PAGES_TITLE)
         .to_string();
+    let subtitle = options
+        .subtitle
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(std::string::ToString::to_string);
 
     let filtered = issues
         .iter()
@@ -252,6 +261,7 @@ pub fn export_pages_bundle(
     let generated_at = Utc::now().to_rfc3339();
     let meta = PagesMeta {
         title: title.clone(),
+        subtitle: subtitle.clone(),
         generated_at: generated_at.clone(),
         issue_count: filtered.len(),
         include_closed: options.include_closed,
@@ -369,6 +379,11 @@ pub fn export_pages_bundle(
 }
 
 fn generate_deploy_readme(title: &str, meta: &PagesMeta) -> String {
+    let subtitle_line = meta
+        .subtitle
+        .as_deref()
+        .map(|subtitle| format!("- **Subtitle**: {subtitle}\n"))
+        .unwrap_or_default();
     format!(
         "# {title}\n\
          \n\
@@ -394,9 +409,11 @@ fn generate_deploy_readme(title: &str, meta: &PagesMeta) -> String {
          ## Generation info\n\
          \n\
          - **Title**: {title}\n\
+         {subtitle_line}\
          - **Issues**: {count}\n\
          - **Generated**: {at}\n\
          - **Generator**: bvr v{version}\n",
+        subtitle_line = subtitle_line,
         version = meta.version,
         count = meta.issue_count,
         at = meta.generated_at,
@@ -1090,6 +1107,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("Dashboard".to_string()),
+                subtitle: None,
                 include_closed: true,
                 include_history: true,
             },
@@ -1132,6 +1150,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1157,6 +1176,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1198,6 +1218,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1229,6 +1250,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1303,6 +1325,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("Sprint 42".to_string()),
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1331,6 +1354,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1351,6 +1375,7 @@ mod tests {
     fn generate_deploy_readme_includes_key_sections() {
         let meta = PagesMeta {
             title: "Test Project".to_string(),
+            subtitle: Some("Subheading".to_string()),
             generated_at: "2026-03-09T12:00:00Z".to_string(),
             issue_count: 42,
             include_closed: true,
@@ -1394,6 +1419,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("Empty Project".to_string()),
+                subtitle: None,
                 include_closed: true,
                 include_history: true,
             },
@@ -1426,6 +1452,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: true,
                 include_history: true,
             },
@@ -1450,6 +1477,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("".to_string()),
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1472,6 +1500,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("   \t  ".to_string()),
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1494,6 +1523,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1517,6 +1547,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some(title.to_string()),
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1527,6 +1558,32 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
                 .expect("parse");
         assert_eq!(meta["title"], title);
+    }
+
+    #[test]
+    fn export_subtitle_is_preserved_in_meta_and_bundle_readme() {
+        let temp = tempdir().expect("tempdir");
+        let out = temp.path().join("pages");
+
+        export_pages_bundle(
+            &[make_issue("A", "open")],
+            &out,
+            &ExportPagesOptions {
+                title: Some("Dashboard".to_string()),
+                subtitle: Some("Nightly triage snapshot".to_string()),
+                include_closed: false,
+                include_history: false,
+            },
+        )
+        .expect("export");
+
+        let meta: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(out.join("data/meta.json")).expect("read"))
+                .expect("parse");
+        assert_eq!(meta["subtitle"], "Nightly triage snapshot");
+
+        let readme = fs::read_to_string(out.join("README.md")).expect("read README");
+        assert!(readme.contains("Nightly triage snapshot"));
     }
 
     // ── Meta JSON schema validation ───────────────────────────────────
@@ -1541,6 +1598,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("Parity Test".to_string()),
+                subtitle: None,
                 include_closed: true,
                 include_history: true,
             },
@@ -1552,6 +1610,7 @@ mod tests {
                 .expect("parse");
 
         assert!(meta["title"].is_string());
+        assert!(meta.get("subtitle").is_none());
         assert!(meta["generated_at"].is_string());
         assert!(meta["issue_count"].is_number());
         assert!(meta["include_closed"].is_boolean());
@@ -1573,6 +1632,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1599,6 +1659,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1645,6 +1706,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: Some("Self Check".to_string()),
+                subtitle: None,
                 include_closed: true,
                 include_history: false,
             },
@@ -1677,6 +1739,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1722,6 +1785,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1751,6 +1815,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: true,
                 include_history: false,
             },
@@ -1866,6 +1931,7 @@ mod tests {
         let issues = vec![make_issue("A", "open")];
         let opts = ExportPagesOptions {
             title: Some("Idempotent".to_string()),
+            subtitle: None,
             include_closed: false,
             include_history: false,
         };
@@ -1889,6 +1955,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: false,
                 include_history: false,
             },
@@ -1925,6 +1992,7 @@ mod tests {
             &out,
             &ExportPagesOptions {
                 title: None,
+                subtitle: None,
                 include_closed: true,
                 include_history: false,
             },

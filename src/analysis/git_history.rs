@@ -1153,8 +1153,7 @@ mod tests {
         }];
 
         let aliases: BTreeMap<String, String> =
-            std::iter::once(("bd-1234".to_string(), "api-bd-1234".to_string()))
-                .collect();
+            std::iter::once(("bd-1234".to_string(), "api-bd-1234".to_string())).collect();
 
         let mut commit_index = BTreeMap::new();
         let mut method_dist = BTreeMap::new();

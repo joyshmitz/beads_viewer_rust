@@ -165,6 +165,8 @@ pub fn emit_bootstrap_config(
         chunks: Vec::new(),
     };
 
+    cleanup_existing_chunks(output_dir)?;
+
     if total_size > options.chunk_threshold_bytes {
         config.chunked = true;
         config.chunks =
@@ -174,6 +176,14 @@ pub fn emit_bootstrap_config(
 
     write_json_pretty(&export_config_path(output_dir), &config)?;
     Ok(config)
+}
+
+fn cleanup_existing_chunks(output_dir: &Path) -> Result<()> {
+    let chunks_dir = output_dir.join("chunks");
+    if chunks_dir.exists() {
+        fs::remove_dir_all(&chunks_dir)?;
+    }
+    Ok(())
 }
 
 pub fn populate_export_database(
@@ -1660,6 +1670,31 @@ mod tests {
 
         let total_chunk_size = config.chunks.iter().map(|chunk| chunk.size).sum::<u64>();
         assert_eq!(total_chunk_size, config.total_size);
+    }
+
+    #[test]
+    fn emit_bootstrap_config_removes_stale_chunk_dir_when_database_is_no_longer_chunked() {
+        let temp = tempdir().expect("tempdir");
+        bootstrap_export_database(temp.path(), &SqliteBootstrapOptions::default())
+            .expect("bootstrap sqlite export database");
+
+        let chunked = emit_bootstrap_config(
+            temp.path(),
+            &SqliteBundleOptions {
+                chunk_threshold_bytes: 1,
+                chunk_size_bytes: 256,
+            },
+        )
+        .expect("emit chunked bootstrap config");
+        assert!(chunked.chunked);
+        assert!(temp.path().join("chunks").is_dir());
+
+        let single_file = emit_bootstrap_config(temp.path(), &SqliteBundleOptions::default())
+            .expect("emit single-file bootstrap config");
+
+        assert!(!single_file.chunked);
+        assert!(single_file.chunks.is_empty());
+        assert!(!temp.path().join("chunks").exists());
     }
 
     #[test]

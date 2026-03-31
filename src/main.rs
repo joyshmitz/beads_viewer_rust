@@ -374,6 +374,7 @@ fn main() -> ExitCode {
                 let issues = load_issues(&cli)?;
                 let options = bvr::export_pages::ExportPagesOptions {
                     title: config.title.clone(),
+                    subtitle: config.subtitle.clone(),
                     include_closed: config.include_closed,
                     include_history: config.include_history,
                 };
@@ -1929,6 +1930,7 @@ fn main() -> ExitCode {
     if let Some(export_path) = cli.export_pages.as_deref() {
         let options = bvr::export_pages::ExportPagesOptions {
             title: cli.pages_title.clone(),
+            subtitle: cli.pages_subtitle.clone(),
             include_closed: cli.pages_include_closed,
             include_history: cli.pages_include_history,
         };

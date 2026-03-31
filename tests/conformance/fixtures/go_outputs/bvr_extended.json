@@ -1525,6 +1525,7 @@
           "desc: 24r×1.01",
           "velocity: global (0 samples/30d)",
           "velocity: no recent closures; using default",
+          "blocked: waits 4.2d on dependencies",
           "agents: 2"
         ],
         "issue_id": "bd-103",

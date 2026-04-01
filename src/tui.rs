@@ -817,26 +817,12 @@ mod tokens {
             "blocked" => "BLKD",
             "deferred" => "DEFR",
             "draft" => "DRFT",
-            "pinned" => "PIND",
+            "pinned" => "PIN ",
             "hooked" => "HOOK",
             "review" => "REVW",
             "closed" => "DONE",
             "tombstone" => "TOMB",
             _ => "????",
-        }
-    }
-
-    /// Semantic tone for a status string.
-    pub fn tone_for_status(status: &str) -> SemanticTone {
-        let s = status.to_ascii_lowercase();
-        match s.as_str() {
-            "open" => SemanticTone::Success,
-            "in_progress" => SemanticTone::Accent,
-            "blocked" => SemanticTone::Danger,
-            "deferred" | "draft" => SemanticTone::Warning,
-            "pinned" | "hooked" | "review" => SemanticTone::Accent,
-            "closed" | "tombstone" => SemanticTone::Muted,
-            _ => SemanticTone::Neutral,
         }
     }
 

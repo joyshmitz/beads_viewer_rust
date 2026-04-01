@@ -347,11 +347,20 @@ fn compute_flow(label: &str, labeled_issues: &[&Issue], all_issues: &[Issue]) ->
                     }
                 }
             }
-            // outgoing: this label's issues block others
-            for tl in &issue.labels {
-                if !label_matches(tl, &canonical_target) {
-                    outgoing_deps += 1;
-                    outgoing_labels.insert(canonical_label(tl));
+        }
+    }
+
+    for issue in labeled_issues {
+        // outgoing: this label's issues block issues owned by other labels
+        for blocked in all_issues {
+            for dep in &blocked.dependencies {
+                if dep.is_blocking() && dep.depends_on_id == issue.id {
+                    for blocked_label in &blocked.labels {
+                        if !label_matches(blocked_label, &canonical_target) {
+                            outgoing_deps += 1;
+                            outgoing_labels.insert(canonical_label(blocked_label));
+                        }
+                    }
                 }
             }
         }
@@ -1342,6 +1351,21 @@ mod tests {
         assert_eq!(flow.incoming_deps, 0);
         assert_eq!(flow.outgoing_deps, 0);
         assert_eq!(flow.flow_score, 100);
+    }
+
+    #[test]
+    fn flow_counts_outgoing_cross_label_deps() {
+        let source_issue = make_issue("A", &["backend"], "open");
+        let dependent_issue = make_issue_with_dep("B", &["frontend"], "open", "A");
+
+        let flow = compute_flow(
+            "backend",
+            &[&source_issue],
+            &[source_issue.clone(), dependent_issue],
+        );
+        assert_eq!(flow.outgoing_deps, 1);
+        assert_eq!(flow.blocking_external, 1);
+        assert!(flow.outgoing_labels.contains(&"frontend".to_string()));
     }
 
     // ── compute_criticality ─────────────────────────────────────────

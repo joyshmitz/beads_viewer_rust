@@ -623,8 +623,7 @@ fn detect_stale_cleanup(
     let pagerank_threshold = if open_pageranks.is_empty() {
         0.0
     } else {
-        let idx = ((open_pageranks.len() as f64 * STALE_PAGERANK_PERCENTILE).ceil() as usize)
-            .min(open_pageranks.len() - 1);
+        let idx = ((open_pageranks.len() - 1) as f64 * STALE_PAGERANK_PERCENTILE).floor() as usize;
         open_pageranks[idx]
     };
 
@@ -1025,6 +1024,18 @@ mod tests {
         }
     }
 
+    fn make_issue_with_dep(id: &str, title: &str, status: &str, depends_on: &str) -> Issue {
+        let mut issue = make_issue_with_dates(id, status, 30);
+        issue.title = title.to_string();
+        issue.dependencies.push(crate::model::Dependency {
+            issue_id: id.to_string(),
+            depends_on_id: depends_on.to_string(),
+            dep_type: "blocks".to_string(),
+            ..crate::model::Dependency::default()
+        });
+        issue
+    }
+
     #[test]
     fn stale_cleanup_detects_old_low_impact_issues() {
         use crate::analysis::graph::IssueGraph;
@@ -1091,6 +1102,29 @@ mod tests {
 
         let results = detect_stale_cleanup(&issues, &metrics, &now);
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn stale_cleanup_does_not_flag_high_impact_issue_at_small_n() {
+        use crate::analysis::graph::IssueGraph;
+
+        let mut blocker = make_issue_with_dates("A", "open", 120);
+        let blocked_one = make_issue_with_dep("B", "frontend follow-up", "open", "A");
+        let blocked_two = make_issue_with_dep("C", "ops follow-up", "open", "A");
+        blocker.title = "Core blocker".to_string();
+
+        let issues = vec![blocker, blocked_one, blocked_two];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let now = Utc::now().to_rfc3339();
+
+        let results = detect_stale_cleanup(&issues, &metrics, &now);
+        assert!(
+            !results
+                .iter()
+                .any(|suggestion| suggestion.target_bead == "A"),
+            "the highest-impact stale issue should not be classified as low-impact"
+        );
     }
 
     // ── detect_potential_duplicates ──────────────────────────────────

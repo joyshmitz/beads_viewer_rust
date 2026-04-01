@@ -442,15 +442,20 @@ fn check_metric_drift(
         return;
     }
 
-    // Compare top-5 IDs: how many are different?
+    let compare_count = baseline_items.len().min(current_items.len()).min(5);
+    if compare_count == 0 {
+        return;
+    }
+
+    // Compare the top-N IDs for the available items, capped at five.
     let baseline_top5: Vec<&str> = baseline_items
         .iter()
-        .take(5)
+        .take(compare_count)
         .map(|i| i.id.as_str())
         .collect();
     let current_top5: Vec<&str> = current_items
         .iter()
-        .take(5)
+        .take(compare_count)
         .map(|i| i.id.as_str())
         .collect();
 
@@ -463,14 +468,14 @@ fn check_metric_drift(
         let details: Vec<String> = baseline_top5
             .iter()
             .filter(|id| !current_top5.contains(id))
-            .map(|id| format!("{id} dropped from top-5"))
+            .map(|id| format!("{id} dropped from top-{compare_count}"))
             .collect();
         alerts.push(DriftAlert {
             alert_type: alert_type.to_string(),
             severity: "warning".to_string(),
-            message: format!("{changed} of top-5 rankings changed"),
-            baseline_value: 5.0,
-            current_value: (5 - changed) as f64,
+            message: format!("{changed} of top-{compare_count} rankings changed"),
+            baseline_value: compare_count as f64,
+            current_value: (compare_count - changed) as f64,
             delta: changed as f64,
             details,
         });
@@ -952,6 +957,47 @@ mod tests {
         assert_eq!(alerts.len(), 1);
         assert_eq!(alerts[0].alert_type, "pr");
         assert_eq!(alerts[0].severity, "warning");
+    }
+
+    #[test]
+    fn check_metric_drift_reports_actual_compared_count_when_under_five() {
+        let baseline = vec![
+            BaselineMetricItem {
+                id: "A".to_string(),
+                value: 3.0,
+            },
+            BaselineMetricItem {
+                id: "B".to_string(),
+                value: 2.0,
+            },
+            BaselineMetricItem {
+                id: "C".to_string(),
+                value: 1.0,
+            },
+        ];
+        let current = vec![
+            BaselineMetricItem {
+                id: "X".to_string(),
+                value: 3.0,
+            },
+            BaselineMetricItem {
+                id: "Y".to_string(),
+                value: 2.0,
+            },
+            BaselineMetricItem {
+                id: "Z".to_string(),
+                value: 1.0,
+            },
+        ];
+
+        let mut alerts = Vec::new();
+        check_metric_drift("pr", &baseline, &current, &mut alerts);
+
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].message, "3 of top-3 rankings changed");
+        assert_eq!(alerts[0].baseline_value, 3.0);
+        assert_eq!(alerts[0].current_value, 0.0);
+        assert_eq!(alerts[0].delta, 3.0);
     }
 
     // --- compute_drift density tests ---

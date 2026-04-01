@@ -1,6 +1,6 @@
 ---
 source: src/tui.rs
-assertion_line: 24677
+assertion_line: 25091
 expression: artifact
 ---
 === E2E Journey: main→board→graph→insights→main | 120x35 ===
@@ -89,7 +89,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││ ├────────────────────────────────────────┤                             │
 │ ▸ ┌─ open [2] ██  clear                    ││ │ Lane: open                             │                             │
 │   │ oT P0 A Root↓1 @alice                  ││ │ Assignee:                              │                             │
-│   ▶ oT P0 B Dependent⊘1                    ││ │ Age: 87d | Updated: 86d ago            │                             │
+│   ▶ oT P0 B Dependent⊘1                    ││ │ Age: 88d | Updated: 87d ago            │                             │
 │   └────────────                            ││ │ PR:0.260 Depth:1                       │                             │
 │                                            ││ ├────────────────────────────────────────┤                             │
 │   ┌─ in_progress [0]   empty               ││ │ Depends on A and should report block…  │                             │
@@ -126,7 +126,7 @@ bvr 1 Main b Board i Insights g Graph h History | mode=Board | focus=list | issu
 │                                            ││ ├────────────────────────────────────────┤                             │
 │   ┌─ open [2] ██  clear                    ││ │ Lane: closed                           │                             │
 │   │ oT P0 A Root↓1 @alice                  ││ │ Assignee:                              │                             │
-│   │ oT P0 B Dependent⊘1                    ││ │ Age: 89d | Updated: 84d ago            │                             │
+│   │ oT P0 B Dependent⊘1                    ││ │ Age: 90d | Updated: 85d ago            │                             │
 │   └────────────                            ││ │ PR:0.260 Depth:1                       │                             │
 │                                            ││ └────────────────────────────────────────┘                             │
 │   ┌─ in_progress [0]   empty               ││                                                                        │

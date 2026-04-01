@@ -1,5 +1,6 @@
 ---
 source: src/tui.rs
+assertion_line: 22087
 expression: text
 ---
 bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | mode=Board | focus=list | issues=3/3 | filter=all | sort=defa
@@ -12,7 +13,7 @@ bvr 1 Main b Board i Insights g Graph h History a Actionable [ Labels ] Flow | m
 │ ▸ ┌─ open [2] ██  clear                           ││ │ Lane: open                             │                                          │
 │   ▶ oT P0 A Root↓1 @alice                         ││ │ Assignee: alice                        │                                          │
 │   │ oT P0 B Dependent⊘1                           ││ │ Labels: core, parity                   │                                          │
-│   └────────────                                   ││ │ Age: 89d | Updated: 88d ago            │                                          │
+│   └────────────                                   ││ │ Age: 90d | Updated: 89d ago            │                                          │
 │                                                   ││ │ PR:0.481 Depth:2                       │                                          │
 │   ┌─ in_progress [0]   empty                      ││ ├────────────────────────────────────────┤                                          │
 │   │ (empty)                                       ││ │ Top-level issue that unblocks downst…  │                                          │

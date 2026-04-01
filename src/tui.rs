@@ -707,18 +707,20 @@ mod tokens {
     }
 
     /// Detect theme from `BV_THEME` env var.  Falls back to dark.
+    /// Result is cached for the lifetime of the process.
     pub fn detect_theme() -> ThemeMode {
-        match std::env::var("BV_THEME").as_deref() {
+        static CACHED: std::sync::OnceLock<ThemeMode> = std::sync::OnceLock::new();
+        *CACHED.get_or_init(|| match std::env::var("BV_THEME").as_deref() {
             Ok("light") => ThemeMode::Light,
             _ => ThemeMode::Dark,
-        }
+        })
     }
 
     fn is_light() -> bool {
         detect_theme() == ThemeMode::Light
     }
 
-    /// Runtime light/dark picker.
+    /// Runtime light/dark picker (zero-cost after first call).
     fn p(light: PackedRgba, dark: PackedRgba) -> PackedRgba {
         if is_light() { light } else { dark }
     }
@@ -815,7 +817,7 @@ mod tokens {
             "blocked" => "BLKD",
             "deferred" => "DEFR",
             "draft" => "DRFT",
-            "pinned" => " PIN",
+            "pinned" => "PIND",
             "hooked" => "HOOK",
             "review" => "REVW",
             "closed" => "DONE",
@@ -1447,9 +1449,10 @@ fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: b
         }
         ScanSegmentKind::StatusBadge => tokens::status_badge(&segment.label),
         ScanSegmentKind::Sparkline => {
-            // Parse sparkline value from the bar characters to get heatmap colour
+            // Estimate visual fill ratio from sparkline characters for heatmap colour.
+            let char_count = segment.label.chars().count().max(1);
             let filled = segment.label.chars().filter(|c| *c != ' ').count();
-            let score = filled as f64 / segment.label.len().max(1) as f64;
+            let score = filled as f64 / char_count as f64;
             ftui::Style::new().fg(tokens::heatmap_color(score))
         }
     };

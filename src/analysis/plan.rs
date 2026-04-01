@@ -43,6 +43,14 @@ pub struct ExecutionPlan {
     pub summary: PlanSummary,
 }
 
+fn unique_unblocks_count<'a>(items: impl IntoIterator<Item = &'a ExecutionItem>) -> usize {
+    items
+        .into_iter()
+        .flat_map(|item| item.unblocks.iter().cloned())
+        .collect::<HashSet<_>>()
+        .len()
+}
+
 pub fn compute_execution_plan(
     graph: &IssueGraph,
     score_by_id: &HashMap<String, f64>,
@@ -99,7 +107,7 @@ pub fn compute_execution_plan(
         }
 
         // Build descriptive reason for this track.
-        let total_unblocks: usize = items.iter().map(|item| item.unblocks.len()).sum();
+        let total_unblocks = unique_unblocks_count(items.iter());
         let reason = if items.len() == 1 {
             let item = &items[0];
             if item.unblocks.is_empty() {
@@ -173,11 +181,7 @@ pub fn compute_execution_plan(
         .iter()
         .filter(|issue| issue.is_open_like() && !graph.open_blockers(&issue.id).is_empty())
         .count();
-    let total_unblocks: usize = tracks
-        .iter()
-        .flat_map(|track| &track.items)
-        .map(|item| item.unblocks.len())
-        .sum();
+    let total_unblocks = unique_unblocks_count(tracks.iter().flat_map(|track| track.items.iter()));
     let track_count = tracks.len();
 
     ExecutionPlan {
@@ -201,7 +205,7 @@ mod tests {
     use crate::analysis::graph::IssueGraph;
     use crate::model::{Dependency, Issue};
 
-    use super::compute_execution_plan;
+    use super::{compute_execution_plan, unique_unblocks_count};
 
     #[test]
     fn plan_groups_by_components() {
@@ -452,5 +456,59 @@ mod tests {
         let mut ids: Vec<&str> = plan.tracks.iter().map(|t| t.id.as_str()).collect();
         ids.sort();
         assert_eq!(ids, vec!["track-1", "track-2"]);
+    }
+
+    #[test]
+    fn unique_unblocks_are_counted_once_in_summary_and_reason() {
+        let issues = vec![
+            Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "C".to_string(),
+                title: "C".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                dependencies: vec![
+                    Dependency {
+                        depends_on_id: "A".to_string(),
+                        dep_type: "blocks".to_string(),
+                        ..Dependency::default()
+                    },
+                    Dependency {
+                        depends_on_id: "B".to_string(),
+                        dep_type: "blocks".to_string(),
+                        ..Dependency::default()
+                    },
+                ],
+                ..Issue::default()
+            },
+        ];
+
+        let graph = IssueGraph::build(&issues);
+        let mut scores = HashMap::new();
+        scores.insert("A".to_string(), 0.8);
+        scores.insert("B".to_string(), 0.7);
+
+        let plan = compute_execution_plan(&graph, &scores);
+        assert_eq!(plan.summary.unblocks_count, Some(1));
+        assert_eq!(plan.tracks.len(), 1);
+        assert!(
+            plan.tracks[0]
+                .reason
+                .contains("unblocking 1 downstream issue")
+        );
+        assert_eq!(unique_unblocks_count(plan.tracks[0].items.iter()), 1);
     }
 }

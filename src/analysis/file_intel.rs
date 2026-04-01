@@ -732,6 +732,8 @@ pub fn compute_file_relations(
                     .iter()
                     .map(|f| normalize_path(&f.path))
                     .filter(|p| p != &target)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
                     .collect();
                 target_commits.insert(commit.sha.clone(), all_files);
             }
@@ -1357,6 +1359,27 @@ mod tests {
             result.related_files.iter().all(|r| r.correlation >= 0.5),
             "All results should meet threshold"
         );
+    }
+
+    #[test]
+    fn file_relations_deduplicate_repeated_paths_within_one_commit() {
+        let mut histories = BTreeMap::new();
+        histories.insert(
+            "bd-1".to_string(),
+            make_history_multi_file(
+                "bd-1",
+                "open",
+                &[&["src/main.rs", "src/lib.rs", "src/lib.rs"]],
+            ),
+        );
+
+        let result = compute_file_relations("src/main.rs", &histories, 0.0, 10);
+
+        assert_eq!(result.total_commits_for_source, 1);
+        assert_eq!(result.related_files.len(), 1);
+        assert_eq!(result.related_files[0].file_path, "src/lib.rs");
+        assert_eq!(result.related_files[0].co_change_count, 1);
+        assert_eq!(result.related_files[0].correlation, 1.0);
     }
 
     #[test]

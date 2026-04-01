@@ -372,7 +372,9 @@ pub fn emit_script(
     generated_at: &str,
     data_hash: &str,
 ) -> String {
-    let items: &[Recommendation] = if limit > 0 && recommendations.len() > limit {
+    let items: &[Recommendation] = if limit == 0 {
+        &[]
+    } else if recommendations.len() > limit {
         &recommendations[..limit]
     } else {
         recommendations
@@ -744,6 +746,16 @@ mod tests {
         let script = emit_script(&recs, 1, ScriptFormat::Bash, "2025-01-01T00:00:00Z", "abc");
 
         assert!(script.contains("br show A"));
+        assert!(!script.contains("br show B"));
+    }
+
+    #[test]
+    fn emit_script_zero_limit_includes_no_recommendations() {
+        let recs = vec![make_rec("A", "A", 0.9), make_rec("B", "B", 0.8)];
+        let script = emit_script(&recs, 0, ScriptFormat::Bash, "2025-01-01T00:00:00Z", "abc");
+
+        assert!(script.contains("# Top 0 recommendations from 2 total"));
+        assert!(!script.contains("br show A"));
         assert!(!script.contains("br show B"));
     }
 

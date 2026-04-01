@@ -905,7 +905,10 @@ mod tokens {
     /// Footer keybinding label (bright, bold).
     pub fn footer_key() -> Style {
         Style::new()
-            .fg(p(PackedRgba::rgb(51, 51, 51), PackedRgba::rgb(224, 224, 232)))
+            .fg(p(
+                PackedRgba::rgb(51, 51, 51),
+                PackedRgba::rgb(224, 224, 232),
+            ))
             .bold()
     }
 
@@ -998,19 +1001,35 @@ mod tokens {
 
     /// Get a deterministic repo colour from the repo name.
     pub fn repo_color(repo: &str) -> PackedRgba {
-        let hash = repo.bytes().fold(0_usize, |acc, b| acc.wrapping_mul(31).wrapping_add(b as usize));
+        let hash = repo.bytes().fold(0_usize, |acc, b| {
+            acc.wrapping_mul(31).wrapping_add(b as usize)
+        });
         REPO_COLORS[hash % REPO_COLORS.len()]
     }
 
     // ── Preserved original API (backward compat) ─────────────────────
 
-    pub fn fg_default() -> PackedRgba { p(FG_DEFAULT_LIGHT, FG_DEFAULT) }
-    pub fn fg_dim() -> PackedRgba { p(FG_MUTED_LIGHT, FG_DIM) }
-    pub fn fg_accent() -> PackedRgba { p(FG_ACCENT_LIGHT, FG_ACCENT) }
-    pub fn fg_muted() -> PackedRgba { p(FG_MUTED_LIGHT, FG_MUTED) }
-    pub fn bg_base() -> PackedRgba { p(BG_BASE_LIGHT, BG_BASE) }
-    pub fn bg_surface() -> PackedRgba { p(BG_SURFACE_LIGHT, BG_SURFACE) }
-    pub fn bg_highlight() -> PackedRgba { p(BG_HIGHLIGHT_LIGHT, BG_HIGHLIGHT) }
+    pub fn fg_default() -> PackedRgba {
+        p(FG_DEFAULT_LIGHT, FG_DEFAULT)
+    }
+    pub fn fg_dim() -> PackedRgba {
+        p(FG_MUTED_LIGHT, FG_DIM)
+    }
+    pub fn fg_accent() -> PackedRgba {
+        p(FG_ACCENT_LIGHT, FG_ACCENT)
+    }
+    pub fn fg_muted() -> PackedRgba {
+        p(FG_MUTED_LIGHT, FG_MUTED)
+    }
+    pub fn bg_base() -> PackedRgba {
+        p(BG_BASE_LIGHT, BG_BASE)
+    }
+    pub fn bg_surface() -> PackedRgba {
+        p(BG_SURFACE_LIGHT, BG_SURFACE)
+    }
+    pub fn bg_highlight() -> PackedRgba {
+        p(BG_HIGHLIGHT_LIGHT, BG_HIGHLIGHT)
+    }
 
     // ── Semantic styles (runtime theme-aware) ────────────────────────
 
@@ -2999,19 +3018,46 @@ impl Model for BvrApp {
                     let grouping_label = self.board_grouping.label();
                     let empty_label = self.board_empty_visibility.label();
                     let mut hints = vec![
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "/", desc: "search" },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "/",
+                            desc: "search",
+                        },
                     ];
                     let grouping_desc = format!("grouping={grouping_label}");
                     let empty_desc = format!("empty-lanes={empty_label}");
-                    hints.push(CommandHint { key: "s", desc: &grouping_desc });
-                    hints.push(CommandHint { key: "e", desc: &empty_desc });
-                    hints.push(CommandHint { key: "H/L", desc: "lanes" });
-                    hints.push(CommandHint { key: "0/$", desc: "edges" });
-                    hints.push(CommandHint { key: "^j/k", desc: &detail_hint_desc });
+                    hints.push(CommandHint {
+                        key: "s",
+                        desc: &grouping_desc,
+                    });
+                    hints.push(CommandHint {
+                        key: "e",
+                        desc: &empty_desc,
+                    });
+                    hints.push(CommandHint {
+                        key: "H/L",
+                        desc: "lanes",
+                    });
+                    hints.push(CommandHint {
+                        key: "0/$",
+                        desc: "edges",
+                    });
+                    hints.push(CommandHint {
+                        key: "^j/k",
+                        desc: &detail_hint_desc,
+                    });
                     if self.should_open_selected_issue_external_ref() {
-                        hints.push(CommandHint { key: "o", desc: "open link" });
-                        hints.push(CommandHint { key: "y", desc: "copy link" });
+                        hints.push(CommandHint {
+                            key: "o",
+                            desc: "open link",
+                        });
+                        hints.push(CommandHint {
+                            key: "y",
+                            desc: "copy link",
+                        });
                     }
                     Some(styled_mode_footer("Board", &hints, rows[2].width))
                 } else {
@@ -3021,20 +3067,49 @@ impl Model for BvrApp {
             ViewMode::Insights => {
                 if self.status_msg.is_empty() {
                     let panel_label = self.insights_panel.short_label();
-                    let expl_flag = if self.insights_show_explanations { "on" } else { "off" };
-                    let proof_flag = if self.insights_show_calc_proof { "on" } else { "off" };
+                    let expl_flag = if self.insights_show_explanations {
+                        "on"
+                    } else {
+                        "off"
+                    };
+                    let proof_flag = if self.insights_show_calc_proof {
+                        "on"
+                    } else {
+                        "off"
+                    };
                     let expl_desc = format!("explanations={expl_flag}");
                     let proof_desc = format!("proof={proof_flag}");
                     let mut hints = vec![
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "/", desc: "search" },
-                        CommandHint { key: "s/S", desc: "panel" },
-                        CommandHint { key: "e", desc: &expl_desc },
-                        CommandHint { key: "x", desc: &proof_desc },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "/",
+                            desc: "search",
+                        },
+                        CommandHint {
+                            key: "s/S",
+                            desc: "panel",
+                        },
+                        CommandHint {
+                            key: "e",
+                            desc: &expl_desc,
+                        },
+                        CommandHint {
+                            key: "x",
+                            desc: &proof_desc,
+                        },
                     ];
                     if self.should_open_selected_issue_external_ref() {
-                        hints.push(CommandHint { key: "o", desc: "open link" });
-                        hints.push(CommandHint { key: "y", desc: "copy link" });
+                        hints.push(CommandHint {
+                            key: "o",
+                            desc: "open link",
+                        });
+                        hints.push(CommandHint {
+                            key: "y",
+                            desc: "copy link",
+                        });
                     }
                     Some(styled_mode_footer(
                         &format!("Insights [{panel_label}]"),
@@ -3059,9 +3134,18 @@ impl Model for BvrApp {
                     Some(styled_mode_footer(
                         &format!("History ({mode_label}): [{search_label}]"),
                         &[
-                            CommandHint { key: "Tab", desc: "cycles mode" },
-                            CommandHint { key: "Enter", desc: "confirm" },
-                            CommandHint { key: "Esc", desc: "cancel" },
+                            CommandHint {
+                                key: "Tab",
+                                desc: "cycles mode",
+                            },
+                            CommandHint {
+                                key: "Enter",
+                                desc: "confirm",
+                            },
+                            CommandHint {
+                                key: "Esc",
+                                desc: "cancel",
+                            },
                         ],
                         rows[2].width,
                     ))
@@ -3076,9 +3160,18 @@ impl Model for BvrApp {
                 Some(styled_mode_footer(
                     &format!("Actionable: {track_count} tracks, {item_count} items"),
                     &[
-                        CommandHint { key: "j/k", desc: "navigate" },
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "a/Esc", desc: "back" },
+                        CommandHint {
+                            key: "j/k",
+                            desc: "navigate",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "a/Esc",
+                            desc: "back",
+                        },
                     ],
                     rows[2].width,
                 ))
@@ -3088,9 +3181,18 @@ impl Model for BvrApp {
                 Some(styled_mode_footer(
                     &format!("Attention: {label_count} labels ranked"),
                     &[
-                        CommandHint { key: "j/k", desc: "navigate" },
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "!/Esc", desc: "back" },
+                        CommandHint {
+                            key: "j/k",
+                            desc: "navigate",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "!/Esc",
+                            desc: "back",
+                        },
                     ],
                     rows[2].width,
                 ))
@@ -3100,10 +3202,22 @@ impl Model for BvrApp {
                 Some(styled_mode_footer(
                     &format!("Tree: {node_count} nodes"),
                     &[
-                        CommandHint { key: "j/k", desc: "navigate" },
-                        CommandHint { key: "Enter", desc: "expand/collapse" },
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "T/Esc", desc: "back" },
+                        CommandHint {
+                            key: "j/k",
+                            desc: "navigate",
+                        },
+                        CommandHint {
+                            key: "Enter",
+                            desc: "expand/collapse",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "T/Esc",
+                            desc: "back",
+                        },
                     ],
                     rows[2].width,
                 ))
@@ -3113,9 +3227,18 @@ impl Model for BvrApp {
                 Some(styled_mode_footer(
                     &format!("Labels: {label_count}"),
                     &[
-                        CommandHint { key: "j/k", desc: "navigate" },
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "[/Esc", desc: "back" },
+                        CommandHint {
+                            key: "j/k",
+                            desc: "navigate",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "[/Esc",
+                            desc: "back",
+                        },
                     ],
                     rows[2].width,
                 ))
@@ -3129,10 +3252,22 @@ impl Model for BvrApp {
                 Some(styled_mode_footer(
                     &format!("Flow: {label_count} labels, {dep_count} cross-deps"),
                     &[
-                        CommandHint { key: "j/k", desc: "rows" },
-                        CommandHint { key: "h/l", desc: "cols" },
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "]/Esc", desc: "back" },
+                        CommandHint {
+                            key: "j/k",
+                            desc: "rows",
+                        },
+                        CommandHint {
+                            key: "h/l",
+                            desc: "cols",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "]/Esc",
+                            desc: "back",
+                        },
                     ],
                     rows[2].width,
                 ))
@@ -3142,8 +3277,14 @@ impl Model for BvrApp {
                     Some(styled_mode_footer(
                         "Time-travel: enter git ref or file path",
                         &[
-                            CommandHint { key: "Enter", desc: "confirm" },
-                            CommandHint { key: "Esc", desc: "cancel" },
+                            CommandHint {
+                                key: "Enter",
+                                desc: "confirm",
+                            },
+                            CommandHint {
+                                key: "Esc",
+                                desc: "cancel",
+                            },
                         ],
                         rows[2].width,
                     ))
@@ -3151,10 +3292,22 @@ impl Model for BvrApp {
                     Some(styled_mode_footer(
                         "Time-travel",
                         &[
-                            CommandHint { key: "j/k", desc: "navigate" },
-                            CommandHint { key: "Tab", desc: "focus" },
-                            CommandHint { key: "T", desc: "reload" },
-                            CommandHint { key: "t/Esc", desc: "back" },
+                            CommandHint {
+                                key: "j/k",
+                                desc: "navigate",
+                            },
+                            CommandHint {
+                                key: "Tab",
+                                desc: "focus",
+                            },
+                            CommandHint {
+                                key: "T",
+                                desc: "reload",
+                            },
+                            CommandHint {
+                                key: "t/Esc",
+                                desc: "back",
+                            },
                         ],
                         rows[2].width,
                     ))
@@ -3162,8 +3315,14 @@ impl Model for BvrApp {
                     Some(styled_mode_footer(
                         "Time-travel: no diff loaded",
                         &[
-                            CommandHint { key: "t", desc: "enter ref" },
-                            CommandHint { key: "Esc", desc: "back" },
+                            CommandHint {
+                                key: "t",
+                                desc: "enter ref",
+                            },
+                            CommandHint {
+                                key: "Esc",
+                                desc: "back",
+                            },
                         ],
                         rows[2].width,
                     ))
@@ -3174,9 +3333,18 @@ impl Model for BvrApp {
                 Some(styled_mode_footer(
                     &format!("Sprint: {sprint_count} sprint(s)"),
                     &[
-                        CommandHint { key: "j/k", desc: "navigate" },
-                        CommandHint { key: "Tab", desc: "focus" },
-                        CommandHint { key: "S/Esc", desc: "back" },
+                        CommandHint {
+                            key: "j/k",
+                            desc: "navigate",
+                        },
+                        CommandHint {
+                            key: "Tab",
+                            desc: "focus",
+                        },
+                        CommandHint {
+                            key: "S/Esc",
+                            desc: "back",
+                        },
                     ],
                     rows[2].width,
                 ))
@@ -20005,10 +20173,7 @@ mod tests {
 
         let first_line = wrapped.lines()[0].spans();
         let second_line = wrapped.lines()[1].spans();
-        assert_eq!(
-            first_line[0].style,
-            Some(tokens::footer_key())
-        );
+        assert_eq!(first_line[0].style, Some(tokens::footer_key()));
         assert_eq!(first_line[2].style, Some(tokens::footer_hint()));
         assert_eq!(second_line[3].style, Some(tokens::footer_sep()));
     }

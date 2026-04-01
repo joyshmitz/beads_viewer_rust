@@ -17,6 +17,16 @@ pub struct IssueHistory {
     pub events: Vec<HistoryEvent>,
 }
 
+fn history_event_order(event: &HistoryEvent) -> (u8, Option<chrono::DateTime<chrono::Utc>>, u8) {
+    match event.kind.as_str() {
+        "created" => (0, event.timestamp, 0),
+        "updated" => (1, event.timestamp, 1),
+        "closed" => (1, event.timestamp, 2),
+        "dependency" => (2, event.timestamp, 3),
+        _ => (1, event.timestamp, 4),
+    }
+}
+
 #[must_use]
 pub fn build_histories(
     issues: &[Issue],
@@ -63,7 +73,7 @@ pub fn build_histories(
             }
         }
 
-        events.sort_by_key(|event| (event.timestamp.is_none(), event.timestamp));
+        events.sort_by_key(history_event_order);
 
         histories.push(IssueHistory {
             id: issue.id.clone(),
@@ -161,6 +171,31 @@ mod tests {
         }];
 
         let histories = build_histories(&issues, Some("bd-4z1"), 10);
+        let events = &histories[0].events;
+        assert_eq!(events[0].kind, "created");
+        assert_eq!(events[1].kind, "updated");
+        assert_eq!(events[2].kind, "dependency");
+    }
+
+    #[test]
+    fn created_event_stays_first_even_without_created_timestamp() {
+        let issues = vec![Issue {
+            id: "bd-5a1".to_string(),
+            title: "Timestamp gap".to_string(),
+            status: "blocked".to_string(),
+            issue_type: "task".to_string(),
+            created_at: None,
+            updated_at: ts("2026-02-18T03:06:00Z"),
+            dependencies: vec![Dependency {
+                issue_id: "bd-5a1".to_string(),
+                depends_on_id: "bd-5a0".to_string(),
+                dep_type: "blocks".to_string(),
+                ..Dependency::default()
+            }],
+            ..Issue::default()
+        }];
+
+        let histories = build_histories(&issues, Some("bd-5a1"), 10);
         let events = &histories[0].events;
         assert_eq!(events[0].kind, "created");
         assert_eq!(events[1].kind, "updated");

@@ -114,6 +114,10 @@ pub fn top_what_if_deltas(
     metrics: &GraphMetrics,
     top_n: usize,
 ) -> Vec<WhatIfDelta> {
+    if top_n == 0 {
+        return Vec::new();
+    }
+
     let mut deltas: Vec<WhatIfDelta> = issues
         .iter()
         .filter(|i| i.is_open_like())
@@ -128,10 +132,7 @@ pub fn top_what_if_deltas(
             .then_with(|| b.direct_unblocks.len().cmp(&a.direct_unblocks.len()))
             .then_with(|| a.issue_id.cmp(&b.issue_id))
     });
-
-    if top_n > 0 {
-        deltas.truncate(top_n);
-    }
+    deltas.truncate(top_n);
     deltas
 }
 
@@ -291,6 +292,20 @@ mod tests {
 
         let deltas = top_what_if_deltas(&issues, &graph, &metrics, 2);
         assert!(deltas.len() <= 2);
+    }
+
+    #[test]
+    fn what_if_zero_top_n_returns_no_results() {
+        let issues = vec![
+            make_issue("A", "open"),
+            make_issue("B", "open"),
+            make_blocked("C", "A"),
+        ];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+
+        let deltas = top_what_if_deltas(&issues, &graph, &metrics, 0);
+        assert!(deltas.is_empty());
     }
 
     #[test]

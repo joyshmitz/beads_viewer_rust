@@ -1402,14 +1402,20 @@ enum DiffTag {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ScanSegmentKind {
-    Marker { selected: bool },
+    Marker {
+        selected: bool,
+    },
     Chip(SemanticTone),
     Dim,
-    Title { selected: bool },
+    Title {
+        selected: bool,
+    },
     Priority,
     Type,
     /// Badge styled by actual status (not the display label).
-    StatusBadge { status: String },
+    StatusBadge {
+        status: String,
+    },
     Sparkline,
 }
 

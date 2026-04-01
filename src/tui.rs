@@ -1400,7 +1400,7 @@ enum DiffTag {
     Reopened,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ScanSegmentKind {
     Marker { selected: bool },
     Chip(SemanticTone),
@@ -1408,7 +1408,8 @@ enum ScanSegmentKind {
     Title { selected: bool },
     Priority,
     Type,
-    StatusBadge,
+    /// Badge styled by actual status (not the display label).
+    StatusBadge { status: String },
     Sparkline,
 }
 
@@ -1452,7 +1453,7 @@ fn push_scan_segment(line: &mut RichLine, segment: &ScanSegment, row_selected: b
             };
             ftui::Style::new().fg(tokens::type_fg(type_name))
         }
-        ScanSegmentKind::StatusBadge => tokens::status_badge(&segment.label),
+        ScanSegmentKind::StatusBadge { ref status } => tokens::status_badge(status),
         ScanSegmentKind::Sparkline => {
             // Estimate visual fill ratio from sparkline characters for heatmap colour.
             let char_count = segment.label.chars().count().max(1);
@@ -1582,7 +1583,9 @@ fn issue_scan_line(
     if matches!(variant, ScanLineVariant::Wide) {
         prefix.push(ScanSegment {
             label: tokens::status_badge_label(&issue.status).to_string(),
-            kind: ScanSegmentKind::StatusBadge,
+            kind: ScanSegmentKind::StatusBadge {
+                status: issue.status.clone(),
+            },
         });
         // Sparkline for graph importance (5 chars)
         if context.graph_score > 0.0 {

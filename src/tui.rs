@@ -6844,7 +6844,7 @@ impl BvrApp {
             .into_iter()
             .rev()
             .find(|(_, indices)| !indices.is_empty())
-            && let Some(index) = indices.first().copied()
+            && let Some(index) = indices.last().copied()
         {
             self.set_selected_index(index);
         }
@@ -6994,7 +6994,7 @@ impl BvrApp {
         let len = matches.len();
         let current = self.board_search_match_cursor.min(len.saturating_sub(1));
         let step = delta.unsigned_abs() % len;
-        let next = if delta >= 0 {
+        let next = if delta > 0 {
             (current + step) % len
         } else {
             (current + len - step) % len

@@ -403,8 +403,16 @@ mod tests {
     fn priority_brief_issue_counts_reflect_input() {
         let triage = make_triage_result();
         let issues = vec![
-            Issue { id: "X".into(), status: "open".into(), ..Issue::default() },
-            Issue { id: "Y".into(), status: "closed".into(), ..Issue::default() },
+            Issue {
+                id: "X".into(),
+                status: "open".into(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "Y".into(),
+                status: "closed".into(),
+                ..Issue::default()
+            },
         ];
         let brief = generate_priority_brief(&issues, &triage, "h", "now");
         assert!(brief.contains("Issues: 2 total, 1 open, 1 closed"));

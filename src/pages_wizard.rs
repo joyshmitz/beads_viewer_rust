@@ -918,7 +918,9 @@ where
 
                 let Some(do_export) = export_fn.take() else {
                     writeln!(writer, "  ✗ Export already executed").ok();
-                    wizard.transcript.record(wizard.step, "export skipped: already executed");
+                    wizard
+                        .transcript
+                        .record(wizard.step, "export skipped: already executed");
                     wizard.advance();
                     continue;
                 };

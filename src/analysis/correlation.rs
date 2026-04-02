@@ -128,7 +128,7 @@ impl FeedbackStore {
     }
 
     /// Record feedback, appending to the JSONL file and updating the cache.
-    pub fn save(&mut self, feedback: CorrelationFeedback) -> crate::Result<()> {
+    pub fn save(&mut self, feedback: &CorrelationFeedback) -> crate::Result<()> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -138,11 +138,11 @@ impl FeedbackStore {
             .append(true)
             .open(&self.path)?;
 
-        let json = serde_json::to_string(&feedback)?;
+        let json = serde_json::to_string(feedback)?;
         writeln!(file, "{json}")?;
 
         let key = cache_key(&feedback.commit_sha, &feedback.bead_id);
-        self.cache.insert(key, feedback);
+        self.cache.insert(key, feedback.clone());
         Ok(())
     }
 
@@ -164,7 +164,7 @@ impl FeedbackStore {
             reason: reason.to_string(),
             original_conf,
         };
-        self.save(feedback.clone())?;
+        self.save(&feedback)?;
         Ok(feedback)
     }
 
@@ -186,7 +186,7 @@ impl FeedbackStore {
             reason: reason.to_string(),
             original_conf,
         };
-        self.save(feedback.clone())?;
+        self.save(&feedback)?;
         Ok(feedback)
     }
 
@@ -640,6 +640,58 @@ mod tests {
         let stats = store.stats();
 
         assert_eq!(stats.total_feedback, 0);
+        assert!((stats.accuracy_rate - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ignore_feedback_counted_in_stats() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("feedback.jsonl");
+        let mut store = FeedbackStore::open(&path).unwrap();
+
+        store.confirm("sha1", "bd-1", "agent", 0.8, "good").unwrap();
+        store.reject("sha2", "bd-2", "agent", 0.3, "bad").unwrap();
+        // Manually save an Ignore entry since there's no convenience method.
+        let ignore_fb = CorrelationFeedback {
+            commit_sha: "sha3".to_string(),
+            bead_id: "bd-3".to_string(),
+            feedback_at: chrono::Utc::now().to_rfc3339(),
+            feedback_by: "agent".to_string(),
+            feedback_type: FeedbackType::Ignore,
+            reason: "not relevant".to_string(),
+            original_conf: 0.5,
+        };
+        store.save(&ignore_fb).unwrap();
+
+        let stats = store.stats();
+        assert_eq!(stats.total_feedback, 3);
+        assert_eq!(stats.confirmed, 1);
+        assert_eq!(stats.rejected, 1);
+        assert_eq!(stats.ignored, 1);
+        // accuracy_rate only considers confirmed / (confirmed + rejected)
+        assert!((stats.accuracy_rate - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn all_ignored_yields_zero_accuracy() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("feedback.jsonl");
+        let mut store = FeedbackStore::open(&path).unwrap();
+
+        let fb = CorrelationFeedback {
+            commit_sha: "sha1".to_string(),
+            bead_id: "bd-1".to_string(),
+            feedback_at: chrono::Utc::now().to_rfc3339(),
+            feedback_by: "agent".to_string(),
+            feedback_type: FeedbackType::Ignore,
+            reason: String::new(),
+            original_conf: 0.5,
+        };
+        store.save(&fb).unwrap();
+
+        let stats = store.stats();
+        assert_eq!(stats.total_feedback, 1);
+        assert_eq!(stats.ignored, 1);
         assert!((stats.accuracy_rate - 0.0).abs() < f64::EPSILON);
     }
 }

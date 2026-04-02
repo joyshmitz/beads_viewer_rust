@@ -159,6 +159,62 @@ fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
         return Some("error: suggest filters require --robot-suggest".to_string());
     }
 
+    if !cli.robot_orphans && arg_flag_was_explicit_in_args(&raw_args, "--orphans-min-score") {
+        return Some("error: --orphans-min-score requires --robot-orphans".to_string());
+    }
+
+    if cli.robot_file_beads.is_none()
+        && arg_flag_was_explicit_in_args(&raw_args, "--file-beads-limit")
+    {
+        return Some("error: --file-beads-limit requires --robot-file-beads <path>".to_string());
+    }
+
+    if !cli.robot_file_hotspots && arg_flag_was_explicit_in_args(&raw_args, "--hotspots-limit") {
+        return Some("error: --hotspots-limit requires --robot-file-hotspots".to_string());
+    }
+
+    let relation_flags = ["--relations-threshold", "--relations-limit"];
+    if cli.robot_file_relations.is_none()
+        && relation_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: relation modifiers require --robot-file-relations <path>".to_string());
+    }
+
+    let related_flags = ["--related-min-relevance", "--related-max-results"];
+    if cli.robot_related.is_none()
+        && related_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: related-work modifiers require --robot-related <id>".to_string());
+    }
+
+    if cli.robot_impact_network.is_none()
+        && arg_flag_was_explicit_in_args(&raw_args, "--network-depth")
+    {
+        return Some("error: --network-depth requires --robot-impact-network <id>".to_string());
+    }
+
+    let forecast_flags = ["--forecast-label", "--forecast-sprint", "--forecast-agents"];
+    if cli.robot_forecast.is_none()
+        && forecast_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: forecast modifiers require --robot-forecast <id|all>".to_string());
+    }
+
+    let capacity_flags = ["--agents", "--capacity-label"];
+    if !cli.robot_capacity
+        && capacity_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: capacity modifiers require --robot-capacity".to_string());
+    }
+
     None
 }
 

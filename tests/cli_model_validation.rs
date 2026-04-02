@@ -980,6 +980,66 @@ fn suggest_filter_without_robot_suggest_exits_with_error() {
 }
 
 #[test]
+fn relation_modifier_without_file_relations_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--relations-threshold", "0.7", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "relation modifiers require --robot-file-relations <path>",
+        ));
+}
+
+#[test]
+fn related_modifier_without_robot_related_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--related-max-results", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "related-work modifiers require --robot-related <id>",
+        ));
+}
+
+#[test]
+fn network_depth_without_impact_network_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--network-depth", "3", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--network-depth requires --robot-impact-network <id>",
+        ));
+}
+
+#[test]
+fn forecast_modifier_without_robot_forecast_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--forecast-label", "backend", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "forecast modifiers require --robot-forecast <id|all>",
+        ));
+}
+
+#[test]
 fn robot_schema_command_accepts_bare_command_name() {
     let output = run_bvr_json(
         &["--robot-schema", "--schema-command", "search"],

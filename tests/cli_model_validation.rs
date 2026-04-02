@@ -875,6 +875,21 @@ fn robot_search_with_whitespace_only_query_exits_with_error() {
 }
 
 #[test]
+fn robot_full_stats_without_insights_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--robot-full-stats", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--robot-full-stats requires --robot-insights",
+        ));
+}
+
+#[test]
 fn robot_schema_command_accepts_bare_command_name() {
     let output = run_bvr_json(
         &["--robot-schema", "--schema-command", "search"],

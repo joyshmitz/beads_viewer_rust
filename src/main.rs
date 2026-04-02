@@ -206,6 +206,11 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
+    if cli.robot_full_stats && !cli.robot_insights {
+        eprintln!("error: --robot-full-stats requires --robot-insights");
+        return ExitCode::from(2);
+    }
+
     // --robot-schema and --robot-docs don't need issues loaded
     if cli.robot_schema {
         let schemas = generate_robot_schemas();

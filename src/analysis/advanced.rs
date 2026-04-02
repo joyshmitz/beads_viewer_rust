@@ -113,13 +113,13 @@ fn compute_top_k_set(graph: &IssueGraph, _metrics: &GraphMetrics, k: usize) -> T
             break;
         }
 
-        // Add downstream of this issue to already_unlocked.
+        // Add newly unlocked downstream issues, but do not count the selected
+        // issue itself as an "unlocked" downstream item.
         if let Some(ds) = downstream_map.get(&best_id) {
             for d in ds {
                 already_unlocked.insert(d.clone());
             }
         }
-        already_unlocked.insert(best_id.clone());
         remaining.remove(&best_id);
 
         selected.push(TopKItem {
@@ -1117,6 +1117,8 @@ mod tests {
         let result = compute_top_k_set(&graph, &metrics, 10);
         // First pick has marginal=0 but is selected; second marginal=0 should stop
         assert_eq!(result.items.len(), 1);
+        assert_eq!(result.total_unlocked, 0);
+        assert_eq!(result.items[0].cumulative_unlocks, 0);
     }
 
     // -- CoverageSet edge cases --

@@ -388,6 +388,41 @@ mod tests {
     }
 
     #[test]
+    fn priority_brief_handles_empty_recommendations() {
+        let mut triage = make_triage_result();
+        triage.recommendations.clear();
+        triage.quick_ref.top_picks.clear();
+        triage.blockers_to_clear.clear();
+        let brief = generate_priority_brief(&[], &triage, "h", "now");
+        assert!(brief.contains("_No recommendations available._"));
+        assert!(brief.contains("_No quick wins identified._"));
+        assert!(brief.contains("_No blockers identified._"));
+    }
+
+    #[test]
+    fn priority_brief_issue_counts_reflect_input() {
+        let triage = make_triage_result();
+        let issues = vec![
+            Issue { id: "X".into(), status: "open".into(), ..Issue::default() },
+            Issue { id: "Y".into(), status: "closed".into(), ..Issue::default() },
+        ];
+        let brief = generate_priority_brief(&issues, &triage, "h", "now");
+        assert!(brief.contains("Issues: 2 total, 1 open, 1 closed"));
+    }
+
+    #[test]
+    fn escape_md_table_handles_multiple_pipes() {
+        assert_eq!(escape_md_table("a|b|c"), "a\\|b\\|c");
+        assert_eq!(escape_md_table("no pipes"), "no pipes");
+    }
+
+    #[test]
+    fn truncate_str_exact_boundary() {
+        assert_eq!(truncate_str("12345", 5), "12345");
+        assert_eq!(truncate_str("123456", 5), "12...");
+    }
+
+    #[test]
     fn pipe_in_title_is_escaped_in_table() {
         let mut triage = make_triage_result();
         triage.recommendations[0].title = "Fix auth | login flow".to_string();

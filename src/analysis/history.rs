@@ -201,4 +201,67 @@ mod tests {
         assert_eq!(events[1].kind, "updated");
         assert_eq!(events[2].kind, "dependency");
     }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        let histories = build_histories(&[], None, 10);
+        assert!(histories.is_empty());
+    }
+
+    #[test]
+    fn limit_zero_returns_all() {
+        let issues = vec![
+            Issue { id: "A".into(), title: "A".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+            Issue { id: "B".into(), title: "B".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+        ];
+        let histories = build_histories(&issues, None, 0);
+        assert_eq!(histories.len(), 2);
+    }
+
+    #[test]
+    fn limit_one_truncates() {
+        let issues = vec![
+            Issue { id: "A".into(), title: "A".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+            Issue { id: "B".into(), title: "B".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+        ];
+        let histories = build_histories(&issues, None, 1);
+        assert_eq!(histories.len(), 1);
+    }
+
+    #[test]
+    fn nonexistent_filter_id_returns_empty() {
+        let issues = vec![Issue {
+            id: "A".into(), title: "A".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default()
+        }];
+        let histories = build_histories(&issues, Some("Z"), 10);
+        assert!(histories.is_empty());
+    }
+
+    #[test]
+    fn closed_like_issue_without_closed_at_uses_updated_at() {
+        let issues = vec![Issue {
+            id: "C".into(),
+            title: "Closed".into(),
+            status: "closed".into(),
+            issue_type: "task".into(),
+            closed_at: None,
+            updated_at: ts("2026-03-01T00:00:00Z"),
+            ..Issue::default()
+        }];
+        let histories = build_histories(&issues, None, 10);
+        let closed_event = histories[0].events.iter().find(|e| e.kind == "closed").unwrap();
+        assert_eq!(closed_event.timestamp, ts("2026-03-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn results_sorted_by_id() {
+        let issues = vec![
+            Issue { id: "C".into(), title: "C".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+            Issue { id: "A".into(), title: "A".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+            Issue { id: "B".into(), title: "B".into(), status: "open".into(), issue_type: "task".into(), ..Issue::default() },
+        ];
+        let histories = build_histories(&issues, None, 0);
+        let ids: Vec<&str> = histories.iter().map(|h| h.id.as_str()).collect();
+        assert_eq!(ids, vec!["A", "B", "C"]);
+    }
 }

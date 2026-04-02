@@ -3,6 +3,7 @@
 #![allow(clippy::too_many_lines)]
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs;
 use std::io::IsTerminal;
@@ -68,6 +69,67 @@ fn resolve_schema_command_key(schemas: &bvr::robot::RobotSchemas, raw: &str) -> 
     candidates
         .into_iter()
         .find(|candidate| schemas.commands.contains_key(candidate))
+}
+
+fn arg_flag_was_explicit_in_args<I, S>(args: I, flag: &str) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    args.into_iter().any(|arg| {
+        let text = arg.as_ref().to_string_lossy();
+        text == flag || text.starts_with(&format!("{flag}="))
+    })
+}
+
+fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
+    let raw_args: Vec<_> = std::env::args_os().skip(1).collect();
+
+    let insights_flags = ["--robot-full-stats", "--insight-limit"];
+    if !cli.robot_insights
+        && insights_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some(
+            "error: --robot-full-stats and --insight-limit require --robot-insights".to_string(),
+        );
+    }
+
+    let graph_flags = [
+        "--graph-format",
+        "--graph-root",
+        "--graph-depth",
+        "--graph-preset",
+        "--graph-style",
+        "--graph-title",
+    ];
+    if !cli.robot_graph
+        && cli.export_graph.is_none()
+        && graph_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some(
+            "error: graph modifiers require --robot-graph or --export-graph <path>".to_string(),
+        );
+    }
+
+    let search_flags = [
+        "--search-limit",
+        "--search-mode",
+        "--search-preset",
+        "--search-weights",
+    ];
+    if !cli.robot_search
+        && search_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: search modifiers require --robot-search".to_string());
+    }
+
+    None
 }
 
 fn feedback_project_dir(cli: &Cli) -> PathBuf {
@@ -206,8 +268,8 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    if cli.robot_full_stats && !cli.robot_insights {
-        eprintln!("error: --robot-full-stats requires --robot-insights");
+    if let Some(error) = validate_orphaned_modifier_flags(&cli) {
+        eprintln!("{error}");
         return ExitCode::from(2);
     }
 

@@ -1,6 +1,5 @@
 ---
 source: src/tui.rs
-assertion_line: 22606
 expression: text
 ---
 bvr 1 Main b Board i Insights | mode=Board | focus=detail | issues=3/3 | filter=all |
@@ -12,7 +11,7 @@ bvr 1 Main b Board i Insights | mode=Board | focus=detail | issues=3/3 | filter=
 │                                        ││ ├────────────────────────────────────────┤             │
 │ ▸ ┌─ open [2] ██  clear                ││ │ Lane: open                             │             │
 │   │ oT P0 A Root↓1 @alice              ││ │ Assignee:                              │             │
-│   ▶ oT P0 B Dependent⊘1                ││ │ Age: 88d | Updated: 87d ago            │             │
+│   ▶ oT P0 B Dependent⊘1                ││ │ Age: 89d | Updated: 88d ago            │             │
 │   └────────────                        ││ │ PR:0.260 Depth:1                       │             │
 │                                        ││ ├────────────────────────────────────────┤             │
 │   ┌─ in_progress [0]   empty           ││ │ Depends on A and should report block…  │             │

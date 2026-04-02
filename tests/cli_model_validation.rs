@@ -885,7 +885,52 @@ fn robot_full_stats_without_insights_exits_with_error() {
         .assert()
         .code(2)
         .stderr(predicates::str::contains(
-            "--robot-full-stats requires --robot-insights",
+            "--robot-full-stats and --insight-limit require --robot-insights",
+        ));
+}
+
+#[test]
+fn insight_limit_without_robot_insights_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--insight-limit", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--robot-full-stats and --insight-limit require --robot-insights",
+        ));
+}
+
+#[test]
+fn graph_modifier_without_graph_command_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--graph-root", "A", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "graph modifiers require --robot-graph or --export-graph <path>",
+        ));
+}
+
+#[test]
+fn search_modifier_without_robot_search_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--search-limit", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "search modifiers require --robot-search",
         ));
 }
 

@@ -691,8 +691,8 @@ mod tests {
 
     use super::{
         SummaryInputs, average_map_value, calculate_summary, compare_cycles, compare_snapshots,
-        detect_changes, format_string_set, into_option, non_empty, normalize_cycle, option_len,
-        snapshot_counts,
+        delta, detect_changes, format_string_set, into_option, non_empty, normalize_cycle,
+        option_len, saturating_i64, snapshot_counts,
     };
 
     #[test]
@@ -1612,5 +1612,30 @@ mod tests {
         assert_eq!(diff.reopened_issues.as_ref().map_or(0, Vec::len), 1);
         let mods = diff.modified_issues.as_ref().unwrap();
         assert!(!mods[0].changes.iter().any(|c| c.field == "status"));
+    }
+
+    #[test]
+    fn saturating_i64_normal_values() {
+        assert_eq!(saturating_i64(0), 0);
+        assert_eq!(saturating_i64(42), 42);
+        assert_eq!(saturating_i64(1_000_000), 1_000_000);
+    }
+
+    #[test]
+    fn delta_basic_subtraction() {
+        assert_eq!(delta(10, 5), 5);
+        assert_eq!(delta(5, 10), -5);
+        assert_eq!(delta(0, 0), 0);
+        assert_eq!(delta(7, 7), 0);
+    }
+
+    #[test]
+    fn delta_uses_saturating_sub_not_wrapping() {
+        // Both values at i64::MAX would yield 0 with plain subtraction,
+        // but saturating_sub also yields 0 — the key difference is when
+        // only one overflows: the delta should saturate rather than wrap.
+        let big: usize = i64::MAX as usize;
+        assert_eq!(delta(big, 0), i64::MAX);
+        assert_eq!(delta(0, big), -i64::MAX);
     }
 }

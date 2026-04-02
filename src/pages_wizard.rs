@@ -916,7 +916,12 @@ where
                 )
                 .ok();
 
-                let do_export = export_fn.take().expect("export called only once");
+                let Some(do_export) = export_fn.take() else {
+                    writeln!(writer, "  ✗ Export already executed").ok();
+                    wizard.transcript.record(wizard.step, "export skipped: already executed");
+                    wizard.advance();
+                    continue;
+                };
                 match do_export(&wizard.config) {
                     Ok(()) => {
                         writeln!(

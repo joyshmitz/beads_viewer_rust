@@ -550,25 +550,26 @@ struct MetricDeltaInputs<'a> {
     to_component_count: usize,
 }
 
+fn saturating_i64(v: usize) -> i64 {
+    i64::try_from(v).unwrap_or(i64::MAX)
+}
+
+fn delta(after: usize, before: usize) -> i64 {
+    saturating_i64(after).saturating_sub(saturating_i64(before))
+}
+
 fn calculate_metric_deltas(inputs: MetricDeltaInputs<'_>) -> MetricDeltas {
     let before_counts = snapshot_counts(inputs.before);
     let after_counts = snapshot_counts(inputs.after);
 
     MetricDeltas {
-        total_issues: i64::try_from(after_counts.total).unwrap_or(i64::MAX)
-            - i64::try_from(before_counts.total).unwrap_or(i64::MAX),
-        open_issues: i64::try_from(after_counts.open).unwrap_or(i64::MAX)
-            - i64::try_from(before_counts.open).unwrap_or(i64::MAX),
-        closed_issues: i64::try_from(after_counts.terminal()).unwrap_or(i64::MAX)
-            - i64::try_from(before_counts.terminal()).unwrap_or(i64::MAX),
-        blocked_issues: i64::try_from(after_counts.blocked).unwrap_or(i64::MAX)
-            - i64::try_from(before_counts.blocked).unwrap_or(i64::MAX),
-        total_edges: i64::try_from(inputs.to_edge_count).unwrap_or(i64::MAX)
-            - i64::try_from(inputs.from_edge_count).unwrap_or(i64::MAX),
-        cycle_count: i64::try_from(inputs.new_cycles_count).unwrap_or(i64::MAX)
-            - i64::try_from(inputs.resolved_cycles_count).unwrap_or(i64::MAX),
-        component_count: i64::try_from(inputs.to_component_count).unwrap_or(i64::MAX)
-            - i64::try_from(inputs.from_component_count).unwrap_or(i64::MAX),
+        total_issues: delta(after_counts.total, before_counts.total),
+        open_issues: delta(after_counts.open, before_counts.open),
+        closed_issues: delta(after_counts.terminal(), before_counts.terminal()),
+        blocked_issues: delta(after_counts.blocked, before_counts.blocked),
+        total_edges: delta(inputs.to_edge_count, inputs.from_edge_count),
+        cycle_count: delta(inputs.new_cycles_count, inputs.resolved_cycles_count),
+        component_count: delta(inputs.to_component_count, inputs.from_component_count),
         avg_pagerank: average_map_value(inputs.to_pagerank)
             - average_map_value(inputs.from_pagerank),
         avg_betweenness: average_map_value(inputs.to_betweenness)

@@ -1040,6 +1040,201 @@ fn forecast_modifier_without_robot_forecast_exits_with_error() {
 }
 
 #[test]
+fn capacity_modifier_without_robot_capacity_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--capacity-label", "backend", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "capacity modifiers require --robot-capacity",
+        ));
+}
+
+#[test]
+fn attention_limit_without_robot_label_attention_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--attention-limit", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--attention-limit requires --robot-label-attention",
+        ));
+}
+
+#[test]
+fn orphans_modifier_without_robot_orphans_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--orphans-min-score", "0", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--orphans-min-score requires --robot-orphans",
+        ));
+}
+
+#[test]
+fn file_beads_limit_without_robot_file_beads_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--file-beads-limit", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--file-beads-limit requires --robot-file-beads <path>",
+        ));
+}
+
+#[test]
+fn hotspots_limit_without_robot_file_hotspots_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--hotspots-limit", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--hotspots-limit requires --robot-file-hotspots",
+        ));
+}
+
+#[test]
+fn search_query_without_robot_search_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--search", "alpha", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--search <query> requires --robot-search",
+        ));
+}
+
+#[test]
+fn related_include_closed_without_robot_related_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--related-include-closed", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--related-include-closed requires --robot-related <id>",
+        ));
+}
+
+#[test]
+fn correlation_by_without_correlation_action_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--correlation-by", "cli", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "correlation action modifiers require --robot-confirm-correlation or --robot-reject-correlation",
+        ));
+}
+
+#[test]
+fn recipe_without_emit_script_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--recipe", "actionable", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "script modifiers require --emit-script",
+        ));
+}
+
+#[test]
+fn profile_json_without_profile_startup_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--profile-json", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--profile-json requires --profile-startup",
+        ));
+}
+
+#[test]
+fn debug_width_without_debug_render_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--debug-width", "120", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "debug render dimensions require --debug-render <view>",
+        ));
+}
+
+#[test]
+fn pages_title_without_export_pages_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--pages-title", "Dashboard", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "pages export modifiers require --export-pages <dir>",
+        ));
+}
+
+#[test]
+fn no_live_reload_without_preview_or_pages_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--no-live-reload", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--no-live-reload requires --preview-pages <dir> or --pages",
+        ));
+}
+
+#[test]
 fn robot_schema_command_accepts_bare_command_name() {
     let output = run_bvr_json(
         &["--robot-schema", "--schema-command", "search"],

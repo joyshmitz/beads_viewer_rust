@@ -129,6 +129,10 @@ fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
         return Some("error: search modifiers require --robot-search".to_string());
     }
 
+    if !cli.robot_search && arg_flag_was_explicit_in_args(&raw_args, "--search") {
+        return Some("error: --search <query> requires --robot-search".to_string());
+    }
+
     let history_flags = ["--history-limit", "--history-since", "--min-confidence"];
     if !cli.robot_history
         && cli.bead_history.is_none()
@@ -191,6 +195,12 @@ fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
         return Some("error: related-work modifiers require --robot-related <id>".to_string());
     }
 
+    if cli.robot_related.is_none()
+        && arg_flag_was_explicit_in_args(&raw_args, "--related-include-closed")
+    {
+        return Some("error: --related-include-closed requires --robot-related <id>".to_string());
+    }
+
     if cli.robot_impact_network.is_none()
         && arg_flag_was_explicit_in_args(&raw_args, "--network-depth")
     {
@@ -213,6 +223,68 @@ fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
             .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
     {
         return Some("error: capacity modifiers require --robot-capacity".to_string());
+    }
+
+    if !cli.robot_label_attention && arg_flag_was_explicit_in_args(&raw_args, "--attention-limit") {
+        return Some("error: --attention-limit requires --robot-label-attention".to_string());
+    }
+
+    let correlation_action_flags = ["--correlation-by", "--correlation-reason"];
+    if cli.robot_confirm_correlation.is_none()
+        && cli.robot_reject_correlation.is_none()
+        && correlation_action_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some(
+            "error: correlation action modifiers require --robot-confirm-correlation or --robot-reject-correlation"
+                .to_string(),
+        );
+    }
+
+    let emit_script_flags = ["--recipe", "--script-limit", "--script-format"];
+    if !cli.emit_script
+        && emit_script_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: script modifiers require --emit-script".to_string());
+    }
+
+    if !cli.profile_startup && arg_flag_was_explicit_in_args(&raw_args, "--profile-json") {
+        return Some("error: --profile-json requires --profile-startup".to_string());
+    }
+
+    let debug_render_flags = ["--debug-width", "--debug-height"];
+    if cli.debug_render.is_none()
+        && debug_render_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: debug render dimensions require --debug-render <view>".to_string());
+    }
+
+    let export_pages_flags = [
+        "--pages-include-closed",
+        "--pages-include-history",
+        "--pages-title",
+        "--pages-subtitle",
+    ];
+    if cli.export_pages.is_none()
+        && export_pages_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: pages export modifiers require --export-pages <dir>".to_string());
+    }
+
+    if !cli.pages
+        && cli.preview_pages.is_none()
+        && arg_flag_was_explicit_in_args(&raw_args, "--no-live-reload")
+    {
+        return Some(
+            "error: --no-live-reload requires --preview-pages <dir> or --pages".to_string(),
+        );
     }
 
     None

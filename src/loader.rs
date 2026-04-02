@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -854,6 +854,28 @@ pub fn load_workspace_issues_with_summary(
     Ok((issues, summary))
 }
 
+/// Deduplicate issues by ID, keeping the last occurrence (JSONL files
+/// append updates, so later lines take precedence). Warns on duplicates.
+fn deduplicate_issues(issues: Vec<Issue>) -> Vec<Issue> {
+    let mut seen: HashMap<String, usize> = HashMap::with_capacity(issues.len());
+    let mut result = Vec::with_capacity(issues.len());
+    for issue in issues {
+        if let Some(&prev_idx) = seen.get(&issue.id) {
+            warn(format!(
+                "duplicate issue ID '{}': keeping later occurrence",
+                issue.id
+            ));
+            let id = issue.id.clone();
+            result[prev_idx] = issue;
+            seen.insert(id, prev_idx);
+        } else {
+            seen.insert(issue.id.clone(), result.len());
+            result.push(issue);
+        }
+    }
+    result
+}
+
 pub fn load_issues_from_file(path: &Path) -> Result<Vec<Issue>> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
@@ -909,7 +931,7 @@ pub fn load_issues_from_file(path: &Path) -> Result<Vec<Issue>> {
         }
     }
 
-    Ok(issues)
+    Ok(deduplicate_issues(issues))
 }
 
 /// Parse issues from JSONL text (e.g., from `git show` output).
@@ -944,7 +966,7 @@ pub fn parse_issues_from_text(text: &str) -> Result<Vec<Issue>> {
             }
         }
     }
-    Ok(issues)
+    Ok(deduplicate_issues(issues))
 }
 
 pub fn load_sprints(repo_path: Option<&Path>) -> Result<Vec<Sprint>> {
@@ -2119,5 +2141,95 @@ mod tests {
                 .any(|repo| repo.is_enabled() && repo.path == "services/api"),
             "discovery should still include the real repo path"
         );
+    }
+
+    #[test]
+    fn deduplicate_issues_keeps_last_occurrence() {
+        let issues = vec![
+            Issue {
+                id: "A".into(),
+                title: "first".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".into(),
+                title: "B".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".into(),
+                title: "updated".into(),
+                status: "closed".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+        ];
+        let deduped = super::deduplicate_issues(issues);
+        assert_eq!(deduped.len(), 2);
+        let a = deduped.iter().find(|i| i.id == "A").unwrap();
+        assert_eq!(a.title, "updated");
+        assert_eq!(a.status, "closed");
+    }
+
+    #[test]
+    fn deduplicate_issues_no_duplicates_is_noop() {
+        let issues = vec![
+            Issue {
+                id: "A".into(),
+                title: "A".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".into(),
+                title: "B".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+        ];
+        let deduped = super::deduplicate_issues(issues);
+        assert_eq!(deduped.len(), 2);
+    }
+
+    #[test]
+    fn deduplicate_issues_empty_input() {
+        let deduped = super::deduplicate_issues(vec![]);
+        assert!(deduped.is_empty());
+    }
+
+    #[test]
+    fn deduplicate_issues_preserves_order() {
+        let issues = vec![
+            Issue {
+                id: "C".into(),
+                title: "C".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "A".into(),
+                title: "A".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+            Issue {
+                id: "B".into(),
+                title: "B".into(),
+                status: "open".into(),
+                issue_type: "task".into(),
+                ..Issue::default()
+            },
+        ];
+        let deduped = super::deduplicate_issues(issues);
+        let ids: Vec<&str> = deduped.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["C", "A", "B"]);
     }
 }

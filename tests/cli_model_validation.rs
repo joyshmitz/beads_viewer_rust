@@ -935,6 +935,51 @@ fn search_modifier_without_robot_search_exits_with_error() {
 }
 
 #[test]
+fn history_modifier_without_history_command_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--history-limit", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "history modifiers require --robot-history or --bead-history <id>",
+        ));
+}
+
+#[test]
+fn alert_filter_without_robot_alerts_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--severity", "high", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "alert filters require --robot-alerts",
+        ));
+}
+
+#[test]
+fn suggest_filter_without_robot_suggest_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--suggest-type", "duplicates", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "suggest filters require --robot-suggest",
+        ));
+}
+
+#[test]
 fn robot_schema_command_accepts_bare_command_name() {
     let output = run_bvr_json(
         &["--robot-schema", "--schema-command", "search"],

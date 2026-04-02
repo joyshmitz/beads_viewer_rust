@@ -129,6 +129,36 @@ fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
         return Some("error: search modifiers require --robot-search".to_string());
     }
 
+    let history_flags = ["--history-limit", "--history-since", "--min-confidence"];
+    if !cli.robot_history
+        && cli.bead_history.is_none()
+        && history_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some(
+            "error: history modifiers require --robot-history or --bead-history <id>".to_string(),
+        );
+    }
+
+    let alert_flags = ["--severity", "--alert-type", "--alert-label"];
+    if !cli.robot_alerts
+        && alert_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: alert filters require --robot-alerts".to_string());
+    }
+
+    let suggest_flags = ["--suggest-type", "--suggest-confidence", "--suggest-bead"];
+    if !cli.robot_suggest
+        && suggest_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: suggest filters require --robot-suggest".to_string());
+    }
+
     None
 }
 

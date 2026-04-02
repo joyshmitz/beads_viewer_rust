@@ -698,10 +698,11 @@ fn simulate_edge_removal(
             if new_depth > *entry {
                 *entry = new_depth;
             }
-            let deg = in_degree.get_mut(neighbor).unwrap();
-            *deg -= 1;
-            if *deg == 0 {
-                queue.push_back(neighbor.clone());
+            if let Some(deg) = in_degree.get_mut(neighbor) {
+                *deg -= 1;
+                if *deg == 0 {
+                    queue.push_back(neighbor.clone());
+                }
             }
         }
     }

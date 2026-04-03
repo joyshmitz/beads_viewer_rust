@@ -2244,8 +2244,11 @@ enum ModalOverlay {
     #[allow(dead_code)]
     Tutorial,
     /// Reusable Y/N confirmation dialog.
-    #[allow(dead_code)]
-    Confirm { title: String, message: String },
+    Confirm {
+        title: String,
+        message: String,
+        resume_overlay: Option<Box<ModalOverlay>>,
+    },
     /// Interactive pages export wizard.
     PagesWizard(PagesWizardState),
     /// Recipe picker: shows available triage recipes.
@@ -2278,7 +2281,6 @@ struct PagesWizardState {
 }
 
 impl PagesWizardState {
-    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             step: 0,
@@ -2606,7 +2608,7 @@ impl Model for BvrApp {
                         .render(rows[2], frame);
                     return;
                 }
-                ModalOverlay::Confirm { title, message } => {
+                ModalOverlay::Confirm { title, message, .. } => {
                     let text = format!("{message}\n\nPress Y to confirm, N or Esc to cancel.");
                     Paragraph::new(text)
                         .block(semantic_panel_block(
@@ -4223,7 +4225,7 @@ impl BvrApp {
                     self.modal_overlay = None;
                     return Cmd::None;
                 }
-                ModalOverlay::Confirm { .. } => {
+                ModalOverlay::Confirm { resume_overlay, .. } => {
                     match code {
                         KeyCode::Char('y' | 'Y') => {
                             self.modal_confirm_result = Some(true);
@@ -4231,7 +4233,7 @@ impl BvrApp {
                         }
                         KeyCode::Char('n' | 'N') | KeyCode::Escape => {
                             self.modal_confirm_result = Some(false);
-                            self.modal_overlay = None;
+                            self.modal_overlay = resume_overlay.clone().map(|overlay| *overlay);
                         }
                         _ => {}
                     }
@@ -5372,6 +5374,9 @@ impl BvrApp {
                 self.toggle_tree_mode();
                 self.focus = FocusPane::List;
             }
+            KeyCode::Char('t') if modifiers.contains(Modifiers::CTRL) => {
+                self.open_tutorial();
+            }
             KeyCode::Char('t') => {
                 self.toggle_time_travel_mode();
             }
@@ -5389,6 +5394,9 @@ impl BvrApp {
             }
             KeyCode::Char('\'') => {
                 self.open_recipe_picker();
+            }
+            KeyCode::Char('P') => {
+                self.open_pages_wizard();
             }
             KeyCode::Char('L') => {
                 self.open_label_picker();
@@ -5543,21 +5551,24 @@ impl BvrApp {
         self.history_bead_commit_cursor = 0;
     }
 
-    #[allow(dead_code)]
     fn open_tutorial(&mut self) {
         self.modal_overlay = Some(ModalOverlay::Tutorial);
     }
 
-    #[allow(dead_code)]
-    fn open_confirm(&mut self, title: impl Into<String>, message: impl Into<String>) {
+    fn open_confirm_with_resume(
+        &mut self,
+        title: impl Into<String>,
+        message: impl Into<String>,
+        resume_overlay: Option<ModalOverlay>,
+    ) {
         self.modal_confirm_result = None;
         self.modal_overlay = Some(ModalOverlay::Confirm {
             title: title.into(),
             message: message.into(),
+            resume_overlay: resume_overlay.map(Box::new),
         });
     }
 
-    #[allow(dead_code)]
     fn open_pages_wizard(&mut self) {
         self.modal_overlay = Some(ModalOverlay::PagesWizard(PagesWizardState::new()));
     }
@@ -7805,9 +7816,11 @@ impl BvrApp {
             }
             KeyCode::Enter => {
                 if wiz.step >= PagesWizardState::step_count() - 1 {
-                    // Final step - dismiss and store result
-                    self.modal_overlay = None;
-                    self.modal_confirm_result = Some(true);
+                    self.open_confirm_with_resume(
+                        "Export Pages?",
+                        "Finalize the current pages export settings?\n\nThis uses the reusable confirmation modal without changing the quit flow.",
+                        Some(ModalOverlay::PagesWizard(wiz)),
+                    );
                     return Cmd::None;
                 }
                 wiz.step += 1;
@@ -7932,6 +7945,7 @@ impl BvrApp {
                 title: "Actions",
                 bindings: vec![
                     ("p", "Toggle priority hints"),
+                    ("P", "Pages export wizard"),
                     ("C", "Copy issue ID"),
                     ("x", "Export issue markdown"),
                     ("O", "Open in editor"),
@@ -7971,6 +7985,7 @@ impl BvrApp {
                     ("?/F1", "Toggle this help"),
                     ("Esc", "Back / clear / quit"),
                     ("q", "Quit / back to main"),
+                    ("Ctrl+T", "Tutorial"),
                     ("Ctrl+C", "Quit immediately"),
                 ],
             },
@@ -21799,9 +21814,20 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_t_opens_and_dismisses_tutorial_modal() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key_ctrl(KeyCode::Char('t')));
+        assert!(matches!(app.modal_overlay, Some(ModalOverlay::Tutorial)));
+
+        app.update(key(KeyCode::Char('x')));
+        assert!(app.modal_overlay.is_none());
+    }
+
+    #[test]
     fn modal_confirm_accepts_on_y_rejects_on_n() {
         let mut app = new_app(ViewMode::Main, 0);
-        app.open_confirm("Test", "Do you confirm?");
+        app.open_confirm_with_resume("Test", "Do you confirm?", None);
         assert!(app.modal_overlay.is_some());
         assert!(app.modal_confirm_result.is_none());
 
@@ -21809,12 +21835,12 @@ mod tests {
         assert!(app.modal_overlay.is_none());
         assert_eq!(app.modal_confirm_result, Some(true));
 
-        app.open_confirm("Test", "Another question?");
+        app.open_confirm_with_resume("Test", "Another question?", None);
         app.update(key(KeyCode::Char('n')));
         assert!(app.modal_overlay.is_none());
         assert_eq!(app.modal_confirm_result, Some(false));
 
-        app.open_confirm("Test", "Third question?");
+        app.open_confirm_with_resume("Test", "Third question?", None);
         app.update(key(KeyCode::Escape));
         assert!(app.modal_overlay.is_none());
         assert_eq!(app.modal_confirm_result, Some(false));
@@ -21823,7 +21849,7 @@ mod tests {
     #[test]
     fn modal_confirm_ignores_unrelated_keys() {
         let mut app = new_app(ViewMode::Main, 0);
-        app.open_confirm("Test", "Do you confirm?");
+        app.open_confirm_with_resume("Test", "Do you confirm?", None);
 
         app.update(key(KeyCode::Char('x')));
         assert!(app.modal_overlay.is_some());
@@ -21898,8 +21924,27 @@ mod tests {
         }
 
         app.update(key(KeyCode::Enter));
+        assert!(matches!(
+            app.modal_overlay,
+            Some(ModalOverlay::Confirm { .. })
+        ));
+        assert!(app.modal_confirm_result.is_none());
+
+        app.update(key(KeyCode::Char('y')));
         assert!(app.modal_overlay.is_none());
         assert_eq!(app.modal_confirm_result, Some(true));
+    }
+
+    #[test]
+    fn uppercase_p_opens_pages_wizard_modal() {
+        let mut app = new_app(ViewMode::Main, 0);
+
+        app.update(key(KeyCode::Char('P')));
+
+        assert!(matches!(
+            app.modal_overlay,
+            Some(ModalOverlay::PagesWizard(_))
+        ));
     }
 
     #[test]
@@ -21909,6 +21954,32 @@ mod tests {
         app.update(key(KeyCode::Enter));
         app.update(key(KeyCode::Escape));
         assert!(app.modal_overlay.is_none());
+    }
+
+    #[test]
+    fn modal_pages_wizard_confirm_cancel_restores_wizard() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.open_pages_wizard();
+
+        app.update(key(KeyCode::Enter));
+        app.update(key(KeyCode::Enter));
+        app.update(key(KeyCode::Enter));
+        app.update(key(KeyCode::Enter));
+
+        assert!(matches!(
+            app.modal_overlay,
+            Some(ModalOverlay::Confirm { .. })
+        ));
+
+        app.update(key(KeyCode::Escape));
+        match &app.modal_overlay {
+            Some(ModalOverlay::PagesWizard(wiz)) => {
+                assert_eq!(wiz.step, 3);
+                assert_eq!(wiz.export_dir, "./bv-pages");
+            }
+            other => panic!("expected PagesWizard to resume after cancel, got {other:?}"),
+        }
+        assert_eq!(app.modal_confirm_result, Some(false));
     }
 
     #[test]
@@ -21958,7 +22029,7 @@ mod tests {
         let mut app = new_app(ViewMode::Main, 0);
         let initial_mode = app.mode;
 
-        app.open_confirm("Test", "Question");
+        app.open_confirm_with_resume("Test", "Question", None);
         app.update(key(KeyCode::Char('b')));
         assert_eq!(app.mode, initial_mode);
         assert!(app.modal_overlay.is_some());
@@ -22533,7 +22604,7 @@ mod tests {
         assert!(app.modal_overlay.is_none());
 
         // Open confirm
-        app.open_confirm("Delete?", "Are you sure?");
+        app.open_confirm_with_resume("Delete?", "Are you sure?", None);
         assert!(matches!(
             app.modal_overlay,
             Some(ModalOverlay::Confirm { .. })
@@ -22608,6 +22679,11 @@ mod tests {
         // Forward again and finish
         app.update(key(KeyCode::Enter));
         app.update(key(KeyCode::Enter));
+        assert!(matches!(
+            app.modal_overlay,
+            Some(ModalOverlay::Confirm { .. })
+        ));
+        app.update(key(KeyCode::Char('y')));
         assert!(app.modal_overlay.is_none());
     }
 
@@ -22736,6 +22812,19 @@ mod tests {
         let mut frame = ftui::render::frame::Frame::new(100, 30, &mut pool);
         app.view(&mut frame);
         let text = super::buffer_to_text(&frame.buffer, &pool);
+        insta::assert_snapshot!(text);
+    }
+
+    #[test]
+    fn snap_confirm_modal() {
+        let mut app = new_app(ViewMode::Main, 0);
+        app.open_confirm_with_resume(
+            "Export Pages?",
+            "Finalize the current pages export settings?",
+            None,
+        );
+
+        let text = render_app(&app, 100, 30);
         insta::assert_snapshot!(text);
     }
 

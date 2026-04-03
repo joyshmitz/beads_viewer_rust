@@ -1235,6 +1235,81 @@ fn no_live_reload_without_preview_or_pages_exits_with_error() {
 }
 
 #[test]
+fn robot_min_confidence_without_robot_priority_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--robot-min-confidence", "0.7", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "priority filters require --robot-priority",
+        ));
+}
+
+#[test]
+fn robot_by_label_without_robot_priority_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--robot-by-label", "backend", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "priority filters require --robot-priority",
+        ));
+}
+
+#[test]
+fn robot_by_assignee_without_robot_priority_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--robot-by-assignee", "alice", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "priority filters require --robot-priority",
+        ));
+}
+
+#[test]
+fn robot_max_results_without_recommendation_command_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--robot-max-results", "5", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--robot-max-results requires a recommendation command",
+        ));
+}
+
+#[test]
+fn weight_preset_without_recommendation_scoring_command_exits_with_error() {
+    let root = repo_root();
+    let beads_path = root.join("tests/testdata/minimal.jsonl");
+
+    bvr()
+        .args(["--weight-preset", "graph-heavy", "--beads-file"])
+        .arg(&beads_path)
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "--weight-preset requires a recommendation-scoring command",
+        ));
+}
+
+#[test]
 fn robot_schema_command_accepts_bare_command_name() {
     let output = run_bvr_json(
         &["--robot-schema", "--schema-command", "search"],

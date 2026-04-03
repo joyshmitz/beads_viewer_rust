@@ -92,7 +92,6 @@ strip = true        # Remove debug symbols
 ```toml
 [features]
 default = []
-asupersync-runtime = ["dep:asupersync"]  # Optional async orchestration (post-parity)
 ```
 
 ---

@@ -2,6 +2,7 @@
 #![allow(clippy::option_if_let_else)]
 #![allow(clippy::too_many_lines)]
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ffi::OsStr;
 use std::fmt::Write;
@@ -227,6 +228,50 @@ fn validate_orphaned_modifier_flags(cli: &Cli) -> Option<String> {
 
     if !cli.robot_label_attention && arg_flag_was_explicit_in_args(&raw_args, "--attention-limit") {
         return Some("error: --attention-limit requires --robot-label-attention".to_string());
+    }
+
+    let priority_flags = [
+        "--robot-min-confidence",
+        "--robot-by-label",
+        "--robot-by-assignee",
+    ];
+    if !cli.robot_priority
+        && priority_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some("error: priority filters require --robot-priority".to_string());
+    }
+
+    let recommendation_result_flags = ["--robot-max-results"];
+    let supports_result_limit = cli.robot_next
+        || cli.robot_triage
+        || cli.robot_triage_by_track
+        || cli.robot_triage_by_label
+        || cli.robot_priority
+        || cli.robot_suggest;
+    if !supports_result_limit
+        && recommendation_result_flags
+            .iter()
+            .any(|flag| arg_flag_was_explicit_in_args(&raw_args, flag))
+    {
+        return Some(
+            "error: --robot-max-results requires a recommendation command (--robot-next, --robot-triage, --robot-triage-by-track, --robot-triage-by-label, --robot-priority, or --robot-suggest)"
+                .to_string(),
+        );
+    }
+
+    let supports_weight_preset = supports_result_limit
+        || cli.robot_plan
+        || cli.emit_script
+        || cli.feedback_accept.is_some()
+        || cli.feedback_ignore.is_some()
+        || cli.priority_brief.is_some()
+        || cli.agent_brief.is_some();
+    if !supports_weight_preset && arg_flag_was_explicit_in_args(&raw_args, "--weight-preset") {
+        return Some(
+            "error: --weight-preset requires a recommendation-scoring command".to_string(),
+        );
     }
 
     let correlation_action_flags = ["--correlation-by", "--correlation-reason"];
@@ -2448,6 +2493,62 @@ struct EarlyCommandOutcome {
     to_stderr: bool,
 }
 
+fn parse_version_components(version: &str) -> Option<Vec<u64>> {
+    let normalized = version.trim().trim_start_matches('v');
+    if normalized.is_empty() {
+        return None;
+    }
+
+    normalized
+        .split('.')
+        .map(|part| part.parse::<u64>().ok())
+        .collect()
+}
+
+fn compare_versions(current: &str, latest: &str) -> Ordering {
+    let Some(mut current_parts) = parse_version_components(current) else {
+        return Ordering::Equal;
+    };
+    let Some(mut latest_parts) = parse_version_components(latest) else {
+        return Ordering::Equal;
+    };
+
+    let max_len = current_parts.len().max(latest_parts.len());
+    current_parts.resize(max_len, 0);
+    latest_parts.resize(max_len, 0);
+
+    current_parts.cmp(&latest_parts)
+}
+
+fn fetch_latest_release_tag() -> Result<String, String> {
+    let output = Command::new("curl")
+        .args([
+            "-sS",
+            "--max-time",
+            "5",
+            "-H",
+            "User-Agent: bvr-update-check",
+            "https://api.github.com/repos/Dicklesworthstone/beads_viewer_rust/releases/latest",
+        ])
+        .output()
+        .map_err(|error| format!("failed to run curl: {error}"))?;
+
+    if !output.status.success() {
+        return Err(format!("curl exited with status {}", output.status));
+    }
+
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).map_err(|error| format!("invalid JSON: {error}"))?;
+    let tag_name = payload
+        .get("tag_name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "missing tag_name in GitHub release payload".to_string())?;
+
+    Ok(tag_name.trim_start_matches('v').to_string())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum IssueLoadTarget {
     BeadsFile(PathBuf),
@@ -2676,83 +2777,30 @@ fn load_background_mode_from_user_config() -> Option<bool> {
 }
 
 fn handle_operational_commands(cli: &Cli) -> EarlyCommandOutcome {
-    let action_count =
-        usize::from(cli.check_update) + usize::from(cli.update) + usize::from(cli.rollback);
-
-    if action_count > 1 {
-        return EarlyCommandOutcome {
-            message:
-                "error: only one of --check-update/--update/--rollback may be used at a time.\n\
-                      Remediation: rerun with a single operational action flag."
-                    .to_string(),
-            exit_code: ExitCode::from(2),
-            to_stderr: true,
-        };
-    }
-
-    if cli.yes && !cli.update {
-        return EarlyCommandOutcome {
-            message: "error: --yes can only be used with --update.\n\
-                      Remediation: use --check-update for status, or combine --yes with --update."
-                .to_string(),
-            exit_code: ExitCode::from(2),
-            to_stderr: true,
-        };
-    }
-
     if cli.check_update {
-        return EarlyCommandOutcome {
-            message: format!(
-                "Automatic self-update checks are not implemented in this Rust port.\n\
-                 Current version: bvr {}\n\
-                 Remediation:\n\
-                   1. git pull origin main\n\
-                   2. cargo install --path .\n\
-                   3. bvr --version",
-                env!("CARGO_PKG_VERSION")
+        let current = env!("CARGO_PKG_VERSION");
+        let message = match fetch_latest_release_tag() {
+            Ok(latest) => match compare_versions(current, &latest) {
+                Ordering::Less => format!(
+                    "Newer version available: v{latest} (you have v{current})\n  Update: cargo install --git https://github.com/Dicklesworthstone/beads_viewer_rust.git bvr"
+                ),
+                Ordering::Equal | Ordering::Greater => format!("Up to date (v{current})"),
+            },
+            Err(_) => format!(
+                "Could not check for updates (network unavailable).\nCurrent version: bvr v{current}"
             ),
+        };
+
+        return EarlyCommandOutcome {
+            message,
             exit_code: ExitCode::SUCCESS,
             to_stderr: false,
         };
     }
 
-    if cli.update {
-        let yes_note = if cli.yes {
-            " --yes was accepted for compatibility."
-        } else {
-            ""
-        };
-
-        return EarlyCommandOutcome {
-            message: format!(
-                "error: --update is not supported in this Rust port.{yes_note}\n\
-                 Remediation:\n\
-                   1. git pull origin main\n\
-                   2. cargo install --path .\n\
-                   3. bvr --version"
-            ),
-            exit_code: ExitCode::from(2),
-            to_stderr: true,
-        };
-    }
-
-    if cli.rollback {
-        return EarlyCommandOutcome {
-            message: "error: --rollback is not supported in this Rust port.\n\
-                      Remediation:\n\
-                        1. Identify a known-good commit or tag.\n\
-                        2. git checkout <commit-or-tag>\n\
-                        3. cargo install --path .\n\
-                        4. git checkout main (when done)"
-                .to_string(),
-            exit_code: ExitCode::from(2),
-            to_stderr: true,
-        };
-    }
-
     EarlyCommandOutcome {
-        message: "error: unsupported operational flag combination.\n\
-                  Remediation: use one of --check-update, --update, or --rollback."
+        message: "error: unsupported operational flag.\n\
+                  Remediation: use --check-update."
             .to_string(),
         exit_code: ExitCode::from(2),
         to_stderr: true,
@@ -6218,6 +6266,7 @@ fn print_profile_report(profile: &StartupProfile, recommendations: &[String]) {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -6233,6 +6282,7 @@ mod tests {
     use super::{
         BackgroundModeSource, Cli, IssueLoadTarget, actionable_ids_for_recipe_filters,
         build_background_mode_config, compute_related_work_result,
+        compare_versions,
         discover_workspace_config_from_starts, feedback_project_dir, file_watch_token,
         filter_by_repo, generate_daily_burndown_points, handle_operational_commands, load_issues,
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,
@@ -6854,22 +6904,35 @@ mod tests {
 
         assert_eq!(outcome.exit_code, ExitCode::SUCCESS);
         assert!(!outcome.to_stderr);
-        assert!(outcome.message.contains("Current version: bvr"));
-        assert!(outcome.message.contains("cargo install --path ."));
+        assert!(
+            outcome.message.contains("Up to date (v")
+                || outcome.message.contains("Newer version available:")
+                || outcome
+                    .message
+                    .contains("Could not check for updates (network unavailable).")
+        );
     }
 
     #[test]
-    fn operational_yes_without_update_returns_usage_error() {
-        let cli = Cli::parse_from(["bvr", "--yes"]);
-        let outcome = handle_operational_commands(&cli);
+    fn compare_versions_detects_equal_versions() {
+        assert_eq!(compare_versions("0.1.0", "0.1.0"), Ordering::Equal);
+        assert_eq!(compare_versions("v0.1.0", "0.1.0"), Ordering::Equal);
+    }
 
-        assert_eq!(outcome.exit_code, ExitCode::from(2));
-        assert!(outcome.to_stderr);
-        assert!(
-            outcome
-                .message
-                .contains("--yes can only be used with --update")
-        );
+    #[test]
+    fn compare_versions_detects_newer_available() {
+        assert_eq!(compare_versions("0.1.0", "0.2.0"), Ordering::Less);
+    }
+
+    #[test]
+    fn compare_versions_detects_current_is_newer() {
+        assert_eq!(compare_versions("0.3.0", "0.2.9"), Ordering::Greater);
+    }
+
+    #[test]
+    fn compare_versions_treats_malformed_versions_as_equal() {
+        assert_eq!(compare_versions("dev-build", "0.2.0"), Ordering::Equal);
+        assert_eq!(compare_versions("0.2.0", "latest"), Ordering::Equal);
     }
 
     #[test]

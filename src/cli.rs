@@ -57,18 +57,6 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub check_update: bool,
 
-    /// Update bvr to the latest version.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub update: bool,
-
-    /// Roll back the most recent update.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub rollback: bool,
-
-    /// Skip update confirmation prompts (legacy compatibility flag).
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub yes: bool,
-
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
 
@@ -538,7 +526,7 @@ impl Cli {
 
     #[must_use]
     pub fn is_operational_command(&self) -> bool {
-        self.check_update || self.update || self.rollback || self.yes
+        self.check_update
     }
 
     #[must_use]
@@ -655,15 +643,6 @@ mod tests {
     fn parse_operational_flags() {
         let cli = Cli::parse_from(["bvr", "--check-update"]);
         assert!(cli.check_update);
-        assert!(cli.is_operational_command());
-
-        let cli = Cli::parse_from(["bvr", "--update", "--yes"]);
-        assert!(cli.update);
-        assert!(cli.yes);
-        assert!(cli.is_operational_command());
-
-        let cli = Cli::parse_from(["bvr", "--rollback"]);
-        assert!(cli.rollback);
         assert!(cli.is_operational_command());
     }
 

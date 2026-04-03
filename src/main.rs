@@ -3197,8 +3197,8 @@ fn load_issues_for_diff(cli: &Cli, diff_since: &str) -> bvr::Result<Vec<bvr::mod
                     .filter(|r| r.enabled.unwrap_or(true))
                     .collect();
                 // For single-repo workspaces, safely namespace the baseline.
-                // Multi-repo baselines are not supported; only single-repo
-                // workspaces can save/load baselines.
+                // Baseline save/load is currently limited to single-repo
+                // workspaces.
                 if enabled_repos.len() == 1 {
                     let repo = enabled_repos[0];
                     let prefix = repo.effective_prefix();
@@ -6281,8 +6281,7 @@ mod tests {
 
     use super::{
         BackgroundModeSource, Cli, IssueLoadTarget, actionable_ids_for_recipe_filters,
-        build_background_mode_config, compute_related_work_result,
-        compare_versions,
+        build_background_mode_config, compare_versions, compute_related_work_result,
         discover_workspace_config_from_starts, feedback_project_dir, file_watch_token,
         filter_by_repo, generate_daily_burndown_points, handle_operational_commands, load_issues,
         parse_background_mode_bool, parse_scope_git_header_line, project_dir_for_export_hooks,

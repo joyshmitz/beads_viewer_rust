@@ -187,6 +187,18 @@ fn sprint_reference_now() -> DateTime<Utc> {
     Utc::now()
 }
 
+#[cfg(test)]
+fn ui_reference_now() -> DateTime<Utc> {
+    chrono::DateTime::parse_from_rfc3339("2026-04-02T00:00:00Z")
+        .expect("valid fixed ui test timestamp")
+        .with_timezone(&Utc)
+}
+
+#[cfg(not(test))]
+fn ui_reference_now() -> DateTime<Utc> {
+    Utc::now()
+}
+
 #[cfg(not(test))]
 const BACKGROUND_TIMELINE_MAX_EVENTS: usize = 32;
 
@@ -12063,10 +12075,11 @@ impl BvrApp {
         }
         // Dates
         if let Some(created) = issue.created_at {
-            let age = (chrono::Utc::now() - created).num_days();
+            let reference_now = ui_reference_now();
+            let age = (reference_now - created).num_days();
             let updated_age = issue.updated_at.map_or_else(
                 || "never".to_string(),
-                |u| format!("{}d ago", (chrono::Utc::now() - u).num_days()),
+                |u| format!("{}d ago", (reference_now - u).num_days()),
             );
             out.push(format!(
                 "\u{2502} Age: {age}d | Updated: {:<w$}\u{2502}",

@@ -693,7 +693,6 @@ enum SemanticTone {
 /// Detects terminal background via `BV_THEME` env var (`light` | `dark`)
 /// with dark-mode default.  All 9+ issue statuses, 5 priority levels,
 /// 5 issue types, and distinct footer styling tokens are included.
-#[allow(dead_code)]
 mod tokens {
     use super::SemanticTone;
     use ftui::{PackedRgba, Style};
@@ -747,14 +746,11 @@ mod tokens {
     pub const FG_SUBTEXT_LIGHT: PackedRgba = PackedRgba::rgb(85, 85, 85); // #555555
 
     // Background
-    pub const BG_BASE: PackedRgba = PackedRgba::rgb(40, 42, 54); // #282a36
-    pub const BG_BASE_LIGHT: PackedRgba = PackedRgba::rgb(255, 255, 255); // #ffffff
     pub const BG_SURFACE: PackedRgba = PackedRgba::rgb(54, 57, 73); // #363949
     pub const BG_SURFACE_LIGHT: PackedRgba = PackedRgba::rgb(232, 232, 232); // #e8e8e8
     pub const BG_HIGHLIGHT: PackedRgba = PackedRgba::rgb(68, 71, 90); // #44475a
     pub const BG_HIGHLIGHT_LIGHT: PackedRgba = PackedRgba::rgb(208, 208, 208); // #d0d0d0
     pub const BG_DARK: PackedRgba = PackedRgba::rgb(30, 31, 41); // #1e1f29
-    pub const BG_DARK_LIGHT: PackedRgba = PackedRgba::rgb(245, 245, 245); // #f5f5f5
 
     // Semantic surface tints (dark)
     pub const BG_SURFACE_ACCENT: PackedRgba = PackedRgba::rgb(42, 26, 68); // #2a1a44
@@ -826,12 +822,6 @@ mod tokens {
         }
     }
 
-    // Backward-compatible status constants (dark-mode defaults).
-    pub const STATUS_OPEN: PackedRgba = FG_SUCCESS;
-    pub const STATUS_IN_PROGRESS: PackedRgba = FG_INFO;
-    pub const STATUS_BLOCKED: PackedRgba = FG_ERROR;
-    pub const STATUS_CLOSED: PackedRgba = FG_MUTED;
-
     // ── Priority colours (P0-P4 with bg) ─────────────────────────────
 
     pub const PRIO_P0: PackedRgba = FG_ERROR; // critical red
@@ -883,20 +873,6 @@ mod tokens {
             "epic" => p(FG_ACCENT_LIGHT, FG_ACCENT),
             "docs" => p(FG_INFO_LIGHT, FG_INFO),
             _ => p(FG_SUBTEXT_LIGHT, FG_SUBTEXT),
-        }
-    }
-
-    pub fn type_icon(issue_type: &str) -> &'static str {
-        let t = issue_type.to_ascii_lowercase();
-        match t.as_str() {
-            "bug" => "🐛",
-            "feature" => "✨",
-            "task" => "📋",
-            "epic" => "🚀",
-            "docs" => "📖",
-            "question" => "❓",
-            "refactor" => "🔧",
-            _ => "•",
         }
     }
 
@@ -977,36 +953,6 @@ mod tokens {
 
     // ── Priority hint arrows ─────────────────────────────────────────
 
-    pub const PRIO_ARROW_UP: PackedRgba = PackedRgba::rgb(255, 107, 107); // #ff6b6b
-    pub const PRIO_ARROW_DOWN: PackedRgba = PackedRgba::rgb(78, 205, 196); // #4ecdc4
-
-    // ── Triage indicator colours ─────────────────────────────────────
-
-    pub const TRIAGE_STAR: PackedRgba = PackedRgba::rgb(255, 215, 0); // #ffd700 gold
-    pub const TRIAGE_UNBLOCKS: PackedRgba = FG_SUCCESS; // green
-    pub const TRIAGE_UNBLOCKS_ALT: PackedRgba = FG_MUTED; // gray
-
-    // ── Repo badge colours (8-colour rotation) ───────────────────────
-
-    const REPO_COLORS: [PackedRgba; 8] = [
-        PackedRgba::rgb(255, 111, 97),  // coral red
-        PackedRgba::rgb(0, 206, 209),   // teal
-        PackedRgba::rgb(100, 181, 246), // sky blue
-        PackedRgba::rgb(129, 199, 132), // sage green
-        PackedRgba::rgb(206, 147, 216), // plum
-        PackedRgba::rgb(255, 213, 79),  // gold
-        PackedRgba::rgb(179, 157, 219), // lavender
-        PackedRgba::rgb(128, 222, 234), // light blue
-    ];
-
-    /// Get a deterministic repo colour from the repo name.
-    pub fn repo_color(repo: &str) -> PackedRgba {
-        let hash = repo.bytes().fold(0_usize, |acc, b| {
-            acc.wrapping_mul(31).wrapping_add(b as usize)
-        });
-        REPO_COLORS[hash % REPO_COLORS.len()]
-    }
-
     // ── Preserved original API (backward compat) ─────────────────────
 
     pub fn fg_default() -> PackedRgba {
@@ -1017,12 +963,6 @@ mod tokens {
     }
     pub fn fg_accent() -> PackedRgba {
         p(FG_ACCENT_LIGHT, FG_ACCENT)
-    }
-    pub fn fg_muted() -> PackedRgba {
-        p(FG_MUTED_LIGHT, FG_MUTED)
-    }
-    pub fn bg_base() -> PackedRgba {
-        p(BG_BASE_LIGHT, BG_BASE)
     }
     pub fn bg_surface() -> PackedRgba {
         p(BG_SURFACE_LIGHT, BG_SURFACE)
@@ -1047,14 +987,6 @@ mod tokens {
 
     pub fn selected() -> Style {
         Style::new().fg(fg_default()).bg(bg_highlight()).bold()
-    }
-
-    pub fn panel_border() -> Style {
-        Style::new().fg(fg_muted())
-    }
-
-    pub fn panel_border_focused() -> Style {
-        Style::new().fg(fg_accent())
     }
 
     pub fn panel_title() -> Style {
@@ -1114,17 +1046,6 @@ mod tokens {
             .fg(status_fg(status))
             .bg(status_bg(status))
             .bold()
-    }
-
-    pub fn search_highlight() -> Style {
-        Style::new()
-            .fg(PackedRgba::rgb(0, 0, 0))
-            .bg(p(FG_WARNING_LIGHT, FG_WARNING))
-            .bold()
-    }
-
-    pub fn help_key() -> Style {
-        Style::new().fg(fg_accent()).bold()
     }
 
     pub fn help_desc() -> Style {
@@ -2112,7 +2033,6 @@ impl FileTreeNode {
 
 /// A single visible entry in the flattened file tree.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct FlatFileEntry {
     name: String,
     path: String,
@@ -2241,7 +2161,6 @@ struct HistoryGitCache {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ModalOverlay {
     /// Welcome / first-run tutorial.
-    #[allow(dead_code)]
     Tutorial,
     /// Reusable Y/N confirmation dialog.
     Confirm {
@@ -18845,10 +18764,10 @@ mod tests {
 
     #[test]
     fn token_status_colours_are_distinct() {
-        let open = tokens::STATUS_OPEN;
-        let prog = tokens::STATUS_IN_PROGRESS;
-        let blk = tokens::STATUS_BLOCKED;
-        let cls = tokens::STATUS_CLOSED;
+        let open = tokens::status_fg("open");
+        let prog = tokens::status_fg("in_progress");
+        let blk = tokens::status_fg("blocked");
+        let cls = tokens::status_fg("closed");
         assert_ne!(open, prog);
         assert_ne!(open, blk);
         assert_ne!(open, cls);
@@ -18867,10 +18786,10 @@ mod tests {
     #[test]
     fn token_status_style_returns_correct_fg() {
         let open_style = tokens::status_style("open");
-        assert_eq!(open_style.fg, Some(tokens::STATUS_OPEN));
+        assert_eq!(open_style.fg, Some(tokens::status_fg("open")));
 
         let closed_style = tokens::status_style("closed");
-        assert_eq!(closed_style.fg, Some(tokens::STATUS_CLOSED));
+        assert_eq!(closed_style.fg, Some(tokens::status_fg("closed")));
 
         let unknown = tokens::status_style("whatever");
         assert_eq!(unknown.fg, Some(tokens::FG_DIM));
@@ -18897,8 +18816,8 @@ mod tests {
 
     #[test]
     fn token_focused_border_differs_from_unfocused() {
-        let focused = tokens::panel_border_focused();
-        let unfocused = tokens::panel_border();
+        let focused = tokens::panel_border_for(SemanticTone::Accent, true);
+        let unfocused = tokens::panel_border_for(SemanticTone::Accent, false);
         assert_ne!(focused.fg, unfocused.fg);
     }
 

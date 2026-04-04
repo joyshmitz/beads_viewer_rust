@@ -134,9 +134,9 @@ Economics is a projection layer using existing metrics + overlay config:
 ```
 TriageResult (already computed)
 ├── QuickRef            → counts, progress %
-├── Recommendations     → top picks, next steps
-└── BlockersToClear     → risks (with dependents_count from graph)
-    (no ProjectHealth field — that does not exist in TriageResult)
+├── Recommendations     → candidate pool for representative_items (see below)
+├── BlockersToClear     → risks (with dependents_count from graph)
+└── ProjectHealth       → counts, graph stats, velocity (weekly closures)
 
 GraphMetrics (already computed)
 ├── critical_depth: HashMap<String, usize>  → per-node depth in dependency DAG
@@ -151,7 +151,11 @@ Insights (already computed via analyzer.insights())
 │     "minimum cost to finish". A true critical-chain primitive does
 │     not yet exist in IssueGraph. See Economics section for v1 scope.
 ├── bottlenecks: Vec<InsightItem> → top 15 by blocks_count + score
-└── articulation_points: Vec<String> → same data, Vec form
+├── articulation_points: Vec<String> → same data, Vec form
+└── top_k_set (via advanced_insights)
+      → greedy unlock-maximizing set, different ranking objective than
+      triage. Items here may NOT appear in TriageResult.Recommendations.
+      Second candidate source for representative_items.
 
 RobotAlertsOutput (separate analyzer pass: analyzer.alerts())
 ├── alerts: Vec<Alert>   → alert_type (NewCycle|StaleIssue|BlockingCascade)
@@ -206,15 +210,24 @@ UrgencyProfile (from &[Issue] + &RobotAlertsOutput + &RobotSuggestOutput)
 AudienceView (owned struct, no lifetime parameters)
 Constructor takes: &[Issue], &TriageResult, &GraphMetrics,
   &ForecastOutput, &RobotAlertsOutput, &RobotSuggestOutput,
-  &OverlayConfig
+  &OverlayConfig, &Insights
 ├── dimensions          → progress, health, economics, risk, flow
 ├── urgency_profile     → classified items per Reinertsen
+├── representative_items → diverse selection for "next steps" (see note below)
 ├── audience            → which lens to emphasize
 ├── locale              → which strings to use
 ├── content             → titles, thesis, disclaimer (HTML-escaped)
 ├── branding            → optional accent_color, footer
 ├── has_app             → true for engineer/owner, false for investor
 └── meta                → generated_at, data_hash, version
+
+  NOTE on representative_items: triage recommendations and insights
+  top-K set optimize for different objectives (composite score vs.
+  greedy unlock maximization). On large graphs these produce disjoint
+  top-N lists — triage output does not signal that high-unlock items
+  were excluded. representative_items should merge both sources with
+  diversity weighting to avoid executive summary clustering on one
+  graph region. If upstream --robot-overview lands, consume it here.
 
                     ↓ (template rendering)
 
@@ -380,8 +393,9 @@ Files: `src/audience/mod.rs` (continues Step 1 module)
   Maps priority + due_date + alerts + suggestions to Reinertsen archetypes
 - `AudienceView` owned struct — constructor extracts values from
   `&[Issue]`, `&TriageResult`, `&GraphMetrics`, `&ForecastOutput`,
-  `&RobotAlertsOutput`, `&RobotSuggestOutput`, `&OverlayConfig`
-  (alerts and suggestions are separate `analyzer.alerts()` /
+  `&RobotAlertsOutput`, `&RobotSuggestOutput`, `&OverlayConfig`,
+  `&Insights` (for top-K set used in representative_items selection;
+  alerts and suggestions are separate `analyzer.alerts()` /
   `analyzer.suggest()` passes — not part of TriageResult)
 - `has_app` field: true for engineer/owner, false for investor
 - Derive `Serialize` for robot-mode JSON output
@@ -432,6 +446,11 @@ Executive summary (shell.html):
 - Valid HTML5 document with `lang` attribute from locale
 - Sections: header, KPI cards (5 dimensions), risks, flow distribution,
   urgency breakdown, next steps
+- **Next steps renders `AudienceView.representative_items`** — NOT
+  `TriageResult.recommendations` directly. See data flow section for
+  why: triage clusters on large graphs and misses high-unlock items
+  from insights top-K. The template must consume the merged,
+  diversity-weighted selection, not the raw triage candidate pool.
 - Deep links rendered conditionally via `has_app`:
   - engineer/owner: links to `./index.html` (full SPA) and `./dashboard/`
   - investor: links to `./dashboard/` only (no SPA generated)
@@ -628,11 +647,39 @@ src/audience/
 | `tests/` | Conformance + e2e + snapshot + mechanical `, None` additions | +280 |
 | **Total** | | **~1660** |
 
+## Open dependency: upstream --robot-overview (#4)
+
+Dicklesworthstone/beads_viewer_rust#4 tracks a compact diverse-selection
+surface (`--robot-overview`). We contributed concrete data showing triage
+clustering on `stress_large_500.jsonl` and the gap between triage and
+insights top-K. Status: open, maintainer interested but not committed.
+
+**Caveat:** the upstream discussion frames `--robot-overview` as MMR
+over existing scored recommendations — i.e. diversifying within the
+triage pool. On `stress_large_500.jsonl`, SL-000 (49 unlocks) never
+enters `TriageResult.recommendations` at all, so MMR over that pool
+would still miss it. Upstream `--robot-overview` would only close this
+gap if it draws candidates from both triage and insights top-K (or
+equivalent). If it diversifies only within triage, the SL-000 class
+of items remains invisible.
+
+**Baseline: internal merge path.** `AudienceView.representative_items`
+must merge triage recommendations + insights top-K set as candidate
+sources, then apply diversity selection. This is the implementation
+baseline regardless of upstream. If a future upstream `--robot-overview`
+draws from both sources, audience-export can consume it instead — but
+that is an optimization, not a dependency.
+
+For multi-agent swarms: a diversity-aware selection is also a work
+distribution primitive — a coordinator can partition agents across graph
+regions from the first assignment cycle instead of sending all agents to
+the same triage hotspot.
+
 ## Constraints
 
 - `unsafe_code = "forbid"` — no unsafe
 - All builds via `rch exec -- cargo ...` with `export TMPDIR=/data/tmp`
-- Existing 1318 tests must pass (especially conformance)
+- Existing 1787+ tests must pass (especially conformance)
 - `--export-pages` without `--audience` = zero behavior change
 - **35 existing export tests are stable** — `ExportPagesOptions` struct
   must not gain new fields; audience config passed as separate parameter

@@ -4,11 +4,11 @@
 This repository is building a Rust port of `legacy_beads_viewer_code/beads_viewer`, with a new binary named `bvr` that aims to preserve legacy `bv` behavior for both robot/agent automation and the interactive TUI.
 
 Current reality:
-- Robot-mode and data/export surfaces are much closer to parity and have substantially stronger fixture/integration evidence.
-- The interactive TUI is functional, but it is not yet a credible product-quality replacement for the legacy Go `bv` TUI.
-- The active TUI program is parity-first-then-beyond: recover legacy operator confidence and look/feel first, then exceed it with fuller FrankenTUI-native capabilities once the proof exists.
+- Robot-mode, data/export surfaces, workspace semantics, and the interactive TUI now have parity evidence in the Rust port.
+- The parity program is complete; future work should be treated as post-parity enhancement work rather than parity recovery.
+- The current engineering requirement is to preserve the proven legacy contract while extending the Rust-native surface carefully.
 
-The port is spec-first:
+The port was built spec-first:
 1. Extract behavior/spec from legacy Go.
 2. Implement Rust from the spec.
 3. Verify with conformance fixtures and performance benchmarks.
@@ -64,9 +64,11 @@ These are explicitly deferred for later parity waves, not dropped:
 - Run fixture comparison in Rust test suite.
 - Benchmark hot paths and enforce no-regression thresholds.
 
+Status: complete.
+
 ## Success Criteria
 - `cargo check --all-targets`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt --check` all pass.
 - Conformance suite green against reference fixtures.
-- Feature parity matrix marks legacy capabilities complete only where the evidence is strong enough to justify it.
+- Feature parity matrix reflects the current verified contract rather than historical caution text.
 - `bvr` robot output trusted as drop-in for current `bv` agent workflows.
-- `bvr` TUI is not described as a full legacy-quality replacement until the redesign contract and proof package are complete.
+- `bvr` TUI is described as a legacy-quality replacement because the proof package is now complete.

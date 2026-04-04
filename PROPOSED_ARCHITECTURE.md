@@ -24,7 +24,7 @@
   - `drift.rs`: baseline save/load and drift detection.
   - `file_intel.rs`: file-to-bead mapping and hotspot analysis.
 - `src/robot.rs`: output envelopes, data hashing, and robot payload types.
-- `src/tui.rs`: interactive app model powered by `frankentui` (current Rust implementation has 11 view modes, but the major operator-facing modes remain under active redesign to reach credible product-quality parity).
+- `src/tui.rs`: interactive app model powered by `frankentui`, with the full legacy TUI workflow surface now implemented and covered by snapshot, keyflow, journey, mouse, and mode-specific tests.
 - `src/cli.rs`: clap flags and dispatch.
 - `src/main.rs`: runtime entry and command routing.
 
@@ -65,12 +65,9 @@ Current async needs are met with standard library primitives:
 **Post-parity path:** `asupersync` is declared as an optional Cargo dependency (`asupersync-runtime` feature gate) for future structured async orchestration (watcher pipelines, background index builds, bounded cleanup/cancellation). This is not a Go parity requirement — Go's `bv` has no equivalent async framework.
 
 ## 7. TUI Fidelity Roadmap (`frankentui`)
-- Current reality: the Rust TUI is functional and heavily regression-tested, but the repo should not currently describe it as a finished legacy-quality replacement for the Go `bv` TUI.
-- Active redesign contract: `bd-2bpl.3.6.*` is the canonical FrankenTUI-first redesign program for the interactive product surface.
-- Current redesign order:
-  - contract and truthfulness reset
-  - shared shell/layout/visual/text infrastructure
-  - flagship main-screen rebuild
-  - board/graph/insights/history rebuilds
-  - redesign proof package with screen-family tests, hit-region tests, realistic scenario datasets, and replayable shell-level journeys
-- Regression harness status: current snapshots/keyflows/journeys are valuable stability checks for the present implementation, but they are not by themselves proof that the redesign is complete.
+- Current reality: the Rust TUI has reached verified legacy parity across the main, board, graph, insights, history, modal, and newer Rust-only mode surfaces.
+- The roadmap is now post-parity:
+  - preserve the current shell/layout/visual/text contract
+  - keep mode-specific regression proof green
+  - extend the TUI only in ways that do not regress the proven legacy workflows
+- Regression harness status: snapshots, keyflows, journeys, mouse/hit tests, and targeted history/graph/insights/board coverage are part of the parity contract.

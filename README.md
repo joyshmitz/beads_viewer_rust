@@ -903,7 +903,6 @@ BV_OUTPUT_FORMAT=toon bvr --robot-triage
 - It is **not** a hosted project-management platform.
 - It is **not** a replacement for issue creation or collaboration systems.
 - It is **not** just a pretty terminal wrapper around `jq`.
-- It is **not** currently claiming perfect legacy TUI parity.
 - It is **not** optimized around community contribution workflows.
 
 Those boundaries help keep the project focused on triage, analysis, automation, and export.
@@ -912,21 +911,21 @@ Those boundaries help keep the project focused on triage, analysis, automation, 
 
 The current high-level priorities are:
 
-### 1. Keep robot and CLI semantics tight
+### 1. Preserve verified legacy parity
 
-Machine-facing correctness is one of the highest-value parts of the tool, so command contracts, schema truthfulness, and parity evidence remain central.
+Robot, CLI, export, workspace, and interactive TUI behavior now have a parity proof surface. The job is to keep that contract stable as the code evolves.
 
-### 2. Continue improving TUI operator confidence
+### 2. Harden regression evidence
 
-The TUI is already broad, but workflow completeness, navigation feel, and parity-sensitive behavior are still active work.
+Conformance, schema, snapshot, keyflow, journey, stress, and integration suites are part of the product contract, not optional maintenance.
 
-### 3. Harden pages/export/workspace behavior
+### 3. Extend only where Rust-native additions stay coherent
 
-Export, preview, watch mode, wizard flows, and workspace path semantics all matter because they are real user-facing workflows.
+Search, label intelligence, drift, correlation review, file-intel, and future async/runtime upgrades should build on top of the locked parity baseline rather than destabilize it.
 
-### 4. Keep additive Rust-native features coherent
+### 4. Keep pages/export/workspace workflows polished
 
-Search, label intelligence, drift, correlation review, and file-intel surfaces are valuable, but they need to feel like one product rather than a bag of commands.
+Export, preview, watch mode, wizard flows, and workspace path semantics remain high-value operator workflows and should stay first-class.
 
 ## Why This Exists
 

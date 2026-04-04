@@ -463,7 +463,7 @@ impl WizardTranscript {
     fn record(&mut self, step: WizardStep, action: &str) {
         let elapsed = self
             .start
-            .map(|s| s.elapsed().as_millis() as u64)
+            .map(|s| u64::try_from(s.elapsed().as_millis()).unwrap_or(u64::MAX))
             .unwrap_or(0);
         self.entries.push(TranscriptEntry {
             step,

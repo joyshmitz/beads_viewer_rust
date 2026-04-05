@@ -3386,21 +3386,51 @@ fn build_robot_history_output(
     let mut method_distribution = BTreeMap::<String, usize>::new();
     let mut latest_sha = latest_commit_sha(cli);
 
-    let workspace_aliases = build_workspace_id_aliases(issues);
-
-    if let Some(repo_root) = resolve_repo_root(cli) {
-        let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
-        if let Some(commit) = commits.first() {
-            latest_sha = Some(commit.sha.clone());
+    if let Some(workspace_repos) = resolve_workspace_history_repos(cli, issues)? {
+        let mut latest_commit = None::<(String, String)>;
+        for workspace_repo in workspace_repos {
+            let repo_root = resolve_git_toplevel(&workspace_repo.repo_root)
+                .unwrap_or_else(|| workspace_repo.repo_root.clone());
+            let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
+            if let Some(commit) = commits.first() {
+                update_latest_history_commit_sha(
+                    &mut latest_commit,
+                    &commit.timestamp,
+                    &commit.sha,
+                );
+            }
+            correlate_histories_with_git_aliases(
+                &repo_root,
+                &commits,
+                &mut histories_map,
+                &mut commit_index,
+                &mut method_distribution,
+                &workspace_repo.aliases,
+            );
         }
-        correlate_histories_with_git_aliases(
-            &repo_root,
-            &commits,
-            &mut histories_map,
-            &mut commit_index,
-            &mut method_distribution,
-            &workspace_aliases,
-        );
+        if let Some((_, sha)) = latest_commit {
+            latest_sha = Some(sha);
+        }
+    } else {
+        let workspace_aliases = build_workspace_id_aliases(issues);
+        if let Some(repo_root) = resolve_repo_root(cli) {
+            let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
+            if let Some(commit) = commits.first() {
+                latest_sha = Some(commit.sha.clone());
+            }
+            correlate_histories_with_git_aliases(
+                &repo_root,
+                &commits,
+                &mut histories_map,
+                &mut commit_index,
+                &mut method_distribution,
+                &workspace_aliases,
+            );
+        }
+    }
+
+    if latest_sha.is_none() {
+        latest_sha = latest_commit_sha(cli);
     }
 
     if cli.history_min_confidence > 0.0 {
@@ -3457,6 +3487,92 @@ fn build_robot_history_output(
         histories_map,
         commit_index,
     })
+}
+
+#[derive(Debug)]
+struct WorkspaceHistoryRepo {
+    repo_root: PathBuf,
+    aliases: BTreeMap<String, String>,
+}
+
+fn update_latest_history_commit_sha(
+    latest_commit: &mut Option<(String, String)>,
+    timestamp: &str,
+    sha: &str,
+) {
+    if latest_commit
+        .as_ref()
+        .is_none_or(|(latest_timestamp, _)| timestamp > latest_timestamp.as_str())
+    {
+        *latest_commit = Some((timestamp.to_string(), sha.to_string()));
+    }
+}
+
+fn build_workspace_id_aliases_for_repo(
+    issues: &[bvr::model::Issue],
+    repo_name: &str,
+) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::<String, String>::new();
+    let repo_name = repo_name.trim();
+
+    for issue in issues {
+        if issue.source_repo.trim() != repo_name {
+            continue;
+        }
+
+        let prefix = issue
+            .workspace_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|prefix| !prefix.is_empty())
+            .map(std::borrow::ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{repo_name}-"));
+
+        let id_lower = issue.id.to_ascii_lowercase();
+        let prefix_lower = prefix.to_ascii_lowercase();
+        if let Some(raw) = id_lower.strip_prefix(&prefix_lower)
+            && !raw.is_empty()
+        {
+            aliases
+                .entry(raw.to_string())
+                .or_insert_with(|| issue.id.clone());
+        }
+    }
+
+    aliases
+}
+
+fn resolve_workspace_history_repos(
+    cli: &Cli,
+    issues: &[bvr::model::Issue],
+) -> bvr::Result<Option<Vec<WorkspaceHistoryRepo>>> {
+    let IssueLoadTarget::WorkspaceConfig(config_path) = resolve_issue_load_target(cli)? else {
+        return Ok(None);
+    };
+
+    let config = loader::load_workspace_config(&config_path)?;
+    let workspace_root = loader::resolve_workspace_root(&config_path);
+    let mut repos = Vec::<WorkspaceHistoryRepo>::new();
+
+    for repo in config.repos {
+        if !repo.enabled.unwrap_or(true) {
+            continue;
+        }
+
+        let repo_path = Path::new(repo.path.trim());
+        let repo_root = if repo_path.is_absolute() {
+            repo_path.to_path_buf()
+        } else {
+            workspace_root.join(repo_path)
+        };
+
+        repos.push(WorkspaceHistoryRepo {
+            repo_root,
+            aliases: build_workspace_id_aliases_for_repo(issues, &repo.name),
+        });
+    }
+
+    Ok(Some(repos))
 }
 
 fn compute_related_work_result(

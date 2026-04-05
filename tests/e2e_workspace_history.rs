@@ -853,6 +853,41 @@ fn setup_git_repo_with_history(root: &Path) {
     );
 }
 
+fn setup_workspace_repo_with_history(
+    repo_root: &Path,
+    bead_id: &str,
+    title: &str,
+    code_path: &str,
+    seed_date: &str,
+    close_date: &str,
+) {
+    run_git(repo_root, &["init"], None);
+    fs::create_dir_all(repo_root.join(".beads")).expect("mkdir .beads");
+    let code_file = repo_root.join(code_path);
+    if let Some(parent) = code_file.parent() {
+        fs::create_dir_all(parent).expect("mkdir code parent");
+    }
+
+    let seed = format!("{}\n", issue_line(bead_id, title, "open", 1));
+    fs::write(repo_root.join(".beads/beads.jsonl"), &seed).expect("write seed");
+    run_git(repo_root, &["add", ".beads/beads.jsonl"], None);
+    run_git(
+        repo_root,
+        &["commit", "-m", &format!("seed {bead_id}")],
+        Some(seed_date),
+    );
+
+    let closed = format!("{}\n", issue_line(bead_id, title, "closed", 1));
+    fs::write(repo_root.join(".beads/beads.jsonl"), &closed).expect("write closed");
+    fs::write(&code_file, format!("// completed {bead_id}\n")).expect("write code");
+    run_git(repo_root, &["add", ".beads/beads.jsonl", code_path], None);
+    run_git(
+        repo_root,
+        &["commit", "-m", &format!("close {bead_id}")],
+        Some(close_date),
+    );
+}
+
 #[test]
 fn history_output_has_valid_envelope() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -870,6 +905,80 @@ fn history_output_has_valid_envelope() {
     assert!(
         json["histories"].is_object(),
         "missing histories map: {json}"
+    );
+}
+
+#[test]
+fn workspace_history_correlates_commits_from_each_repo_git_root() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let root = temp.path();
+
+    let workspace = setup_workspace(
+        root,
+        &[
+            (
+                "api",
+                &format!("{}\n", issue_line("AUTH-1", "Auth work", "closed", 1)),
+            ),
+            (
+                "web",
+                &format!("{}\n", issue_line("UI-1", "Web work", "closed", 1)),
+            ),
+        ],
+    );
+
+    setup_workspace_repo_with_history(
+        &root.join("api"),
+        "AUTH-1",
+        "Auth work",
+        "src/api.rs",
+        "2024-07-01T00:00:00Z",
+        "2024-07-03T00:00:00Z",
+    );
+    setup_workspace_repo_with_history(
+        &root.join("web"),
+        "UI-1",
+        "Web work",
+        "src/web.rs",
+        "2024-07-02T00:00:00Z",
+        "2024-07-04T00:00:00Z",
+    );
+
+    let json = run_json(
+        &[
+            "--robot-history",
+            "--history-limit",
+            "20",
+            "--workspace",
+            &workspace.to_string_lossy(),
+        ],
+        root,
+    );
+
+    let api_commits = json["histories"]["api-AUTH-1"]["commits"]
+        .as_array()
+        .expect("api commits");
+    let web_commits = json["histories"]["web-UI-1"]["commits"]
+        .as_array()
+        .expect("web commits");
+
+    assert!(
+        api_commits.iter().any(|commit| commit["message"]
+            .as_str()
+            .is_some_and(|msg| msg.contains("AUTH-1"))),
+        "api history should include commits from api repo: {api_commits:?}"
+    );
+    assert!(
+        web_commits.iter().any(|commit| commit["message"]
+            .as_str()
+            .is_some_and(|msg| msg.contains("UI-1"))),
+        "web history should include commits from web repo: {web_commits:?}"
+    );
+    assert!(
+        json["latest_commit_sha"]
+            .as_str()
+            .is_some_and(|sha| !sha.is_empty()),
+        "workspace history should expose a latest commit sha"
     );
 }
 

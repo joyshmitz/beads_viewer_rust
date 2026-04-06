@@ -79,6 +79,9 @@ pub struct Cli {
     pub robot_next: bool,
 
     #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_overview: bool,
+
+    #[arg(long, action = ArgAction::SetTrue)]
     pub robot_triage: bool,
 
     #[arg(long, action = ArgAction::SetTrue)]
@@ -533,6 +536,7 @@ impl Cli {
     pub fn is_robot_command(&self) -> bool {
         self.robot_help
             || self.robot_next
+            || self.robot_overview
             || self.robot_triage
             || self.robot_triage_by_track
             || self.robot_triage_by_label

@@ -34,6 +34,7 @@ use sha2::{Digest, Sha256};
 
 fn analysis_config_for_cli(cli: &Cli) -> AnalysisConfig {
     if cli.robot_next
+        || cli.robot_overview
         || cli.robot_triage
         || cli.robot_triage_by_track
         || cli.robot_triage_by_label
@@ -808,11 +809,15 @@ fn main() -> ExitCode {
         }
     }
 
-    if cli.robot_next || cli.robot_triage || cli.robot_triage_by_track || cli.robot_triage_by_label
+    if cli.robot_next
+        || cli.robot_overview
+        || cli.robot_triage
+        || cli.robot_triage_by_track
+        || cli.robot_triage_by_label
     {
         let triage = analyzer.triage(TriageOptions {
             group_by_track: cli.robot_triage_by_track,
-            group_by_label: cli.robot_triage_by_label,
+            group_by_label: cli.robot_triage_by_label || cli.robot_overview,
             max_recommendations: cli.robot_max_results.max(10),
             scoring: TriageScoringOptions {
                 weight_adjustments: feedback_weight_adjustments.clone(),
@@ -854,6 +859,15 @@ fn main() -> ExitCode {
             };
 
             if let Err(error) = emit_with_stats(cli.format, &result, cli.stats) {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+            return ExitCode::SUCCESS;
+        }
+
+        if cli.robot_overview {
+            let output = build_robot_overview_output(&issues, &analyzer, &triage.result);
+            if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
                 eprintln!("error: {error}");
                 return ExitCode::from(1);
             }
@@ -5678,6 +5692,7 @@ fn print_robot_help() {
     println!("Commands:");
     println!("  --robot-triage            Unified triage payload");
     println!("  --robot-next              Single top recommendation");
+    println!("  --robot-overview          Compact orientation snapshot");
     println!("  --robot-triage-by-track   Triage grouped by parallel execution track");
     println!("  --robot-triage-by-label   Triage grouped by label/domain");
     println!("  --robot-plan              Dependency-aware execution tracks");
@@ -5755,6 +5770,209 @@ fn print_robot_help() {
     println!("  --as-of <ref>             View state at point in time (commit, tag, date)");
     println!("  --force-full-analysis     Compute all metrics regardless of graph size");
     println!("  --stats                   Show format token estimates on stderr");
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewOutput {
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    summary: RobotOverviewSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_pick: Option<RobotOverviewPick>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_blocker: Option<RobotOverviewBlocker>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    top_labels: Vec<RobotOverviewLabelCount>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fronts: Vec<RobotOverviewFront>,
+    commands: RobotOverviewCommands,
+    usage_hints: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewFront {
+    label: String,
+    open_count: usize,
+    representative: RobotOverviewPick,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewSummary {
+    open_issues: usize,
+    actionable_issues: usize,
+    blocked_issues: usize,
+    in_progress_issues: usize,
+    closed_issues: usize,
+    cycle_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewPick {
+    id: String,
+    title: String,
+    score: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reasons: Vec<String>,
+    claim_command: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewBlocker {
+    id: String,
+    title: String,
+    unblocks: usize,
+    show_command: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewLabelCount {
+    label: String,
+    open_issues: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewCommands {
+    next: String,
+    triage: String,
+    plan: String,
+    history: String,
+}
+
+fn build_robot_overview_output(
+    issues: &[bvr::model::Issue],
+    analyzer: &Analyzer,
+    triage: &bvr::analysis::triage::TriageResult,
+) -> RobotOverviewOutput {
+    let mut label_counts = BTreeMap::<String, usize>::new();
+    let mut blocked_issues = 0usize;
+    let mut in_progress_issues = 0usize;
+    let mut closed_issues = 0usize;
+
+    for issue in issues {
+        if issue.is_closed_like() {
+            closed_issues = closed_issues.saturating_add(1);
+            continue;
+        }
+
+        if issue.normalized_status() == "blocked" {
+            blocked_issues = blocked_issues.saturating_add(1);
+        }
+        if issue.is_in_progress() {
+            in_progress_issues = in_progress_issues.saturating_add(1);
+        }
+
+        for label in &issue.labels {
+            let label = label.trim();
+            if label.is_empty() {
+                continue;
+            }
+            *label_counts.entry(label.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    let mut top_labels = label_counts
+        .into_iter()
+        .map(|(label, open_issues)| RobotOverviewLabelCount { label, open_issues })
+        .collect::<Vec<_>>();
+    top_labels.sort_by(|left, right| {
+        right
+            .open_issues
+            .cmp(&left.open_issues)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    top_labels.truncate(5);
+
+    let top_pick = triage
+        .quick_ref
+        .top_picks
+        .first()
+        .map(|pick| RobotOverviewPick {
+            id: pick.id.clone(),
+            title: pick.title.clone(),
+            score: pick.score,
+            reasons: pick.reasons.clone(),
+            claim_command: format!("br update {} --status=in_progress", pick.id),
+        });
+
+    let top_blocker = triage
+        .blockers_to_clear
+        .first()
+        .map(|blocker| RobotOverviewBlocker {
+            id: blocker.id.clone(),
+            title: blocker.title.clone(),
+            unblocks: blocker.unblocks,
+            show_command: format!("br show {}", blocker.id),
+        });
+
+    // Build diverse work fronts from label-grouped recommendations.
+    // Each front represents a distinct area of the graph with its own top pick,
+    // capped at 8 fronts for compact output.
+    let top_pick_id = triage
+        .quick_ref
+        .top_picks
+        .first()
+        .map(|p| p.id.clone())
+        .unwrap_or_default();
+
+    let mut fronts: Vec<RobotOverviewFront> = triage
+        .recommendations_by_label
+        .iter()
+        .filter_map(|by_label| {
+            let rec = by_label.top_pick.as_ref()?;
+            // Skip fronts whose representative duplicates the global top pick.
+            if rec.id == top_pick_id {
+                return None;
+            }
+            Some(RobotOverviewFront {
+                label: by_label.label.clone(),
+                open_count: by_label.item_ids.len(),
+                representative: RobotOverviewPick {
+                    id: rec.id.clone(),
+                    title: rec.title.clone(),
+                    score: rec.score,
+                    reasons: rec.reasons.clone(),
+                    claim_command: format!("br update {} --status=in_progress", rec.id),
+                },
+            })
+        })
+        .collect();
+
+    // Sort by open count descending so the largest active areas come first.
+    fronts.sort_by(|left, right| {
+        right
+            .open_count
+            .cmp(&left.open_count)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    fronts.truncate(8);
+
+    RobotOverviewOutput {
+        envelope: envelope(issues),
+        summary: RobotOverviewSummary {
+            open_issues: triage.quick_ref.total_open,
+            actionable_issues: triage.quick_ref.total_actionable,
+            blocked_issues,
+            in_progress_issues,
+            closed_issues,
+            cycle_count: analyzer.metrics.cycles.len(),
+        },
+        top_pick,
+        top_blocker,
+        top_labels,
+        fronts,
+        commands: RobotOverviewCommands {
+            next: "bvr --robot-next".to_string(),
+            triage: "bvr --robot-triage".to_string(),
+            plan: "bvr --robot-plan".to_string(),
+            history: "bvr --robot-history --history-limit 20".to_string(),
+        },
+        usage_hints: vec![
+            "jq '.summary'".to_string(),
+            "jq '.top_pick'".to_string(),
+            "jq '.fronts[] | {label, id: .representative.id}'".to_string(),
+            "bvr --robot-triage".to_string(),
+        ],
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -7612,6 +7830,96 @@ mod tests {
         assert!(json.get("claim_command").is_none());
         assert!(json.get("show_command").is_none());
         assert_eq!(json["message"], "No actionable items available");
+    }
+
+    #[test]
+    fn robot_overview_omits_optional_pick_and_blocker_when_absent() {
+        let output = super::RobotOverviewOutput {
+            envelope: bvr::robot::envelope(&[]),
+            summary: super::RobotOverviewSummary {
+                open_issues: 0,
+                actionable_issues: 0,
+                blocked_issues: 0,
+                in_progress_issues: 0,
+                closed_issues: 0,
+                cycle_count: 0,
+            },
+            top_pick: None,
+            top_blocker: None,
+            top_labels: Vec::new(),
+            fronts: Vec::new(),
+            commands: super::RobotOverviewCommands {
+                next: "bvr --robot-next".to_string(),
+                triage: "bvr --robot-triage".to_string(),
+                plan: "bvr --robot-plan".to_string(),
+                history: "bvr --robot-history --history-limit 20".to_string(),
+            },
+            usage_hints: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json.get("top_pick").is_none());
+        assert!(json.get("top_blocker").is_none());
+        assert!(json.get("top_labels").is_none());
+        assert_eq!(json["commands"]["next"], "bvr --robot-next");
+    }
+
+    #[test]
+    fn build_robot_overview_output_counts_labels_and_cycles() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["backend".to_string(), "api".to_string()],
+                dependencies: vec![bvr::model::Dependency {
+                    issue_id: "A".to_string(),
+                    depends_on_id: "B".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["backend".to_string()],
+                dependencies: vec![bvr::model::Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "C".to_string(),
+                title: "C".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                labels: vec!["docs".to_string()],
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions::default());
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        assert_eq!(output.summary.open_issues, 2);
+        assert_eq!(output.summary.blocked_issues, 1);
+        assert_eq!(output.summary.closed_issues, 1);
+        assert_eq!(output.summary.cycle_count, 1);
+        assert_eq!(output.top_labels[0].label, "backend");
+        assert_eq!(output.top_labels[0].open_issues, 2);
+        assert!(output.top_pick.is_none());
+        assert_eq!(output.commands.next, "bvr --robot-next");
     }
 
     #[test]

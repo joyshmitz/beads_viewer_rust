@@ -279,6 +279,18 @@ fn e2e_robot_next() {
 }
 
 #[test]
+fn e2e_robot_overview() {
+    let json = run_robot(&["--robot-overview"], FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(validate_fields(&json, &["summary", "commands"], "").is_empty());
+    assert!(
+        validate_type_at(&json, "summary.open_issues", JsonType::Number).is_empty(),
+        "overview summary should expose numeric counts: {json}"
+    );
+    assert_eq!(json["commands"]["next"], "bvr --robot-next");
+}
+
+#[test]
 fn e2e_robot_next_toon_round_trips_via_library_decoder() {
     let output = run_robot_raw(&["--robot-next", "--format", "toon"], FIXTURE);
     assert!(

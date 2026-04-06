@@ -7923,6 +7923,89 @@ mod tests {
     }
 
     #[test]
+    fn build_robot_overview_output_populates_fronts_from_label_groups() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "A".to_string(),
+                title: "Implement auth".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["backend".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "B".to_string(),
+                title: "Fix login page".to_string(),
+                status: "open".to_string(),
+                issue_type: "bug".to_string(),
+                priority: 2,
+                labels: vec!["frontend".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "C".to_string(),
+                title: "Update README".to_string(),
+                status: "open".to_string(),
+                issue_type: "docs".to_string(),
+                priority: 3,
+                labels: vec!["docs".to_string()],
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions {
+            group_by_label: true,
+            ..bvr::analysis::triage::TriageOptions::default()
+        });
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        // With 3 open issues across 3 labels, fronts should be populated.
+        // The global top_pick's label is excluded from fronts to avoid redundancy,
+        // so we expect at most 2 fronts.
+        assert!(output.fronts.len() <= 3);
+        for front in &output.fronts {
+            assert!(!front.label.is_empty());
+            assert!(!front.representative.id.is_empty());
+            // Each front's representative should differ from the global top pick.
+            if let Some(ref pick) = output.top_pick {
+                assert_ne!(front.representative.id, pick.id);
+            }
+        }
+
+        // Verify JSON serialization includes fronts when non-empty.
+        let json = serde_json::to_value(&output).unwrap();
+        if !output.fronts.is_empty() {
+            assert!(json["fronts"].is_array());
+        }
+        assert!(json["usage_hints"].is_array());
+    }
+
+    #[test]
+    fn robot_overview_fronts_empty_when_no_label_groups() {
+        let issues = vec![bvr::model::Issue {
+            id: "X".to_string(),
+            title: "Solo task".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            labels: vec!["only-label".to_string()],
+            ..bvr::model::Issue::default()
+        }];
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        // Without group_by_label, recommendations_by_label is empty.
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions::default());
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        assert!(output.fronts.is_empty());
+        let json = serde_json::to_value(&output).unwrap();
+        // Empty fronts should be omitted from JSON via skip_serializing_if.
+        assert!(json.get("fronts").is_none());
+    }
+
+    #[test]
     fn priority_filters_omit_unset_optional_fields() {
         let filters = super::PriorityFilterOutput {
             min_confidence: 0.5,

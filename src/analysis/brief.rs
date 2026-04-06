@@ -319,7 +319,7 @@ mod tests {
                 show_top: Some("br show A-1".to_string()),
                 list_ready: "br ready".to_string(),
                 list_blocked: "br list --status open --where blocked=true".to_string(),
-                refresh_triage: "bv --robot-triage".to_string(),
+                refresh_triage: "bvr --robot-triage".to_string(),
             },
         }
     }

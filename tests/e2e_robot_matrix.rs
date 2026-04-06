@@ -268,6 +268,10 @@ fn e2e_robot_triage() {
     assert_valid_envelope(&json);
     assert!(validate_fields(&json, &["triage"], "").is_empty());
     assert!(validate_type_at(&json, "triage.recommendations", JsonType::Array).is_empty());
+    assert_eq!(
+        json["triage"]["commands"]["refresh_triage"],
+        "bvr --robot-triage"
+    );
 }
 
 #[test]

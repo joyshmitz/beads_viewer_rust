@@ -866,7 +866,7 @@ pub fn compute_triage(
             show_top,
             list_ready: "CI=1 br ready --json".to_string(),
             list_blocked: "CI=1 br blocked --json".to_string(),
-            refresh_triage: "bv --robot-triage".to_string(),
+            refresh_triage: "bvr --robot-triage".to_string(),
         },
     };
 

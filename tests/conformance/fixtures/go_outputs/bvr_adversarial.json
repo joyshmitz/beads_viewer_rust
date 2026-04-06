@@ -67,7 +67,7 @@
         "claim_top": "CI=1 br update ADV-103 --status in_progress --json",
         "list_blocked": "CI=1 br blocked --json",
         "list_ready": "CI=1 br ready --json",
-        "refresh_triage": "bv --robot-triage",
+        "refresh_triage": "bvr --robot-triage",
         "show_top": "CI=1 br show ADV-103 --json"
       },
       "meta": {

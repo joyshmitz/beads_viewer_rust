@@ -42,7 +42,7 @@ This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) 
 
 ```bash
 # View issues (launches TUI - avoid in automated sessions)
-bv
+bvr
 
 # CLI commands for agents (use these instead)
 br ready              # Show issues ready to work (no blockers)
@@ -686,6 +686,12 @@ mod tests {
         assert!(result.starts_with("# Existing\n"));
         assert!(result.contains(BLURB_START_MARKER));
         assert!(result.contains(BLURB_END_MARKER));
+    }
+
+    #[test]
+    fn agent_blurb_uses_bvr_command_name() {
+        assert!(AGENT_BLURB.contains("\nbvr\n"));
+        assert!(!AGENT_BLURB.contains("\nbv\n"));
     }
 
     #[test]

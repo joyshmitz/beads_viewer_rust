@@ -971,4 +971,12 @@ fn e2e_empty_fixture_returns_zero_open() {
         .as_i64()
         .unwrap_or(-1);
     assert_eq!(total, 0, "empty fixture should have 0 open issues");
+    assert!(
+        json["triage"]["commands"].get("claim_top").is_none(),
+        "empty fixture should omit claim_top when there is no recommendation: {json}"
+    );
+    assert!(
+        json["triage"]["commands"].get("show_top").is_none(),
+        "empty fixture should omit show_top when there is no recommendation: {json}"
+    );
 }

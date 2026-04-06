@@ -1589,6 +1589,16 @@ fn robot_insights_single_issue_returns_valid_metrics() {
     assert!(actual["Cycles"].is_array());
     // Single issue with no deps should have no cycles.
     assert!(actual["Cycles"].as_array().unwrap().is_empty());
+    assert_eq!(
+        actual["usage_hints"],
+        serde_json::json!([
+            "jq '.Bottlenecks[:5]'",
+            "jq '.Cycles'",
+            "jq '.CriticalPath[:10]'",
+            "jq '.Keystones'",
+            "jq '.Velocity'"
+        ])
+    );
 }
 
 #[test]

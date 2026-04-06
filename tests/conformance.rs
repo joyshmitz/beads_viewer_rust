@@ -6,7 +6,7 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::tempdir;
 
 fn repo_root() -> PathBuf {
@@ -288,6 +288,13 @@ fn robot_plan_is_deterministic_for_minimal_fixture() {
     let second = run_bvr_json(&["--robot-plan"], "tests/testdata/minimal.jsonl");
 
     assert_eq!(first["plan"], second["plan"]);
+    assert_eq!(
+        first["usage_hints"],
+        json!([
+            "jq '.plan.summary'",
+            "jq '.plan.tracks[].items[] | select(.unblocks | length > 0)'"
+        ])
+    );
 }
 
 #[test]
@@ -1523,6 +1530,15 @@ fn robot_triage_single_issue_returns_valid_output() {
 
     assert_eq!(actual["triage"]["quick_ref"]["total_open"], 1);
     assert_eq!(actual["triage"]["quick_ref"]["total_actionable"], 1);
+    assert_eq!(
+        actual["usage_hints"],
+        json!([
+            "jq '.triage.quick_ref.top_picks[:3]'",
+            "jq '.triage.blockers_to_clear | map(.id)'",
+            "jq '.triage.quick_wins | map({id,score})'",
+            "bvr --robot-next"
+        ])
+    );
     assert!(actual["triage"]["recommendations"].is_array());
     // Single issue with no deps should have exactly one recommendation.
     assert!(
@@ -2498,6 +2514,13 @@ fn robot_priority_core_fields_match_legacy_fixture() {
 
     // data_hash should be present
     assert!(actual["data_hash"].as_str().is_some());
+    assert_eq!(
+        actual["usage_hints"],
+        json!([
+            "jq '.recommendations[] | select(.confidence > 0.7)'",
+            "jq '.recommendations | map({id,score,unblocks})'"
+        ])
+    );
 }
 
 #[test]

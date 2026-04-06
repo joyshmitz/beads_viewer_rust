@@ -6855,6 +6855,7 @@ mod tests {
         let nested_arg = nested.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg, "--export-pages", "out"]);
 
+        let _guard = CurrentDirGuard::set(root);
         let project_dir = project_dir_for_export_hooks(&cli).expect("project dir");
         assert_eq!(project_dir, root);
     }
@@ -6882,6 +6883,9 @@ mod tests {
             "bundle",
         ]);
 
+        // Guard CWD so the ancestor-walk discovery stays inside this tempdir
+        // and does not pick up workspace configs from sibling tempdirs.
+        let _guard = CurrentDirGuard::set(root);
         let resolved =
             resolve_cli_path_from_project_dir(&cli, Path::new("bundle")).expect("resolved path");
         assert_eq!(resolved, root.join("bundle"));
@@ -6904,6 +6908,7 @@ mod tests {
         let nested_arg = nested.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg, "--feedback-show"]);
 
+        let _guard = CurrentDirGuard::set(root);
         let project_dir = feedback_project_dir(&cli);
         assert_eq!(project_dir, root);
     }
@@ -6922,6 +6927,9 @@ mod tests {
         let nested_arg = nested.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg]);
 
+        // Guard CWD so the ancestor-walk discovery stays inside this tempdir
+        // and does not pick up workspace configs from sibling tempdirs.
+        let _guard = CurrentDirGuard::set(root);
         let target = resolve_issue_load_target(&cli).expect("resolve issue load target");
         assert_eq!(target, IssueLoadTarget::WorkspaceConfig(config_path));
     }

@@ -1990,6 +1990,7 @@ fn main() -> ExitCode {
             bvr::analysis::search::SearchMode::Text,
             bvr::analysis::search::SearchMode::from_str_or_default,
         );
+        let resolved_search_preset = cli.resolve_search_preset();
 
         let weights = if let Some(ref json) = cli.search_weights {
             match bvr::analysis::search::SearchWeights::from_json(json) {
@@ -2000,7 +2001,7 @@ fn main() -> ExitCode {
                 }
             }
         } else {
-            let preset_name = cli.search_preset.as_deref().unwrap_or("default");
+            let preset_name = resolved_search_preset.as_deref().unwrap_or("default");
             bvr::analysis::search::get_preset(preset_name)
         };
 
@@ -2014,11 +2015,7 @@ fn main() -> ExitCode {
         );
 
         let preset_field = if mode == bvr::analysis::search::SearchMode::Hybrid {
-            Some(
-                cli.search_preset
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string()),
-            )
+            Some(resolved_search_preset.unwrap_or_else(|| "default".to_string()))
         } else {
             None
         };

@@ -528,6 +528,14 @@ impl Cli {
     }
 
     #[must_use]
+    pub fn resolve_search_preset(&self) -> Option<String> {
+        resolve_optional_string_choice(
+            self.search_preset.as_deref(),
+            std::env::var("BV_SEARCH_PRESET").ok().as_deref(),
+        )
+    }
+
+    #[must_use]
     pub fn is_operational_command(&self) -> bool {
         self.check_update
     }
@@ -624,6 +632,19 @@ fn resolve_output_format_choice(
     Ok(cli_format)
 }
 
+fn resolve_optional_string_choice(cli_value: Option<&str>, env_value: Option<&str>) -> Option<String> {
+    cli_value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(std::string::ToString::to_string)
+        .or_else(|| {
+            env_value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(std::string::ToString::to_string)
+        })
+}
+
 fn format_flag_was_explicit_in_args<I, S>(args: I) -> bool
 where
     I: IntoIterator<Item = S>,
@@ -640,7 +661,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, OutputFormat, format_flag_was_explicit_in_args, resolve_output_format_choice,
+        Cli, OutputFormat, format_flag_was_explicit_in_args, resolve_optional_string_choice,
+        resolve_output_format_choice,
     };
 
     #[test]
@@ -736,6 +758,24 @@ mod tests {
             .expect_err("invalid env should fail");
         assert!(error.contains("BV_OUTPUT_FORMAT"));
         assert!(error.contains("json|toon"));
+    }
+
+    #[test]
+    fn resolve_search_preset_uses_env_when_cli_flag_absent() {
+        let resolved = resolve_optional_string_choice(None, Some("impact-first"));
+        assert_eq!(resolved.as_deref(), Some("impact-first"));
+    }
+
+    #[test]
+    fn resolve_search_preset_prefers_cli_over_env() {
+        let resolved = resolve_optional_string_choice(Some("text-only"), Some("impact-first"));
+        assert_eq!(resolved.as_deref(), Some("text-only"));
+    }
+
+    #[test]
+    fn resolve_search_preset_ignores_blank_values() {
+        let resolved = resolve_optional_string_choice(Some("   "), Some("  "));
+        assert_eq!(resolved, None);
     }
 
     #[test]

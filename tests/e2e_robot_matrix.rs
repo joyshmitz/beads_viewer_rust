@@ -574,6 +574,56 @@ fn e2e_robot_search() {
 }
 
 #[test]
+fn e2e_robot_search_hybrid_without_lexical_match_returns_no_results() {
+    let json = run_robot(
+        &[
+            "--robot-search",
+            "--search",
+            "zzzznotfound",
+            "--search-mode",
+            "hybrid",
+            "--search-limit",
+            "5",
+        ],
+        FIXTURE,
+    );
+    assert_valid_envelope(&json);
+    let results = json["results"].as_array().expect("results array");
+    assert!(
+        results.is_empty(),
+        "hybrid search should not return unrelated issues when the query has no lexical matches: {json}"
+    );
+}
+
+#[test]
+fn e2e_robot_search_honors_search_preset_env() {
+    let output = bvr()
+        .env("BV_SEARCH_PRESET", "text-only")
+        .args([
+            "--robot-search",
+            "--search",
+            "parity",
+            "--search-mode",
+            "hybrid",
+            "--beads-file",
+            COMPLEX_FIXTURE,
+        ])
+        .output()
+        .expect("failed to execute bvr");
+    assert!(
+        output.status.success(),
+        "env-driven search preset failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: Value = serde_json::from_slice(&output.stdout).expect("search json payload");
+    assert_valid_envelope(&json);
+    assert_eq!(json["preset"], "text-only");
+    assert_eq!(json["weights"]["text"], 1.0);
+    assert_eq!(json["weights"]["pagerank"], 0.0);
+}
+
+#[test]
 fn e2e_robot_label_health() {
     let json = run_robot(&["--robot-label-health"], COMPLEX_FIXTURE);
     assert_valid_envelope(&json);

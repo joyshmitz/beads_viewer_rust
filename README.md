@@ -272,6 +272,8 @@ cargo build --release
 ./target/release/bvr --robot-help
 ```
 
+When validating the current checkout, prefer the binary built from that checkout (`./target/debug/bvr` or `./target/release/bvr`). Do not assume a global `bv` wrapper or previously installed binary matches the source tree you are editing.
+
 ### 3. Install from a local checkout into your Cargo bin dir
 
 ```bash

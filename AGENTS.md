@@ -427,17 +427,19 @@ br sync --flush-only  # Export to JSONL (NO git operations)
 
 ---
 
-## bv — Graph-Aware Triage Engine
+## bvr — Graph-Aware Triage Engine
 
-bv is bvr running in robot mode. It computes PageRank, betweenness, critical path, cycles, HITS, eigenvector, and k-core metrics deterministically.
+`bvr` is the binary produced by this repo. It computes PageRank, betweenness, critical path, cycles, HITS, eigenvector, and k-core metrics deterministically.
 
-**CRITICAL: Use ONLY `--robot-*` flags. Bare `bv` launches an interactive TUI that blocks your session.**
+**CRITICAL: Use ONLY `--robot-*` flags. Bare `bvr` launches an interactive TUI that blocks your session.**
+
+**When working from this checkout, prefer the repo-local binary** (`target/debug/bvr`, `target/release/bvr`, or a freshly built `bvr` in your PATH). Do **not** assume a global `bv` command matches this checkout; on shared machines it may point at an older install with a different flag surface.
 
 ### The Workflow: Start With Triage
 
 ```bash
-bv --robot-triage        # THE MEGA-COMMAND: start here
-bv --robot-next          # Minimal: just the single top pick + claim command
+bvr --robot-triage        # THE MEGA-COMMAND: start here
+bvr --robot-next          # Minimal: just the single top pick + claim command
 ```
 
 ### Command Reference
@@ -474,20 +476,20 @@ bv --robot-next          # Minimal: just the single top pick + claim command
 ### Scoping & Filtering
 
 ```bash
-bv --robot-plan --label backend              # Scope to label's subgraph
-bv --robot-insights --as-of HEAD~30          # Historical point-in-time
-bv --recipe actionable --robot-plan          # Pre-filter: ready to work
-bv --robot-triage --robot-triage-by-track    # Group by parallel work streams
-bv --robot-triage --robot-triage-by-label    # Group by domain
+bvr --robot-plan --label backend              # Scope to label's subgraph
+bvr --robot-insights --as-of HEAD~30          # Historical point-in-time
+bvr --recipe actionable --robot-plan          # Pre-filter: ready to work
+bvr --robot-triage --robot-triage-by-track    # Group by parallel work streams
+bvr --robot-triage --robot-triage-by-label    # Group by domain
 ```
 
 ### jq Quick Reference
 
 ```bash
-bv --robot-triage | jq '.triage.quick_ref'                  # At-a-glance summary
-bv --robot-triage | jq '.triage.recommendations[0]'         # Top recommendation
-bv --robot-plan | jq '.plan.summary.highest_impact'          # Best unblock target
-bv --robot-insights | jq '.Cycles'                           # Circular deps (must fix!)
+bvr --robot-triage | jq '.triage.quick_ref'                  # At-a-glance summary
+bvr --robot-triage | jq '.triage.recommendations[0]'         # Top recommendation
+bvr --robot-plan | jq '.plan.summary.highest_impact'         # Best unblock target
+bvr --robot-insights | jq '.Cycles'                          # Circular deps (must fix!)
 ```
 
 ---

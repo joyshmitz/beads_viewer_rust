@@ -6602,6 +6602,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::{Command, ExitCode};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     use bvr::analysis::git_history::{
         HistoryBeadCompat, HistoryCommitCompat, HistoryEventCompat, HistoryFileChangeCompat,
@@ -6621,20 +6622,35 @@ mod tests {
         resolve_reference_file_path, resolve_watch_export_paths, resolve_workspace_config_path,
     };
 
-    struct CurrentDirGuard(PathBuf);
+    struct CurrentDirGuard {
+        original: PathBuf,
+        _lock: MutexGuard<'static, ()>,
+    }
 
     impl CurrentDirGuard {
+        fn lock() -> MutexGuard<'static, ()> {
+            static CURRENT_DIR_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+            CURRENT_DIR_MUTEX
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+
         fn set(path: &Path) -> Self {
+            let lock = Self::lock();
             let original = std::env::current_dir()
                 .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")));
             std::env::set_current_dir(path).expect("set current dir");
-            Self(original)
+            Self {
+                original,
+                _lock: lock,
+            }
         }
     }
 
     impl Drop for CurrentDirGuard {
         fn drop(&mut self) {
-            if std::env::set_current_dir(&self.0).is_err() {
+            if std::env::set_current_dir(&self.original).is_err() {
                 std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).expect("restore current dir");
             }
         }

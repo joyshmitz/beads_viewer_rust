@@ -215,20 +215,20 @@ JSONL → Loader → Issue Vec → Analyzer (IssueGraph + metrics) → Robot JSO
 ```
 
 **Two-phase analysis:**
-- **Phase 1 (instant):** degree, topo sort, density
-- **Phase 2 (async, 500ms timeout):** PageRank, betweenness, HITS, eigenvector, cycles
+- **Triage/runtime path:** `triage_runtime()` keeps the metrics used by recommendation flows: PageRank, betweenness, cycles, critical path, and articulation.
+- **Fast/slow background path:** `fast_phase()` computes PageRank, cycles, critical path, k-core, articulation, and slack immediately; `slow_phase()` later fills betweenness, eigenvector, and HITS for background/TUI flows.
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/main.rs` (198 KB) | CLI dispatch, robot mode routing, all `--robot-*` flag handling |
+| `src/main.rs` (198 KB) | CLI dispatch, robot mode routing, all `--robot-*` flag handling, and many concrete robot payload structs |
 | `src/tui.rs` (548 KB) | Interactive TUI with 11 view modes, keybindings, modals |
 | `src/lib.rs` | Library re-exports (analysis, model, loader, tui, robot, etc.) |
-| `src/model.rs` | `Issue` struct, status/priority/type enums, serialization |
-| `src/loader.rs` | JSONL/workspace loading, git history extraction |
-| `src/cli.rs` | `CliArgs` struct (clap derive) with all CLI flags |
-| `src/robot.rs` | `RobotEnvelope`, all robot output structs, TOON encoding |
+| `src/model.rs` | `Issue` struct, string-backed status/type fields, timestamps, dependencies/comments, validation helpers |
+| `src/loader.rs` | JSONL/workspace loading, path discovery, workspace namespacing, sprint loading |
+| `src/cli.rs` | `Cli` struct (clap derive) with all CLI flags |
+| `src/robot.rs` | `RobotEnvelope`, robot docs/schema generation, JSON/TOON rendering helpers |
 | `src/error.rs` | Typed error definitions |
 | `src/agents.rs` | Agent management CLI (`--agents-check/add/update/remove`) |
 | `src/export_md.rs` | Markdown report export |
@@ -294,8 +294,10 @@ All robot commands output JSON to stdout with a shared envelope:
 
 - **TUI state fields** must be added to `BvrApp` struct AND all construction sites (15+ places in tests)
 - **New ViewMode variants** need: enum+label, BvrApp fields, key handler, guard fn, j/k nav, list/detail text, 5 match dispatches, all construction sites
-- **Robot output structs** use `#[serde(flatten)]` with `RobotEnvelope` for shared fields
+- **Robot payloads** commonly use `#[serde(flatten)]` with `RobotEnvelope` for shared fields, but many output structs live in `main.rs` and analysis modules rather than only in `src/robot.rs`
 - **IssueGraph** uses `Vec<Issue>` + `HashMap<String, usize>` (not `HashMap<String, Issue>`) for performance
+- **`Issue` remains string-backed** for status/type behavior; do not assume dedicated enums exist in `src/model.rs`
+- **Fast/slow analysis split** is mostly about background/TUI metric completion; the fast phase already includes PageRank and cycles
 - **Rust 2024 edition**: `std::env::set_var`/`remove_var` are unsafe — cannot use directly in tests
 - **Cycle detection**: reports ALL SCC members (sorted), not minimal DFS path within SCC
 - **Auto-diff**: `--diff-since` in non-TTY context auto-enables `--robot-diff`

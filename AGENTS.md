@@ -153,20 +153,21 @@ Every module includes inline `#[cfg(test)]` unit tests alongside the implementat
 - Edge cases (empty input, max values, boundary conditions)
 - Error conditions
 
-### Test Suite (1,787+ tests)
+### Test Suite (1,859+ tests)
 
 ```bash
 # Full suite via rch
 export TMPDIR=/data/tmp && rch exec -- cargo test --tests
 
 # Individual suites
-export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1331 unit tests
+export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1410 unit tests
+export TMPDIR=/data/tmp && rch exec -- cargo test --bin bvr                    # 50 binary tests
 export TMPDIR=/data/tmp && rch exec -- cargo test --test conformance           # 79 conformance
 export TMPDIR=/data/tmp && rch exec -- cargo test --test schema_validation     # 61 schema
-export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 62 e2e robot
-export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 34 e2e workspace
+export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 65 e2e robot
+export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 35 e2e workspace
 export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_export_pages      # 20 e2e pages
-export TMPDIR=/data/tmp && rch exec -- cargo test --test cli_model_validation  # 60 CLI model
+export TMPDIR=/data/tmp && rch exec -- cargo test --test cli_model_validation  # 90 CLI model
 export TMPDIR=/data/tmp && rch exec -- cargo test --test stress_fixtures       # 49 stress
 
 # Benchmarks
@@ -177,13 +178,14 @@ export TMPDIR=/data/tmp && rch exec -- cargo bench --bench triage              #
 
 | Suite | Count | Purpose |
 |-------|-------|---------|
-| Unit tests (`--lib`) | 1331 | Module-level with inline `#[cfg(test)]` |
+| Unit tests (`--lib`) | 1410 | Module-level with inline `#[cfg(test)]` |
+| Binary tests (`--bin bvr`) | 50 | CLI dispatch, robot output structs, workspace discovery |
 | Conformance (`--test conformance`) | 79 | Go reference fixture parity (100%) |
 | Schema validation | 61 | JSON schema compliance |
-| E2E robot matrix | 62 | Full robot command integration (39/39 commands) |
-| E2E workspace/history | 34 | Workspace and history flows |
+| E2E robot matrix | 65 | Full robot command integration (39/39 commands) |
+| E2E workspace/history | 35 | Workspace and history flows |
 | E2E export/pages | 20 | Pages export/preview/watch |
-| CLI model validation | 60 | CLI entrypoint and path semantics |
+| CLI model validation | 90 | CLI entrypoint and path semantics |
 | Stress fixtures | 49 | Large/pathological dataset handling |
 
 ### Shell E2E
@@ -206,7 +208,7 @@ If you aren't 100% sure how to use a third-party library, **SEARCH ONLINE** to f
 
 ### What It Does
 
-Loads issues from `.beads/beads.jsonl`, builds a dependency graph, and computes PageRank, betweenness centrality, HITS, eigenvector, k-core decomposition, critical path, and cycle detection. Outputs triage recommendations, forecasts, alerts, suggestions, history correlations, and more via `--robot-*` flags. Also provides an 11-mode interactive TUI and a static pages export pipeline.
+Loads issues from `.beads/beads.jsonl`, builds a dependency graph, and computes PageRank, betweenness centrality, HITS, eigenvector, k-core decomposition, critical path, and cycle detection. Outputs triage recommendations, forecasts, alerts, suggestions, history correlations, and more via `--robot-*` flags. Also provides a 12-mode interactive TUI and a static pages export pipeline.
 
 ### Architecture
 
@@ -263,7 +265,7 @@ JSONL → Loader → Issue Vec → Analyzer (IssueGraph + metrics) → Robot JSO
 | `brief.rs` | Priority and agent brief generation |
 | `cache.rs` | Analysis result caching |
 
-### TUI View Modes (11 total)
+### TUI View Modes (12 total)
 
 | Mode | Key | Description |
 |------|-----|-------------|

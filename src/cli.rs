@@ -632,7 +632,10 @@ fn resolve_output_format_choice(
     Ok(cli_format)
 }
 
-fn resolve_optional_string_choice(cli_value: Option<&str>, env_value: Option<&str>) -> Option<String> {
+fn resolve_optional_string_choice(
+    cli_value: Option<&str>,
+    env_value: Option<&str>,
+) -> Option<String> {
     cli_value
         .map(str::trim)
         .filter(|value| !value.is_empty())

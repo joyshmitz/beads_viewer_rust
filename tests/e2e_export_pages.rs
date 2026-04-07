@@ -12,7 +12,12 @@
 
 use assert_cmd::Command;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::{Command as ProcessCommand, Stdio};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 const FIXTURE: &str = "tests/testdata/minimal.jsonl";
 const COMPLEX_FIXTURE: &str = "tests/testdata/synthetic_complex.jsonl";
@@ -536,15 +541,34 @@ fn create_mutable_beads_file(label: &str) -> (tempfile::TempDir, PathBuf) {
     (dir, beads_path)
 }
 
-fn wait_for_file(path: &Path, timeout: std::time::Duration) {
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if path.is_file() {
-            return;
+fn wait_for_watch_startup(child: &mut std::process::Child) -> String {
+    let stderr = child.stderr.as_mut().expect("watch stderr");
+    let mut captured = String::new();
+    let mut line = Vec::new();
+    let mut byte = [0_u8; 1];
+
+    for _ in 0..16 {
+        line.clear();
+        loop {
+            let bytes = stderr.read(&mut byte).expect("read watch startup");
+            assert!(bytes > 0, "watch process exited before entering watch mode");
+            line.push(byte[0]);
+            if byte[0] == b'\n' {
+                break;
+            }
         }
-        std::thread::sleep(std::time::Duration::from_millis(20));
+        let line = String::from_utf8_lossy(&line);
+        assert!(
+            !line.is_empty(),
+            "watch process exited before entering watch mode"
+        );
+        captured.push_str(&line);
+        if line.starts_with("Watching ") {
+            return captured;
+        }
     }
-    panic!("timed out waiting for {}", path.display());
+
+    panic!("watch process did not advertise watch mode");
 }
 
 #[test]
@@ -621,46 +645,48 @@ fn e2e_watch_export_detects_file_change_and_regenerates() {
     let (_beads_dir, beads_path) = create_mutable_beads_file("change");
     let export_tmp = fresh_export_dir("watch_change");
     let export_path = export_tmp.path().join("pages");
-
-    // Spawn the watch process in background with short intervals.
-    // We'll modify the file, then let max_loops expire.
     let beads_path_clone = beads_path.clone();
-    let export_path_clone = export_path.clone();
-    let export_path_for_modifier = export_path.clone();
+    let (modifier_start_tx, modifier_start_rx) = mpsc::channel();
 
-    // Wait until the initial export has materialized before mutating the
-    // source file; otherwise the write can land before the watcher captures
-    // its baseline token on slower machines.
-    let modifier = std::thread::spawn(move || {
-        wait_for_file(
-            &export_path_for_modifier.join("index.html"),
-            std::time::Duration::from_secs(5),
-        );
-        std::thread::sleep(std::time::Duration::from_millis(350));
-        // Append an issue to the beads file to trigger change detection
-        let extra_issue = r#"{"id":"WATCH-1","title":"Added by watch test","status":"open","issue_type":"task","priority":2}"#;
+    let modifier = thread::spawn(move || {
+        modifier_start_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("watch startup signal");
+        thread::sleep(Duration::from_millis(350));
         let mut file = std::fs::OpenOptions::new()
             .append(true)
             .open(&beads_path_clone)
             .expect("open beads file for append");
         use std::io::Write;
+        let extra_issue = r#"{"id":"WATCH-1","title":"Added by watch test","status":"open","issue_type":"task","priority":2}"#;
         writeln!(file, "{extra_issue}").expect("append issue");
+        file.flush().expect("flush issue append");
     });
 
-    let output = bvr()
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr");
+    let mut child = ProcessCommand::new(bvr_bin)
         .arg("--export-pages")
-        .arg(&export_path_clone)
+        .arg(&export_path)
         .arg("--watch-export")
         .arg("--beads-file")
         .arg(&beads_path)
         .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "100")
         .env("BVR_WATCH_DEBOUNCE_MS", "50")
-        .timeout(std::time::Duration::from_secs(20))
-        .output()
-        .expect("execute bvr");
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn bvr watch export");
 
+    let startup_stderr = wait_for_watch_startup(&mut child);
+    modifier_start_tx
+        .send(())
+        .expect("send watch startup signal");
+    let mut output = child.wait_with_output().expect("wait for watch process");
     modifier.join().expect("modifier thread");
+    let mut combined_stderr = startup_stderr.into_bytes();
+    combined_stderr.extend_from_slice(&output.stderr);
+    output.stderr = combined_stderr;
     save_diagnostic("watch_change", &output, &export_path);
     assert!(
         output.status.success(),
@@ -721,18 +747,18 @@ fn e2e_watch_export_failure_reports_last_good_served() {
     let export_path = export_tmp.path().join("pages");
 
     let beads_path_clone = beads_path.clone();
-    let export_path_clone = export_path.clone();
-    let modifier = std::thread::spawn(move || {
-        wait_for_file(
-            &export_path_clone.join("index.html"),
-            std::time::Duration::from_secs(5),
-        );
-        std::thread::sleep(std::time::Duration::from_millis(350));
+    let (modifier_start_tx, modifier_start_rx) = mpsc::channel();
+    let modifier = thread::spawn(move || {
+        modifier_start_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("watch startup signal");
+        thread::sleep(Duration::from_millis(350));
         // Delete the beads file to trigger a reload error
         let _ = fs::remove_file(&beads_path_clone);
     });
 
-    let output = bvr()
+    let bvr_bin = std::env::var("CARGO_BIN_EXE_bvr").expect("CARGO_BIN_EXE_bvr");
+    let mut child = ProcessCommand::new(bvr_bin)
         .arg("--export-pages")
         .arg(&export_path)
         .arg("--watch-export")
@@ -741,11 +767,20 @@ fn e2e_watch_export_failure_reports_last_good_served() {
         .env("BVR_WATCH_MAX_LOOPS", "40")
         .env("BVR_WATCH_INTERVAL_MS", "100")
         .env("BVR_WATCH_DEBOUNCE_MS", "50")
-        .timeout(std::time::Duration::from_secs(20))
-        .output()
-        .expect("execute bvr");
+        .stderr(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn bvr watch export");
 
+    let startup_stderr = wait_for_watch_startup(&mut child);
+    modifier_start_tx
+        .send(())
+        .expect("send watch startup signal");
+    let mut output = child.wait_with_output().expect("wait for watch process");
     modifier.join().expect("modifier thread");
+    let mut combined_stderr = startup_stderr.into_bytes();
+    combined_stderr.extend_from_slice(&output.stderr);
+    output.stderr = combined_stderr;
     save_diagnostic("watch_failure", &output, &export_path);
 
     let stderr = String::from_utf8_lossy(&output.stderr);

@@ -6625,7 +6625,8 @@ mod tests {
 
     impl CurrentDirGuard {
         fn set(path: &Path) -> Self {
-            let original = std::env::current_dir().expect("current dir");
+            let original = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")));
             std::env::set_current_dir(path).expect("set current dir");
             Self(original)
         }
@@ -6633,7 +6634,9 @@ mod tests {
 
     impl Drop for CurrentDirGuard {
         fn drop(&mut self) {
-            std::env::set_current_dir(&self.0).expect("restore current dir");
+            if std::env::set_current_dir(&self.0).is_err() {
+                std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).expect("restore current dir");
+            }
         }
     }
 
@@ -7359,6 +7362,7 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let empty_root = temp.path().join("empty");
         fs::create_dir_all(&empty_root).expect("create empty root");
+        let _guard = CurrentDirGuard::set(&empty_root);
         let empty_arg = empty_root.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &empty_arg]);
 

@@ -422,6 +422,14 @@ br sync --flush-only  # Export to JSONL (NO git operations)
 4. **Complete**: Use `br close <id> --reason "..."`
 5. **Sync**: Run `br sync --flush-only` then manually commit
 
+### Tracker Health Note (Current Repo)
+
+- `bd-jhb6` is still open because normal `br` writes can destabilize `.beads/beads.db` in this repo even after the canonical DB has been repaired.
+- Confirmed sequential repro on 2026-04-09 with `br 0.1.34`: start from a clean DB (`PRAGMA integrity_check = ok`, `page_count = 338`, `freelist_count = 0`), run `br close ...`, observe `metadata.blocked_cache_state = stale`, then run `br ready --json`; the stale-cache marker clears, but `PRAGMA integrity_check` can start reporting `page N is never used` and the DB grows to 341 pages even when `blocked_issues_cache` still has 0 rows.
+- `PRAGMA wal_checkpoint(TRUNCATE)` did not fix the malformed-page warning in the confirmed repro; a direct SQLite `VACUUM` restored `integrity_check = ok` and shrank the DB back to 338 pages.
+- Until the upstream root cause is fixed, if `br doctor` reports `blocked_issues_cache is marked stale`, run `br ready --json`; if `sqlite.integrity_check` then warns about `page N is never used`, run a direct SQLite `VACUUM` on `.beads/beads.db` and rerun `br doctor`.
+- Prefer reproductions in an isolated copy of `.beads/` when investigating this bead so routine tracker writes do not churn the live repo state.
+
 ### Key Concepts
 
 - **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.

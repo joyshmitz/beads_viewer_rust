@@ -10057,7 +10057,6 @@ impl BvrApp {
 
     fn build_tree_flat_nodes(&mut self) {
         let issues = &self.analyzer.issues;
-        let graph = &self.analyzer.graph;
 
         // Build a map from issue ID to index.
         let id_to_index: std::collections::HashMap<&str, usize> = issues
@@ -10066,53 +10065,100 @@ impl BvrApp {
             .map(|(i, issue)| (issue.id.as_str(), i))
             .collect();
 
-        // Find root issues: those with no blockers (nothing blocks them).
-        let mut roots: Vec<usize> = Vec::new();
-        let mut has_parent: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        // Build parent-child hierarchy from parent-child dependencies.
+        // A child issue has a dep with dep_type="parent-child" and
+        // depends_on_id pointing to its parent.
+        let mut children_of: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
+        let mut has_parent: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
 
         for (i, issue) in issues.iter().enumerate() {
-            let blockers = graph.blockers(&issue.id);
-            if !blockers.is_empty() {
-                has_parent.insert(i);
+            for dep in &issue.dependencies {
+                if dep.is_parent_child()
+                    && !dep.depends_on_id.trim().is_empty()
+                {
+                    if let Some(&parent_idx) = id_to_index.get(dep.depends_on_id.as_str()) {
+                        children_of.entry(parent_idx).or_default().push(i);
+                        has_parent.insert(i);
+                    }
+                }
             }
         }
 
-        for i in 0..issues.len() {
-            if !has_parent.contains(&i) {
-                roots.push(i);
-            }
+        // Deduplicate and sort children lists.
+        for children in children_of.values_mut() {
+            children.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+            children.dedup();
         }
 
-        // Sort roots by ID for deterministic order.
+        // Roots: issues with no parent-child dependency pointing to a
+        // known parent. Fall back to blocking-based roots if no
+        // parent-child deps exist at all.
+        let mut roots: Vec<usize> = (0..issues.len())
+            .filter(|i| !has_parent.contains(i))
+            .collect();
+
+        if roots.len() == issues.len() && !issues.is_empty() {
+            // No parent-child deps at all — fall back to blocking graph
+            // so the tree still shows something useful.
+            let graph = &self.analyzer.graph;
+            let mut blocking_children_of: std::collections::HashMap<usize, Vec<usize>> =
+                std::collections::HashMap::new();
+            let mut has_blocker: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
+
+            for (i, issue) in issues.iter().enumerate() {
+                let blockers = graph.blockers(&issue.id);
+                if !blockers.is_empty() {
+                    has_blocker.insert(i);
+                    for blocker_id in &blockers {
+                        if let Some(&blocker_idx) = id_to_index.get(blocker_id.as_str()) {
+                            blocking_children_of.entry(blocker_idx).or_default().push(i);
+                        }
+                    }
+                }
+            }
+            for children in blocking_children_of.values_mut() {
+                children.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+                children.dedup();
+            }
+
+            roots = (0..issues.len())
+                .filter(|i| !has_blocker.contains(i))
+                .collect();
+
+            children_of = blocking_children_of;
+        }
+
         roots.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+
+        // Collect issue IDs for collapse state lookup (avoids borrow conflict).
+        let issue_ids: Vec<String> = issues.iter().map(|i| i.id.clone()).collect();
 
         // DFS to build flat node list.
         let mut flat_nodes = Vec::new();
-        let mut stack: Vec<(usize, usize, bool, Vec<bool>)> = Vec::new(); // (issue_index, depth, is_last, ancestry)
+        // (issue_index, depth, is_last_sibling, ancestry_last)
+        let mut stack: Vec<(usize, usize, bool, Vec<bool>)> = Vec::new();
 
-        for (ri, &root_idx) in roots.iter().enumerate() {
+        for (ri, &root_idx) in roots.iter().enumerate().rev() {
             let is_last = ri + 1 == roots.len();
             stack.push((root_idx, 0, is_last, Vec::new()));
         }
 
-        // Process in reverse so first root is processed first (stack is LIFO).
-        stack.reverse();
-
-        let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut visited: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
 
         while let Some((issue_idx, depth, is_last, ancestry)) = stack.pop() {
             if !visited.insert(issue_idx) {
                 continue; // Avoid cycles.
             }
 
-            let issue_id = &issues[issue_idx].id;
-            let children_ids = graph.dependents(issue_id);
-            let mut children: Vec<usize> = children_ids
-                .iter()
-                .filter_map(|id| id_to_index.get(id.as_str()).copied())
-                .filter(|idx| !visited.contains(idx))
-                .collect();
-            children.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+            let issue_id = &issue_ids[issue_idx];
+            let children: Vec<usize> = children_of
+                .get(&issue_idx)
+                .map(|c| c.iter().copied().filter(|idx| !visited.contains(idx)).collect())
+                .unwrap_or_default();
 
             let is_collapsed = self.tree_collapsed.contains(issue_id);
             let has_children = !children.is_empty();
@@ -10127,7 +10173,6 @@ impl BvrApp {
             });
 
             if !is_collapsed {
-                // Push children in reverse so first child is processed next.
                 for (ci, &child_idx) in children.iter().enumerate().rev() {
                     let child_is_last = ci + 1 == children.len();
                     let mut child_ancestry = ancestry.clone();
@@ -10184,21 +10229,21 @@ impl BvrApp {
             let marker = if i == self.tree_cursor { '>' } else { ' ' };
             let issue = &self.analyzer.issues[node.issue_index];
 
-            // Build tree prefix with box-drawing characters.
+            // Build tree prefix with Unicode box-drawing characters.
             let mut prefix = String::new();
             for &parent_was_last in &node.ancestry_last {
                 if parent_was_last {
                     prefix.push_str("    ");
                 } else {
-                    prefix.push_str(" |  ");
+                    prefix.push_str("│   ");
                 }
             }
 
             if node.depth > 0 {
                 if node.is_last_sibling {
-                    prefix.push_str(" `- ");
+                    prefix.push_str("└── ");
                 } else {
-                    prefix.push_str(" |- ");
+                    prefix.push_str("├── ");
                 }
             }
 

@@ -5030,9 +5030,9 @@ impl BvrApp {
                 self.move_selection_relative(-(self.list_page_step() as isize));
             }
             // Ctrl-F / Ctrl-B — full page scroll (vim aliases for PageDown/PageUp)
-            // Guard on focus==List (not tree_shortcut_focus which includes Detail)
-            // so that Ctrl-F in Tree+Detail correctly scrolls the detail pane
-            // via the non-Board+Detail handler below.
+            // Ordering mirrors Ctrl-D/Ctrl-U above: specific detail handlers
+            // MUST come before broad board_shortcut_focus() guards, which match
+            // both List and Detail focus.
             KeyCode::Char('f')
                 if modifiers.contains(Modifiers::CTRL)
                     && matches!(self.mode, ViewMode::Tree)
@@ -5051,16 +5051,6 @@ impl BvrApp {
                 self.tree_cursor = self.tree_cursor.saturating_sub(step);
             }
             KeyCode::Char('f')
-                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
-            {
-                self.move_board_row_relative(self.list_page_step() as isize);
-            }
-            KeyCode::Char('b')
-                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
-            {
-                self.move_board_row_relative(-(self.list_page_step() as isize));
-            }
-            KeyCode::Char('f')
                 if modifiers.contains(Modifiers::CTRL)
                     && matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::Detail =>
@@ -5073,6 +5063,16 @@ impl BvrApp {
                     && self.focus == FocusPane::Detail =>
             {
                 self.scroll_board_detail(-(self.list_page_step() as isize));
+            }
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
+            {
+                self.move_board_row_relative(self.list_page_step() as isize);
+            }
+            KeyCode::Char('b')
+                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
+            {
+                self.move_board_row_relative(-(self.list_page_step() as isize));
             }
             KeyCode::Char('f')
                 if modifiers.contains(Modifiers::CTRL)

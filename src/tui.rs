@@ -10437,13 +10437,20 @@ impl BvrApp {
     }
 
     /// `zM` — collapse every fold in the tree.
+    ///
+    /// Temporarily expands all to discover every node (including deeply nested
+    /// ones hidden inside collapsed parents), then collapses everything.
     fn tree_collapse_all(&mut self) {
-        let issues = &self.analyzer.issues;
-        for node in &self.tree_flat_nodes {
-            if node.has_children {
-                self.tree_collapsed
-                    .insert(issues[node.issue_index].id.clone());
-            }
+        self.tree_collapsed.clear();
+        self.build_tree_flat_nodes();
+        let ids: Vec<String> = self
+            .tree_flat_nodes
+            .iter()
+            .filter(|n| n.has_children)
+            .map(|n| self.analyzer.issues[n.issue_index].id.clone())
+            .collect();
+        for id in ids {
+            self.tree_collapsed.insert(id);
         }
         self.build_tree_flat_nodes();
         if self.tree_cursor >= self.tree_flat_nodes.len() {

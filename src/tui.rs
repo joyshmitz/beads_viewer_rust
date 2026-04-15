@@ -5055,6 +5055,20 @@ impl BvrApp {
             }
             KeyCode::Char('f')
                 if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(self.list_page_step() as isize);
+            }
+            KeyCode::Char('b')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(-(self.list_page_step() as isize));
+            }
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL)
                     && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::Detail =>
             {
@@ -10432,9 +10446,17 @@ impl BvrApp {
 
     /// `zz` — recenter the viewport so the cursor is roughly centred.
     fn tree_recenter_cursor(&mut self) {
+        // The rendered tree text has header lines before the first node:
+        // panel_header (1) + optional search banner (0-1) + separator (1).
+        let header_lines = if self.tree_search_active || !self.tree_search_query.is_empty() {
+            3
+        } else {
+            2
+        };
+        let cursor_line = self.tree_cursor + header_lines;
         let half = self.list_page_step() / 2;
         self.list_scroll_offset
-            .set(self.tree_cursor.saturating_sub(half));
+            .set(cursor_line.saturating_sub(half));
     }
 
     // -- Vim gg jump-to-top ---------------------------------------------------
@@ -10444,12 +10466,10 @@ impl BvrApp {
             self.tree_cursor = 0;
         } else if self.board_shortcut_focus() {
             self.select_edge_in_current_board_lane(false);
-        } else if matches!(self.mode, ViewMode::History)
-            && matches!(self.history_view_mode, HistoryViewMode::Git)
-            && self.focus == FocusPane::List
-        {
+        } else if matches!(self.mode, ViewMode::History) && self.focus == FocusPane::List {
             self.history_event_cursor = 0;
             self.history_related_bead_cursor = 0;
+            self.history_bead_commit_cursor = 0;
         } else if self.focus == FocusPane::List {
             self.select_first_visible();
         }
@@ -10541,22 +10561,29 @@ impl BvrApp {
                 self.tree_flat_nodes.len()
             )),
         ));
+        // Compute search matches once for both the banner and hit indicators.
+        let tree_search_match_indices = self.tree_search_matches();
+        let tree_search_hits: BTreeMap<usize, usize> = tree_search_match_indices
+            .iter()
+            .enumerate()
+            .map(|(slot, &idx)| (idx, slot + 1))
+            .collect();
+
         if self.tree_search_active {
             lines.push(RichLine::raw(format!(
                 "Search (active): /{}",
                 self.tree_search_query
             )));
         } else if !self.tree_search_query.is_empty() {
-            let matches = self.tree_search_matches();
-            let pos = if matches.is_empty() {
+            let pos = if tree_search_match_indices.is_empty() {
                 "none".to_string()
             } else {
                 format!(
                     "{}/{}",
                     self.tree_search_match_cursor
-                        .min(matches.len().saturating_sub(1))
+                        .min(tree_search_match_indices.len().saturating_sub(1))
                         + 1,
-                    matches.len()
+                    tree_search_match_indices.len()
                 )
             };
             lines.push(RichLine::raw(format!(
@@ -10565,13 +10592,6 @@ impl BvrApp {
             )));
         }
         lines.push(section_separator(line_width));
-
-        let tree_search_hits: BTreeMap<usize, usize> = self
-            .tree_search_matches()
-            .into_iter()
-            .enumerate()
-            .map(|(slot, idx)| (idx, slot + 1))
-            .collect();
 
         for (i, node) in self.tree_flat_nodes.iter().enumerate() {
             let is_selected = i == self.tree_cursor;

@@ -1686,7 +1686,7 @@ fn issue_scan_line(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ViewMode {
+pub enum ViewMode {
     Main,
     Board,
     Insights,
@@ -1699,6 +1699,27 @@ enum ViewMode {
     FlowMatrix,
     TimeTravelDiff,
     Sprint,
+}
+
+impl ViewMode {
+    /// Parse a CLI `--view` value into a `ViewMode`.
+    pub fn from_cli(s: &str) -> Option<Self> {
+        match s {
+            "main" => Some(Self::Main),
+            "board" => Some(Self::Board),
+            "insights" => Some(Self::Insights),
+            "graph" => Some(Self::Graph),
+            "history" => Some(Self::History),
+            "actionable" => Some(Self::Actionable),
+            "attention" => Some(Self::Attention),
+            "tree" => Some(Self::Tree),
+            "labels" => Some(Self::LabelDashboard),
+            "flow" => Some(Self::FlowMatrix),
+            "timediff" => Some(Self::TimeTravelDiff),
+            "sprint" => Some(Self::Sprint),
+            _ => None,
+        }
+    }
 }
 
 impl ViewMode {
@@ -1798,7 +1819,7 @@ impl FocusPane {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ListFilter {
+pub enum ListFilter {
     All,
     Open,
     InProgress,
@@ -1816,6 +1837,19 @@ impl ListFilter {
             Self::Blocked => "blocked",
             Self::Closed => "closed",
             Self::Ready => "ready",
+        }
+    }
+
+    /// Parse a CLI `--list-filter` value into a `ListFilter`.
+    pub fn from_cli(s: &str) -> Option<Self> {
+        match s {
+            "all" => Some(Self::All),
+            "open" => Some(Self::Open),
+            "in-progress" | "in_progress" | "inprogress" => Some(Self::InProgress),
+            "blocked" => Some(Self::Blocked),
+            "closed" => Some(Self::Closed),
+            "ready" => Some(Self::Ready),
+            _ => None,
         }
     }
 }
@@ -6792,6 +6826,16 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
+        // Rebuild tree nodes so the Tree view reflects the new filter.
+        if matches!(self.mode, ViewMode::Tree) {
+            self.tree_cursor = self.tree_cursor.min(
+                self.tree_flat_nodes.len().saturating_sub(1),
+            );
+            self.build_tree_flat_nodes();
+            if self.tree_cursor >= self.tree_flat_nodes.len() {
+                self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
+            }
+        }
     }
 
     fn cycle_list_sort(&mut self) {
@@ -10273,6 +10317,14 @@ impl BvrApp {
     fn build_tree_flat_nodes(&mut self) {
         let issues = &self.analyzer.issues;
 
+        // Precompute which issues pass the active list filter so the tree
+        // only shows matching issues (and their structural parents).
+        let filter_active = self.list_filter != ListFilter::All;
+        let passes: Vec<bool> = issues
+            .iter()
+            .map(|issue| self.issue_matches_filter(issue))
+            .collect();
+
         // Build a map from issue ID to index.
         let id_to_index: std::collections::HashMap<&str, usize> = issues
             .iter()
@@ -10345,6 +10397,50 @@ impl BvrApp {
 
         roots.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
 
+        // When a list filter is active, compute which nodes are "visible":
+        // an issue that matches the filter, plus any ancestor whose subtree
+        // contains a matching descendant (so the tree structure stays intact).
+        let visible: Option<std::collections::HashSet<usize>> = if filter_active {
+            let mut vis: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            // Mark matching leaves and propagate upward.
+            fn mark_visible(
+                idx: usize,
+                children_of: &std::collections::HashMap<usize, Vec<usize>>,
+                passes: &[bool],
+                vis: &mut std::collections::HashSet<usize>,
+                visited: &mut std::collections::HashSet<usize>,
+            ) -> bool {
+                if !visited.insert(idx) {
+                    return vis.contains(&idx);
+                }
+                let mut dominated = passes[idx];
+                if let Some(children) = children_of.get(&idx) {
+                    for &child in children {
+                        if mark_visible(child, children_of, passes, vis, visited) {
+                            dominated = true;
+                        }
+                    }
+                }
+                if dominated {
+                    vis.insert(idx);
+                }
+                dominated
+            }
+            let mut visited_mark: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
+            for &root in &roots {
+                mark_visible(root, &children_of, &passes, &mut vis, &mut visited_mark);
+            }
+            Some(vis)
+        } else {
+            None
+        };
+
+        // Filter roots to only visible ones when a filter is active.
+        if let Some(ref vis) = visible {
+            roots.retain(|idx| vis.contains(idx));
+        }
+
         // Collect issue IDs for collapse state lookup (avoids borrow conflict).
         let issue_ids: Vec<String> = issues.iter().map(|i| i.id.clone()).collect();
 
@@ -10371,7 +10467,10 @@ impl BvrApp {
                 .map(|c| {
                     c.iter()
                         .copied()
-                        .filter(|idx| !visited.contains(idx))
+                        .filter(|idx| {
+                            !visited.contains(idx)
+                                && visible.as_ref().map_or(true, |v| v.contains(idx))
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
@@ -14858,14 +14957,23 @@ fn new_app_with_background(
 }
 
 pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
-    run_tui_with_background(issues, None)
+    run_tui_with_background(issues, None, None, None)
 }
 
 pub fn run_tui_with_background(
     issues: Vec<Issue>,
     background_config: Option<BackgroundModeConfig>,
+    initial_view: Option<ViewMode>,
+    initial_filter: Option<ListFilter>,
 ) -> Result<()> {
-    let model = new_app_with_background(issues, ViewMode::Main, background_config);
+    let mode = initial_view.unwrap_or(ViewMode::Main);
+    let mut model = new_app_with_background(issues, mode, background_config);
+    if let Some(filter) = initial_filter {
+        model.list_filter = filter;
+        if matches!(mode, ViewMode::Tree) {
+            model.build_tree_flat_nodes();
+        }
+    }
     App::new(model)
         .screen_mode(ScreenMode::AltScreen)
         .run()

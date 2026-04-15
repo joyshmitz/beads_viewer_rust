@@ -433,6 +433,17 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_hooks: bool,
 
+    /// Start the TUI in the given view instead of Main.
+    /// Supported: main, board, insights, graph, history, actionable,
+    /// attention, tree, labels, flow, timediff, sprint.
+    #[arg(long)]
+    pub view: Option<String>,
+
+    /// Start the TUI with a list-status filter applied.
+    /// Supported: all, open, in-progress, blocked, closed, ready.
+    #[arg(long)]
+    pub list_filter: Option<String>,
+
     /// Render a named TUI view non-interactively and output to stdout.
     /// Supported views: insights, board, history, main, graph.
     #[arg(long)]

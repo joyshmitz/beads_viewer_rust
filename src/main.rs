@@ -2489,7 +2489,30 @@ fn main() -> ExitCode {
             config.poll_interval_ms
         );
     }
-    match bvr::tui::run_tui_with_background(issues.to_vec(), background_runtime) {
+    let initial_view = cli.view.as_deref().map(|v| {
+        bvr::tui::ViewMode::from_cli(v).unwrap_or_else(|| {
+            eprintln!(
+                "warning: unknown --view '{v}'; supported: main, board, insights, graph, \
+                 history, actionable, attention, tree, labels, flow, timediff, sprint"
+            );
+            bvr::tui::ViewMode::Main
+        })
+    });
+    let initial_filter = cli.list_filter.as_deref().map(|f| {
+        bvr::tui::ListFilter::from_cli(f).unwrap_or_else(|| {
+            eprintln!(
+                "warning: unknown --list-filter '{f}'; supported: all, open, in-progress, \
+                 blocked, closed, ready"
+            );
+            bvr::tui::ListFilter::All
+        })
+    });
+    match bvr::tui::run_tui_with_background(
+        issues.to_vec(),
+        background_runtime,
+        initial_view,
+        initial_filter,
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");

@@ -5030,15 +5030,22 @@ impl BvrApp {
                 self.move_selection_relative(-(self.list_page_step() as isize));
             }
             // Ctrl-F / Ctrl-B — full page scroll (vim aliases for PageDown/PageUp)
+            // Guard on focus==List (not tree_shortcut_focus which includes Detail)
+            // so that Ctrl-F in Tree+Detail correctly scrolls the detail pane
+            // via the non-Board+Detail handler below.
             KeyCode::Char('f')
-                if modifiers.contains(Modifiers::CTRL) && self.tree_shortcut_focus() =>
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
             {
                 let step = self.list_page_step();
                 self.tree_cursor =
                     (self.tree_cursor + step).min(self.tree_flat_nodes.len().saturating_sub(1));
             }
             KeyCode::Char('b')
-                if modifiers.contains(Modifiers::CTRL) && self.tree_shortcut_focus() =>
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
             {
                 let step = self.list_page_step();
                 self.tree_cursor = self.tree_cursor.saturating_sub(step);

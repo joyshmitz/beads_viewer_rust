@@ -5017,6 +5017,23 @@ impl BvrApp {
             }
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
+            {
+                let half = self.list_page_step() / 2;
+                self.tree_cursor =
+                    (self.tree_cursor + half).min(self.tree_flat_nodes.len().saturating_sub(1));
+            }
+            KeyCode::Char('u')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
+            {
+                let half = self.list_page_step() / 2;
+                self.tree_cursor = self.tree_cursor.saturating_sub(half);
+            }
+            KeyCode::Char('d')
+                if modifiers.contains(Modifiers::CTRL)
                     && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::List =>
             {

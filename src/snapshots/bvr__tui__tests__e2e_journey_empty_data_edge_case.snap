@@ -168,7 +168,7 @@ Actionable: 0 tracks, 0 items │ j/k navigate │ Tab focus │ a/Esc back
 bvr 1 Main b Board i Insights T Tree | mode=Tree | focus=list | issues=0/0 | filter=all |
 ┌Dependency Tree [focus]─────────────────┐┌Issue Detail────────────────────────────────────────────┐
 │                                        ││                                                        │
-│ (no issues loaded)                     ││ (no node selected)                                     │
+│ (no dependency tree — all issues are i ││ (no node selected)                                     │
 │                                        ││                                                        │
 │                                        ││                                                        │
 │                                        ││                                                        │

@@ -130,7 +130,7 @@ bvr 1 Main b Board i In T Tree  | 3/3 |
 │ Dependency ││ ID: A                  │
 │            ││ Title: Root            │
 │ > [-] o P0 ││ Status: open           │
-│    |   `-  ││ Type: task             │
+│   │   └──  ││ Type: task             │
 │       x P0 ││ Depth: 0               │
 │            ││ Labels: core, parity   │
 │            ││                        │

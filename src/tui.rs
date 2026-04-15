@@ -8032,6 +8032,7 @@ impl BvrApp {
         match self.mode {
             ViewMode::Main => self.main_list_render_text(width),
             ViewMode::Graph => self.graph_list_render_text(width),
+            ViewMode::Tree => self.tree_list_render_text(width),
             _ => RichText::raw(self.list_panel_text()),
         }
     }
@@ -10214,22 +10215,46 @@ impl BvrApp {
     }
 
     fn tree_list_text(&self) -> String {
+        self.tree_list_render_text(80).to_plain_text()
+    }
+
+    fn tree_list_render_text(&self, width: u16) -> RichText {
         if self.tree_flat_nodes.is_empty() {
-            return "(no dependency tree — all issues are independent)".to_string();
+            return RichText::raw(
+                "(no dependency tree — all issues are independent)".to_string(),
+            );
         }
 
+        let line_width = usize::from(width.saturating_sub(2)).max(24);
         let mut lines = Vec::new();
-        lines.push(format!(
-            "Dependency tree ({} nodes) | Enter expand/collapse | T/Esc back",
-            self.tree_flat_nodes.len()
+
+        lines.push(panel_header(
+            "Dependency tree",
+            Some(&format!(
+                "{} nodes | Enter expand/collapse | T/Esc back",
+                self.tree_flat_nodes.len()
+            )),
         ));
-        lines.push(String::new());
+        lines.push(section_separator(line_width));
 
         for (i, node) in self.tree_flat_nodes.iter().enumerate() {
-            let marker = if i == self.tree_cursor { '>' } else { ' ' };
+            let is_selected = i == self.tree_cursor;
             let issue = &self.analyzer.issues[node.issue_index];
+            let mut line = RichLine::new();
 
-            // Build tree prefix with Unicode box-drawing characters.
+            // Cursor marker
+            let marker_style = if is_selected {
+                tokens::selected()
+            } else {
+                tokens::dim()
+            };
+            line.push_span(RichSpan::styled(
+                if is_selected { "▸" } else { " " },
+                marker_style,
+            ));
+            line.push_span(RichSpan::raw(" "));
+
+            // Tree prefix (box-drawing characters)
             let mut prefix = String::new();
             for &parent_was_last in &node.ancestry_last {
                 if parent_was_last {
@@ -10238,7 +10263,6 @@ impl BvrApp {
                     prefix.push_str("│   ");
                 }
             }
-
             if node.depth > 0 {
                 if node.is_last_sibling {
                     prefix.push_str("└── ");
@@ -10246,15 +10270,45 @@ impl BvrApp {
                     prefix.push_str("├── ");
                 }
             }
+            if !prefix.is_empty() {
+                line.push_span(RichSpan::styled(prefix, tokens::dim()));
+            }
 
-            // Collapse indicator.
-            let collapse_indicator = if node.has_children {
-                if node.is_collapsed { "[+] " } else { "[-] " }
+            // Collapse indicator
+            if node.has_children {
+                let indicator = if node.is_collapsed { "[+] " } else { "[-] " };
+                line.push_span(RichSpan::styled(indicator, tokens::panel_title()));
             } else {
-                "    "
-            };
+                line.push_span(RichSpan::raw("    "));
+            }
 
+            // Status icon with status-specific color
             let si = status_icon(&issue.status);
+            line.push_span(RichSpan::styled(
+                si,
+                tokens::status_style(&issue.status),
+            ));
+            line.push_span(RichSpan::raw(" "));
+
+            // Priority badge
+            line.push_span(priority_badge(issue.priority));
+            line.push_span(RichSpan::raw(" "));
+
+            // Issue ID
+            line.push_span(RichSpan::styled(
+                truncate_display(&issue.id, 12),
+                tokens::dim(),
+            ));
+            line.push_span(RichSpan::raw(" "));
+
+            // Title
+            let title_width = line_width.saturating_sub(30 + node.depth * 4);
+            line.push_span(RichSpan::styled(
+                truncate_display(&issue.title, title_width.max(8)),
+                tokens::help_desc(),
+            ));
+
+            // Dependency indicators
             let blocks = self
                 .analyzer
                 .metrics
@@ -10263,34 +10317,32 @@ impl BvrApp {
                 .copied()
                 .unwrap_or(0);
             let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
-            let dep_tag = if open_bl > 0 {
-                format!(" \u{2298}{open_bl}")
-            } else if blocks > 0 {
-                format!(" \u{2193}{blocks}")
-            } else {
-                String::new()
-            };
-            let cycle_tag = if self
+            let bl = blocker_indicator(open_bl, blocks);
+            if !bl.is_empty() {
+                line.push_span(RichSpan::raw(" "));
+                for s in bl {
+                    line.push_span(s);
+                }
+            }
+
+            // Cycle indicator
+            if self
                 .analyzer
                 .metrics
                 .cycles
                 .iter()
                 .any(|c| c.contains(&issue.id))
             {
-                " \u{27f3}"
-            } else {
-                ""
-            };
+                line.push_span(RichSpan::styled(
+                    " \u{27f3}",
+                    tokens::status_style("blocked"),
+                ));
+            }
 
-            lines.push(format!(
-                "{marker} {prefix}{collapse_indicator}{si} P{} {} {}{dep_tag}{cycle_tag}",
-                issue.priority.clamp(0, 4),
-                issue.id,
-                truncate_str(&issue.title, 30)
-            ));
+            lines.push(line);
         }
 
-        lines.join("\n")
+        RichText::from_lines(lines)
     }
 
     fn tree_detail_text(&self) -> String {

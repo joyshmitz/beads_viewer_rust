@@ -10236,14 +10236,11 @@ impl BvrApp {
         // depends_on_id pointing to its parent.
         let mut children_of: std::collections::HashMap<usize, Vec<usize>> =
             std::collections::HashMap::new();
-        let mut has_parent: std::collections::HashSet<usize> =
-            std::collections::HashSet::new();
+        let mut has_parent: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         for (i, issue) in issues.iter().enumerate() {
             for dep in &issue.dependencies {
-                if dep.is_parent_child()
-                    && !dep.depends_on_id.trim().is_empty()
-                {
+                if dep.is_parent_child() && !dep.depends_on_id.trim().is_empty() {
                     if let Some(&parent_idx) = id_to_index.get(dep.depends_on_id.as_str()) {
                         children_of.entry(parent_idx).or_default().push(i);
                         has_parent.insert(i);
@@ -10312,8 +10309,7 @@ impl BvrApp {
             stack.push((root_idx, 0, is_last, Vec::new()));
         }
 
-        let mut visited: std::collections::HashSet<usize> =
-            std::collections::HashSet::new();
+        let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         while let Some((issue_idx, depth, is_last, ancestry)) = stack.pop() {
             if !visited.insert(issue_idx) {
@@ -10323,7 +10319,12 @@ impl BvrApp {
             let issue_id = &issue_ids[issue_idx];
             let children: Vec<usize> = children_of
                 .get(&issue_idx)
-                .map(|c| c.iter().copied().filter(|idx| !visited.contains(idx)).collect())
+                .map(|c| {
+                    c.iter()
+                        .copied()
+                        .filter(|idx| !visited.contains(idx))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let is_collapsed = self.tree_collapsed.contains(issue_id);
@@ -10527,9 +10528,7 @@ impl BvrApp {
 
     fn tree_list_render_text(&self, width: u16) -> RichText {
         if self.tree_flat_nodes.is_empty() {
-            return RichText::raw(
-                "(no dependency tree — all issues are independent)".to_string(),
-            );
+            return RichText::raw("(no dependency tree — all issues are independent)".to_string());
         }
 
         let line_width = usize::from(width.saturating_sub(2)).max(24);
@@ -10621,10 +10620,7 @@ impl BvrApp {
 
             // Status icon with status-specific color
             let si = status_icon(&issue.status);
-            line.push_span(RichSpan::styled(
-                si,
-                tokens::status_style(&issue.status),
-            ));
+            line.push_span(RichSpan::styled(si, tokens::status_style(&issue.status)));
             line.push_span(RichSpan::raw(" "));
 
             // Priority badge
@@ -15466,12 +15462,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17558,12 +17554,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17668,12 +17664,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17772,12 +17768,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17894,12 +17890,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18000,12 +17996,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18107,12 +18103,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18215,12 +18211,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18318,12 +18314,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18436,12 +18432,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18578,12 +18574,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18825,12 +18821,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18935,12 +18931,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
-        tree_search_active: false,
-        tree_search_query: String::new(),
-        tree_search_match_cursor: 0,
-        pending_g: false,
-        g_pre_toggle_mode: None,
-        pending_z: false,
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,

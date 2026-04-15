@@ -119,7 +119,7 @@ Actionable: 3 tracks, 3 items │ j/k navigate │ Tab focus │ a/Esc back
 bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default
 ┌Dependency Tree [focus]─────────────────────┐┌Issue Detail────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ Dependency tree  3 nodes | Enter expand/co ││ ID: A                                                                  │
+│ Dependency tree  3 nodes | Enter/za toggle ││ ID: A                                                                  │
 │ ────────────────────────────────────────── ││ Title: Feature work                                                    │
 │ ▸     o P1 A Feature work                  ││ Status: open                                                           │
 │       o P2 B Bug fix                       ││ Type: feature                                                          │
@@ -156,7 +156,7 @@ Tree: 3 nodes │ j/k navigate │ Enter expand/collapse │ Tab focus │ T/Esc
 bvr 1 Main b Board i Insights g Graph h History T Tree | mode=Tree | focus=list | issues=3/3 | filter=all | sort=default
 ┌Dependency Tree [focus]─────────────────────┐┌Issue Detail────────────────────────────────────────────────────────────┐
 │                                            ││                                                                        │
-│ Dependency tree  3 nodes | Enter expand/co ││ ID: A                                                                  │
+│ Dependency tree  3 nodes | Enter/za toggle ││ ID: A                                                                  │
 │ ────────────────────────────────────────── ││ Title: Feature work                                                    │
 │ ▸     o P1 A Feature work                  ││ Status: open                                                           │
 │       o P2 B Bug fix                       ││ Type: feature                                                          │

@@ -8016,7 +8016,9 @@ impl BvrApp {
                     ("Ctrl+0", "Reset pane splits"),
                     ("PgUp/PgDn", "Jump by 10"),
                     ("Home/End", "Jump to top/bottom"),
+                    ("gg", "Jump to top (any view)"),
                     ("G", "Jump to bottom"),
+                    ("Ctrl+f/b", "Full page down/up"),
                     ("Tab / Shift+Tab", "Toggle focus forward/back"),
                     ("J/K", "Navigate deps in detail"),
                     ("Enter", "Return to main / drill"),
@@ -8085,6 +8087,15 @@ impl BvrApp {
                     ("H/L", "First/last lane"),
                     ("0/$", "First/last in lane"),
                     ("e", "Toggle empty lanes"),
+                ],
+            },
+            Section {
+                title: "Tree",
+                bindings: vec![
+                    ("Enter/za", "Toggle fold"),
+                    ("zo/zc", "Open/close fold"),
+                    ("zR/zM", "Open/close all folds"),
+                    ("zz", "Recenter cursor"),
                 ],
             },
             Section {

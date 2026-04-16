@@ -10552,18 +10552,81 @@ impl BvrApp {
         }
     }
 
-    /// `zc` — close the fold under the cursor (no-op if already closed or leaf).
+    /// `zc` — close the fold under the cursor.
+    ///
+    /// Vim semantics: if the cursor is on a foldable node, close it.
+    /// If the cursor is on a leaf (or an already-collapsed node whose
+    /// parent fold should close next), walk up to the nearest ancestor
+    /// with children and collapse *that* fold, then move the cursor to
+    /// the newly-closed parent so repeat `zc` keeps walking up.
+    ///
+    /// Uses the flat-node depth column: the parent of the node at
+    /// flat index `i` is the nearest preceding node with
+    /// `depth < nodes[i].depth`. This matches the DFS invariant in
+    /// `build_tree_flat_nodes` and avoids rebuilding the parent map.
     fn tree_collapse_current(&mut self) {
-        if let Some(node) = self.tree_flat_nodes.get(self.tree_cursor) {
-            if node.has_children {
-                let issue_id = self.analyzer.issues[node.issue_index].id.clone();
-                if self.tree_collapsed.insert(issue_id) {
-                    self.build_tree_flat_nodes();
-                    if self.tree_cursor >= self.tree_flat_nodes.len() {
-                        self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
-                    }
+        let Some(node) = self.tree_flat_nodes.get(self.tree_cursor) else {
+            return;
+        };
+        let cursor_has_children = node.has_children;
+        let cursor_issue_index = node.issue_index;
+        let cursor_depth = node.depth;
+        let cursor_issue_id = self.analyzer.issues[cursor_issue_index].id.clone();
+
+        // Case 1: cursor is on a foldable, currently-open node — collapse it in place.
+        if cursor_has_children && !self.tree_collapsed.contains(&cursor_issue_id) {
+            if self.tree_collapsed.insert(cursor_issue_id) {
+                self.build_tree_flat_nodes();
+                if self.tree_cursor >= self.tree_flat_nodes.len() {
+                    self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
                 }
             }
+            return;
+        }
+
+        // Case 2: cursor is on a leaf or an already-collapsed node.
+        // Walk up the flat list to find the nearest enclosing ancestor
+        // with children. The flat list is a DFS order, so the parent of
+        // the node at index `i` is the nearest preceding node with
+        // `depth < nodes[i].depth`.
+        let mut ancestor_cursor: Option<usize> = None;
+        let mut search_depth = cursor_depth;
+        let mut i = self.tree_cursor;
+        while i > 0 {
+            i -= 1;
+            let n = &self.tree_flat_nodes[i];
+            if n.depth < search_depth {
+                if n.has_children {
+                    ancestor_cursor = Some(i);
+                    break;
+                }
+                // Keep climbing past depth boundaries (defensive; the DFS
+                // invariant guarantees any depth-decreasing parent has children).
+                search_depth = n.depth;
+            }
+        }
+
+        let Some(ancestor_idx) = ancestor_cursor else {
+            // Orphan leaf at root — nothing to collapse. No-op gracefully.
+            return;
+        };
+
+        let ancestor_issue_index = self.tree_flat_nodes[ancestor_idx].issue_index;
+        let ancestor_issue_id = self.analyzer.issues[ancestor_issue_index].id.clone();
+        let inserted = self.tree_collapsed.insert(ancestor_issue_id.clone());
+        if inserted {
+            self.build_tree_flat_nodes();
+        }
+        // Move cursor to the newly-closed ancestor (by issue id, since
+        // the flat list was rebuilt and descendant rows vanished).
+        if let Some(new_cursor) = self
+            .tree_flat_nodes
+            .iter()
+            .position(|n| self.analyzer.issues[n.issue_index].id == ancestor_issue_id)
+        {
+            self.tree_cursor = new_cursor;
+        } else if self.tree_cursor >= self.tree_flat_nodes.len() {
+            self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
         }
     }
 
@@ -26444,5 +26507,141 @@ mod tests {
         .to_plain_text();
         assert!(text.contains("⊘2"), "blocker missing: {text}");
         assert!(text.contains("↓1"), "downstream count missing: {text}");
+    }
+
+    // ---------- tree fold (zc / zo) tests ----------
+
+    /// Build a three-level parent-child tree:
+    ///     P
+    ///     ├── C1   (leaf)
+    ///     ├── C2
+    ///     │   └── G (leaf grandchild of P, child of C2)
+    ///     └── C3   (leaf)
+    fn tree_fold_fixture_issues() -> Vec<Issue> {
+        let p = Issue {
+            id: "P".to_string(),
+            title: "Parent".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let mk_child = |id: &str, parent: &str| Issue {
+            id: id.to_string(),
+            title: id.to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            dependencies: vec![Dependency {
+                issue_id: id.to_string(),
+                depends_on_id: parent.to_string(),
+                dep_type: "parent-child".to_string(),
+                ..Dependency::default()
+            }],
+            ..Issue::default()
+        };
+        vec![
+            p,
+            mk_child("C1", "P"),
+            mk_child("C2", "P"),
+            mk_child("G", "C2"),
+            mk_child("C3", "P"),
+        ]
+    }
+
+    fn tree_app_with(issues: Vec<Issue>) -> BvrApp {
+        let mut app = new_app(ViewMode::Tree, 0);
+        app.analyzer = Analyzer::new(issues);
+        app.tree_cursor = 0;
+        app.tree_collapsed = std::collections::HashSet::new();
+        app.build_tree_flat_nodes();
+        app
+    }
+
+    fn tree_row_ids(app: &BvrApp) -> Vec<String> {
+        app.tree_flat_nodes
+            .iter()
+            .map(|n| app.analyzer.issues[n.issue_index].id.clone())
+            .collect()
+    }
+
+    fn tree_cursor_id(app: &BvrApp) -> String {
+        app.tree_flat_nodes
+            .get(app.tree_cursor)
+            .map(|n| app.analyzer.issues[n.issue_index].id.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn tree_zc_on_leaf_closes_enclosing_parent_and_moves_cursor() {
+        let mut app = tree_app_with(tree_fold_fixture_issues());
+        let rows = tree_row_ids(&app);
+        // Expected DFS order: P, C1, C2, G, C3.
+        assert_eq!(rows, vec!["P", "C1", "C2", "G", "C3"]);
+
+        // Place cursor on leaf C1, press zc — should collapse P, cursor moves to P.
+        let c1_idx = rows.iter().position(|id| id == "C1").unwrap();
+        app.tree_cursor = c1_idx;
+        app.tree_collapse_current();
+        assert_eq!(
+            tree_row_ids(&app),
+            vec!["P"],
+            "all children should fold into P"
+        );
+        assert_eq!(
+            tree_cursor_id(&app),
+            "P",
+            "cursor should land on the newly closed parent"
+        );
+    }
+
+    #[test]
+    fn tree_zc_on_deep_leaf_closes_nearest_enclosing_ancestor() {
+        let mut app = tree_app_with(tree_fold_fixture_issues());
+        let rows = tree_row_ids(&app);
+
+        // Cursor on grandchild G — should close C2 (nearest foldable ancestor),
+        // NOT jump straight to P.
+        let g_idx = rows.iter().position(|id| id == "G").unwrap();
+        app.tree_cursor = g_idx;
+        app.tree_collapse_current();
+
+        let rows_after = tree_row_ids(&app);
+        assert_eq!(rows_after, vec!["P", "C1", "C2", "C3"]);
+        assert_eq!(tree_cursor_id(&app), "C2");
+
+        // Pressing zc again from C2 (now a collapsed foldable) should walk up to P.
+        app.tree_collapse_current();
+        assert_eq!(tree_row_ids(&app), vec!["P"]);
+        assert_eq!(tree_cursor_id(&app), "P");
+    }
+
+    #[test]
+    fn tree_zc_on_open_parent_still_collapses_in_place() {
+        // Regression guard: the original behavior — zc on a foldable, open node
+        // collapses that node — must still work.
+        let mut app = tree_app_with(tree_fold_fixture_issues());
+        // Cursor on P (root, foldable).
+        app.tree_cursor = 0;
+        assert_eq!(tree_cursor_id(&app), "P");
+        app.tree_collapse_current();
+        assert_eq!(tree_row_ids(&app), vec!["P"]);
+        assert_eq!(tree_cursor_id(&app), "P");
+    }
+
+    #[test]
+    fn tree_zc_on_orphan_root_leaf_is_noop() {
+        // A single issue with no children and no parent: zc must not panic or move cursor.
+        let issues = vec![Issue {
+            id: "SOLO".to_string(),
+            title: "Solo".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let mut app = tree_app_with(issues);
+        assert_eq!(tree_row_ids(&app), vec!["SOLO"]);
+        app.tree_cursor = 0;
+        app.tree_collapse_current();
+        assert_eq!(tree_row_ids(&app), vec!["SOLO"]);
+        assert_eq!(tree_cursor_id(&app), "SOLO");
     }
 }

@@ -3845,6 +3845,12 @@ impl BvrApp {
             self.ensure_selected_visible();
         }
         self.sync_insights_heatmap_selection();
+
+        // Rebuild tree flat nodes after the analyzer was replaced so
+        // stale issue_index values don't cause out-of-bounds panics
+        // when Tree view renders with the new, potentially shorter,
+        // issue list.
+        self.rebuild_tree_if_active();
     }
 
     fn board_shortcut_focus(&self) -> bool {
@@ -10214,6 +10220,9 @@ impl BvrApp {
             ViewMode::Attention => self.compute_attention(),
             _ => {}
         }
+        // Rebuild tree so stale issue_index values don't cause
+        // out-of-bounds panics with the new issue list.
+        self.rebuild_tree_if_active();
     }
 
     fn move_attention_cursor(&mut self, delta: i32) {

@@ -6826,7 +6826,12 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
-        // Rebuild tree nodes so the Tree view reflects the new filter.
+        self.rebuild_tree_if_active();
+    }
+
+    /// Rebuild tree flat nodes when in Tree view so filter changes
+    /// take effect immediately.  Clamps the cursor afterward.
+    fn rebuild_tree_if_active(&mut self) {
         if matches!(self.mode, ViewMode::Tree) {
             self.build_tree_flat_nodes();
             if self.tree_cursor >= self.tree_flat_nodes.len() {
@@ -10314,9 +10319,10 @@ impl BvrApp {
     fn build_tree_flat_nodes(&mut self) {
         let issues = &self.analyzer.issues;
 
-        // Precompute which issues pass the active list filter so the tree
-        // only shows matching issues (and their structural parents).
-        let filter_active = self.list_filter != ListFilter::All;
+        // Precompute which issues pass the active filter (list status,
+        // label, and/or repo) so the tree only shows matching issues
+        // (and their structural parents).
+        let filter_active = self.has_active_filter();
         let passes: Vec<bool> = issues
             .iter()
             .map(|issue| self.issue_matches_filter(issue))
@@ -11877,6 +11883,7 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
+        self.rebuild_tree_if_active();
     }
 
     fn set_repo_filter(&mut self, repo: &str) {
@@ -11895,6 +11902,7 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
+        self.rebuild_tree_if_active();
     }
 
     // -- end Modal pickers ---------------------------------------------------

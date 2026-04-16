@@ -6828,9 +6828,6 @@ impl BvrApp {
         self.focus = FocusPane::List;
         // Rebuild tree nodes so the Tree view reflects the new filter.
         if matches!(self.mode, ViewMode::Tree) {
-            self.tree_cursor = self.tree_cursor.min(
-                self.tree_flat_nodes.len().saturating_sub(1),
-            );
             self.build_tree_flat_nodes();
             if self.tree_cursor >= self.tree_flat_nodes.len() {
                 self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
@@ -14970,9 +14967,19 @@ pub fn run_tui_with_background(
     let mut model = new_app_with_background(issues, mode, background_config);
     if let Some(filter) = initial_filter {
         model.list_filter = filter;
-        if matches!(mode, ViewMode::Tree) {
-            model.build_tree_flat_nodes();
-        }
+    }
+    // Computed views initialise their data lazily when toggled via
+    // keybinding, but `--view` bypasses those toggle functions.
+    // Trigger the same initialisation here so the view is populated
+    // on the very first frame.
+    match mode {
+        ViewMode::Tree => model.build_tree_flat_nodes(),
+        ViewMode::LabelDashboard => model.compute_label_dashboard(),
+        ViewMode::FlowMatrix => model.compute_flow_matrix(),
+        ViewMode::Sprint => model.load_sprint_data(),
+        ViewMode::Actionable => model.compute_actionable_plan(),
+        ViewMode::Attention => model.compute_attention(),
+        _ => {}
     }
     App::new(model)
         .screen_mode(ScreenMode::AltScreen)

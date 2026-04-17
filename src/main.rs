@@ -8227,9 +8227,18 @@ mod tests {
             );
         }
 
-        // JSON must include the new field when non-empty.
+        // JSON shape: the field is serialized iff the Vec is non-empty
+        // (skip_serializing_if = "Vec::is_empty"). Assert symmetrically.
         let json = serde_json::to_value(&output).unwrap();
-        assert!(json["unlock_maximizers"].is_array());
+        if output.unlock_maximizers.is_empty() {
+            assert!(json.get("unlock_maximizers").is_none());
+        } else {
+            assert!(json["unlock_maximizers"].is_array());
+            assert_eq!(
+                json["unlock_maximizers"].as_array().unwrap().len(),
+                output.unlock_maximizers.len(),
+            );
+        }
     }
 
     #[test]

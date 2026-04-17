@@ -455,7 +455,7 @@ impl Analyzer {
     /// the motivating use case.
     #[must_use]
     pub fn top_k_unlock_set(&self, k: usize) -> advanced::TopKSetResult {
-        advanced::compute_top_k_set_public(&self.graph, &self.metrics, k)
+        advanced::compute_top_k_set(&self.graph, &self.metrics, k)
     }
 
     #[must_use]

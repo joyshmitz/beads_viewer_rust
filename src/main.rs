@@ -5805,6 +5805,8 @@ struct RobotOverviewOutput {
     top_labels: Vec<RobotOverviewLabelCount>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     fronts: Vec<RobotOverviewFront>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unlock_maximizers: Vec<RobotOverviewUnlockMaximizer>,
     commands: RobotOverviewCommands,
     usage_hints: Vec<String>,
 }
@@ -5814,6 +5816,15 @@ struct RobotOverviewFront {
     label: String,
     open_count: usize,
     representative: RobotOverviewPick,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewUnlockMaximizer {
+    id: String,
+    title: String,
+    marginal_unlocks: usize,
+    cumulative_unlocks: usize,
+    claim_command: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -5966,6 +5977,41 @@ fn build_robot_overview_output(
     });
     fronts.truncate(8);
 
+    // Unlock-maximizers come from a different objective than triage: greedy
+    // submodular selection over downstream-unlock coverage rather than the
+    // composite triage score. Items high on unlock impact but low on triage
+    // score (e.g. broad task items that unblock many descendants without
+    // scoring highly on centrality) are invisible to triage-only surfaces
+    // like `--robot-triage` and its `by-label`/`by-track` regroupings.
+    // Including them here ensures orient output combines both objectives
+    // in one compact payload. See issue #4 for the SL-000 case study.
+    let already_surfaced: BTreeSet<String> = core::iter::empty::<String>()
+        .chain(top_pick.as_ref().map(|p| p.id.clone()))
+        .chain(fronts.iter().map(|f| f.representative.id.clone()))
+        .collect();
+    let advanced = analyzer.advanced_insights();
+    let issue_title_by_id: BTreeMap<&str, &str> = issues
+        .iter()
+        .map(|issue| (issue.id.as_str(), issue.title.as_str()))
+        .collect();
+    let unlock_maximizers: Vec<RobotOverviewUnlockMaximizer> = advanced
+        .top_k_set
+        .items
+        .iter()
+        .filter(|item| !already_surfaced.contains(&item.id))
+        .take(5)
+        .map(|item| RobotOverviewUnlockMaximizer {
+            id: item.id.clone(),
+            title: issue_title_by_id
+                .get(item.id.as_str())
+                .map(|t| (*t).to_string())
+                .unwrap_or_default(),
+            marginal_unlocks: item.marginal_unlocks,
+            cumulative_unlocks: item.cumulative_unlocks,
+            claim_command: format!("br update {} --status=in_progress", item.id),
+        })
+        .collect();
+
     RobotOverviewOutput {
         envelope: envelope(issues),
         summary: RobotOverviewSummary {
@@ -5980,6 +6026,7 @@ fn build_robot_overview_output(
         top_blocker,
         top_labels,
         fronts,
+        unlock_maximizers,
         commands: RobotOverviewCommands {
             next: "bvr --robot-next".to_string(),
             triage: "bvr --robot-triage".to_string(),
@@ -7896,6 +7943,7 @@ mod tests {
             top_blocker: None,
             top_labels: Vec::new(),
             fronts: Vec::new(),
+            unlock_maximizers: Vec::new(),
             commands: super::RobotOverviewCommands {
                 next: "bvr --robot-next".to_string(),
                 triage: "bvr --robot-triage".to_string(),
@@ -7909,6 +7957,7 @@ mod tests {
         assert!(json.get("top_pick").is_none());
         assert!(json.get("top_blocker").is_none());
         assert!(json.get("top_labels").is_none());
+        assert!(json.get("unlock_maximizers").is_none());
         assert_eq!(json["commands"]["next"], "bvr --robot-next");
     }
 
@@ -8028,6 +8077,130 @@ mod tests {
             assert!(json["fronts"].is_array());
         }
         assert!(json["usage_hints"].is_array());
+    }
+
+    #[test]
+    fn robot_overview_surfaces_unlock_maximizer_triage_would_miss() {
+        // Regression test for issue #4 (SL-000 scenario).
+        //
+        // Graph layout:
+        //   UNLOCK_KING (actionable, open, priority=1) -> blocks X0..X6   (7 unlocks)
+        //   HUB_A, HUB_B, HUB_C (actionable, open, priority=0) -> each blocks 3 distinct items
+        //
+        // Triage weights centrality+priority features that make HUB_* score higher than
+        // UNLOCK_KING even though UNLOCK_KING unlocks more downstream work. Verify
+        // UNLOCK_KING shows up in `unlock_maximizers` even if it's absent from the top
+        // triage picks / fronts.
+        let mut issues = vec![
+            bvr::model::Issue {
+                id: "UNLOCK_KING".to_string(),
+                title: "Broad task that unlocks many downstream items".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["broad".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "HUB_A".to_string(),
+                title: "Hub A coordinator".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 0,
+                labels: vec!["hub".to_string(), "core".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "HUB_B".to_string(),
+                title: "Hub B coordinator".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 0,
+                labels: vec!["hub".to_string(), "core".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "HUB_C".to_string(),
+                title: "Hub C coordinator".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 0,
+                labels: vec!["hub".to_string(), "core".to_string()],
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        // 7 downstream items all blocked by UNLOCK_KING.
+        for i in 0..7 {
+            issues.push(bvr::model::Issue {
+                id: format!("DS_UK_{i}"),
+                title: format!("Downstream of UNLOCK_KING ({i})"),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                dependencies: vec![bvr::model::Dependency {
+                    issue_id: format!("DS_UK_{i}"),
+                    depends_on_id: "UNLOCK_KING".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            });
+        }
+
+        // 3 downstream items per hub (9 total).
+        for (hub, hub_id) in ["HUB_A", "HUB_B", "HUB_C"].iter().enumerate() {
+            for i in 0..3 {
+                issues.push(bvr::model::Issue {
+                    id: format!("DS_H{hub}_{i}"),
+                    title: format!("Downstream of {hub_id} ({i})"),
+                    status: "blocked".to_string(),
+                    issue_type: "task".to_string(),
+                    priority: 2,
+                    dependencies: vec![bvr::model::Dependency {
+                        issue_id: format!("DS_H{hub}_{i}"),
+                        depends_on_id: (*hub_id).to_string(),
+                        dep_type: "blocks".to_string(),
+                        ..bvr::model::Dependency::default()
+                    }],
+                    ..bvr::model::Issue::default()
+                });
+            }
+        }
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions {
+            group_by_label: true,
+            max_recommendations: 10,
+            ..bvr::analysis::triage::TriageOptions::default()
+        });
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        // Acceptance criteria from issue #4: the orient surface must include
+        // unlock-maximizing items that the triage-only view would miss.
+        assert!(
+            !output.unlock_maximizers.is_empty(),
+            "unlock_maximizers must be populated on a non-trivial graph"
+        );
+
+        // The specific UNLOCK_KING bead has the largest marginal_unlocks (7) —
+        // submodular greedy picks it first for the top_k_set.
+        let first = &output.unlock_maximizers[0];
+        assert_eq!(
+            first.id, "UNLOCK_KING",
+            "unlock_maximizers[0] must be the highest-marginal item (got {})",
+            first.id
+        );
+        assert_eq!(first.marginal_unlocks, 7);
+        assert_eq!(
+            first.claim_command, "br update UNLOCK_KING --status=in_progress",
+            "claim_command must be pre-baked for agent convenience"
+        );
+        assert!(!first.title.is_empty(), "title must be looked up from issues");
+
+        // JSON must include the new field when non-empty.
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json["unlock_maximizers"].is_array());
     }
 
     #[test]

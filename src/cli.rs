@@ -78,7 +78,7 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_next: bool,
 
-    #[arg(long, action = ArgAction::SetTrue)]
+    #[arg(long, alias = "robot-orient", action = ArgAction::SetTrue)]
     pub robot_overview: bool,
 
     #[arg(long, action = ArgAction::SetTrue)]
@@ -826,5 +826,13 @@ mod tests {
     fn parse_related_include_closed_flag() {
         let cli = Cli::parse_from(["bvr", "--robot-related", "bd-1", "--related-include-closed"]);
         assert!(cli.related_include_closed);
+    }
+
+    #[test]
+    fn robot_orient_is_alias_for_robot_overview() {
+        let overview = Cli::parse_from(["bvr", "--robot-overview"]);
+        let orient = Cli::parse_from(["bvr", "--robot-orient"]);
+        assert!(overview.robot_overview);
+        assert!(orient.robot_overview);
     }
 }

@@ -8087,10 +8087,15 @@ mod tests {
         //   UNLOCK_KING (actionable, open, priority=1) -> blocks X0..X6   (7 unlocks)
         //   HUB_A, HUB_B, HUB_C (actionable, open, priority=0) -> each blocks 3 distinct items
         //
-        // Triage weights centrality+priority features that make HUB_* score higher than
-        // UNLOCK_KING even though UNLOCK_KING unlocks more downstream work. Verify
-        // UNLOCK_KING shows up in `unlock_maximizers` even if it's absent from the top
-        // triage picks / fronts.
+        // Core invariant under test: when triage's composite score and the
+        // greedy-unlock objective disagree on ranking, the orient payload must
+        // surface high-unlock items somewhere — either via triage's own
+        // surfaces (top_pick / fronts) OR via the separate `unlock_maximizers`
+        // surface that's drawn from top_k_set. Which specific surface picks up
+        // UNLOCK_KING depends on how triage's priority/centrality weighting
+        // shakes out for this exact fixture and is intentionally not asserted.
+        // The important guarantees are (a) it lands SOMEWHERE and (b) never in
+        // two surfaces at once (dedup works).
         let mut issues = vec![
             bvr::model::Issue {
                 id: "UNLOCK_KING".to_string(),

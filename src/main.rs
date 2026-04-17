@@ -8169,6 +8169,13 @@ mod tests {
         }
 
         let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let advanced_direct = analyzer.advanced_insights();
+        // Sanity: UNLOCK_KING has the largest marginal_unlocks (7 downstream)
+        // in the top_k_set objective, so it ranks first in that ordering even
+        // though triage's composite score may prefer a different item.
+        assert_eq!(advanced_direct.top_k_set.items[0].id, "UNLOCK_KING");
+        assert_eq!(advanced_direct.top_k_set.items[0].marginal_unlocks, 7);
+
         let triage = analyzer.triage(bvr::analysis::triage::TriageOptions {
             group_by_label: true,
             max_recommendations: 10,
@@ -8176,27 +8183,49 @@ mod tests {
         });
         let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
 
-        // Acceptance criteria from issue #4: the orient surface must include
-        // unlock-maximizing items that the triage-only view would miss.
+        // Acceptance criteria from issue #4: the orient surface must combine
+        // triage and unlock-objectives so items high on unlock impact but low
+        // on triage score still surface. UNLOCK_KING must appear somewhere in
+        // the output — as top_pick, a front representative, or an unlock
+        // maximizer — but never simultaneously (the dedup logic prevents that).
+        let seen_in_top = output.top_pick.as_ref().is_some_and(|p| p.id == "UNLOCK_KING");
+        let seen_in_fronts = output
+            .fronts
+            .iter()
+            .any(|f| f.representative.id == "UNLOCK_KING");
+        let seen_in_maximizers = output
+            .unlock_maximizers
+            .iter()
+            .any(|u| u.id == "UNLOCK_KING");
         assert!(
-            !output.unlock_maximizers.is_empty(),
-            "unlock_maximizers must be populated on a non-trivial graph"
+            seen_in_top || seen_in_fronts || seen_in_maximizers,
+            "UNLOCK_KING must appear in orient output (top_pick, fronts, or unlock_maximizers)",
+        );
+        let surface_count = [seen_in_top, seen_in_fronts, seen_in_maximizers]
+            .iter()
+            .filter(|s| **s)
+            .count();
+        assert_eq!(
+            surface_count, 1,
+            "UNLOCK_KING must appear in exactly one surface — dedup prevents double counting",
         );
 
-        // The specific UNLOCK_KING bead has the largest marginal_unlocks (7) —
-        // submodular greedy picks it first for the top_k_set.
-        let first = &output.unlock_maximizers[0];
-        assert_eq!(
-            first.id, "UNLOCK_KING",
-            "unlock_maximizers[0] must be the highest-marginal item (got {})",
-            first.id
-        );
-        assert_eq!(first.marginal_unlocks, 7);
-        assert_eq!(
-            first.claim_command, "br update UNLOCK_KING --status=in_progress",
-            "claim_command must be pre-baked for agent convenience"
-        );
-        assert!(!first.title.is_empty(), "title must be looked up from issues");
+        // Each unlock maximizer must be a legitimate unlock-ordered item.
+        for (idx, um) in output.unlock_maximizers.iter().enumerate() {
+            assert!(
+                !um.id.is_empty(),
+                "unlock_maximizers[{idx}].id must not be empty",
+            );
+            assert!(
+                !um.title.is_empty(),
+                "unlock_maximizers[{idx}].title must be looked up from issues",
+            );
+            assert_eq!(
+                um.claim_command,
+                format!("br update {} --status=in_progress", um.id),
+                "claim_command must be pre-baked",
+            );
+        }
 
         // JSON must include the new field when non-empty.
         let json = serde_json::to_value(&output).unwrap();

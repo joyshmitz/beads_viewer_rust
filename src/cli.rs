@@ -78,7 +78,7 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_next: bool,
 
-    #[arg(long, alias = "robot-orient", action = ArgAction::SetTrue)]
+    #[arg(long, visible_alias = "robot-orient", action = ArgAction::SetTrue)]
     pub robot_overview: bool,
 
     #[arg(long, action = ArgAction::SetTrue)]

@@ -63,6 +63,19 @@ pub struct TopKItem {
     pub cumulative_unlocks: usize,
 }
 
+/// Public wrapper around `compute_top_k_set` for callers that only need the
+/// submodular unlock ranking and don't want to pay for the other five
+/// advanced-insight computations (coverage, k-paths, cycle-break,
+/// parallel-cut, parallel-gain).
+#[must_use]
+pub fn compute_top_k_set_public(
+    graph: &IssueGraph,
+    metrics: &GraphMetrics,
+    k: usize,
+) -> TopKSetResult {
+    compute_top_k_set(graph, metrics, k)
+}
+
 /// Greedy selection of up to `k` issues whose completion maximally unlocks downstream work.
 ///
 /// At each step we pick the open issue whose completion would unblock the most new downstream

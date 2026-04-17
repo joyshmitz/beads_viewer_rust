@@ -445,6 +445,19 @@ impl Analyzer {
         advanced::compute_advanced_insights(&self.graph, &self.metrics)
     }
 
+    /// Compute ONLY the top-k submodular unlock-maximizing set.
+    ///
+    /// Prefer this over `advanced_insights()` when the caller needs just the
+    /// unlock ranking. `advanced_insights()` additionally computes coverage,
+    /// k-paths, cycle-break, parallel-cut, and parallel-gain — each scales
+    /// with graph size, and on a 5k-issue graph that's seconds of wasted work
+    /// when all you want is top_k_set. See issue #4 (`--robot-overview`) for
+    /// the motivating use case.
+    #[must_use]
+    pub fn top_k_unlock_set(&self, k: usize) -> advanced::TopKSetResult {
+        advanced::compute_top_k_set_public(&self.graph, &self.metrics, k)
+    }
+
     #[must_use]
     pub fn priority(
         &self,

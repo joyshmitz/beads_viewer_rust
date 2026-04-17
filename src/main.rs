@@ -5989,13 +5989,17 @@ fn build_robot_overview_output(
         .chain(top_pick.as_ref().map(|p| p.id.clone()))
         .chain(fronts.iter().map(|f| f.representative.id.clone()))
         .collect();
-    let advanced = analyzer.advanced_insights();
+    // Call the single-purpose `top_k_unlock_set` helper rather than
+    // `advanced_insights()` — the latter also computes coverage, k-paths,
+    // cycle-break, parallel-cut, and parallel-gain, none of which we use
+    // here. On large graphs the unused computations add noticeable latency
+    // to every `--robot-overview` / `--robot-orient` invocation.
+    let top_k = analyzer.top_k_unlock_set(10);
     let issue_title_by_id: BTreeMap<&str, &str> = issues
         .iter()
         .map(|issue| (issue.id.as_str(), issue.title.as_str()))
         .collect();
-    let unlock_maximizers: Vec<RobotOverviewUnlockMaximizer> = advanced
-        .top_k_set
+    let unlock_maximizers: Vec<RobotOverviewUnlockMaximizer> = top_k
         .items
         .iter()
         .filter(|item| !already_surfaced.contains(&item.id))
@@ -8174,12 +8178,12 @@ mod tests {
         }
 
         let analyzer = bvr::analysis::Analyzer::new(issues.clone());
-        let advanced_direct = analyzer.advanced_insights();
+        let top_k = analyzer.top_k_unlock_set(10);
         // Sanity: UNLOCK_KING has the largest marginal_unlocks (7 downstream)
         // in the top_k_set objective, so it ranks first in that ordering even
         // though triage's composite score may prefer a different item.
-        assert_eq!(advanced_direct.top_k_set.items[0].id, "UNLOCK_KING");
-        assert_eq!(advanced_direct.top_k_set.items[0].marginal_unlocks, 7);
+        assert_eq!(top_k.items[0].id, "UNLOCK_KING");
+        assert_eq!(top_k.items[0].marginal_unlocks, 7);
 
         let triage = analyzer.triage(bvr::analysis::triage::TriageOptions {
             group_by_label: true,

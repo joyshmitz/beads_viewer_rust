@@ -151,11 +151,12 @@ Insights (already computed via analyzer.insights())
 │     "minimum cost to finish". A true critical-chain primitive does
 │     not yet exist in IssueGraph. See Economics section for v1 scope.
 ├── bottlenecks: Vec<InsightItem> → top 15 by blocks_count + score
-├── articulation_points: Vec<String> → same data, Vec form
-└── top_k_set (via advanced_insights)
-      → greedy unlock-maximizing set, different ranking objective than
-      triage. Items here may NOT appear in TriageResult.Recommendations.
-      Second candidate source for representative_items.
+└── articulation_points: Vec<String> → same data, Vec form
+
+(top_k unlock coverage is NOT consumed from Insights directly by
+ audience; it flows in via RobotOverviewOutput.unlock_maximizers,
+ which upstream builds from `analyzer.top_k_unlock_set(10)`.
+ See the Resolved dependency section for details.)
 
 RobotAlertsOutput (separate analyzer pass: analyzer.alerts())
 ├── alerts: Vec<Alert>   → alert_type (NewCycle|StaleIssue|BlockingCascade)
@@ -221,13 +222,21 @@ Constructor takes: &[Issue], &TriageResult, &GraphMetrics,
 ├── has_app             → true for engineer/owner, false for investor
 └── meta                → generated_at, data_hash, version
 
-  NOTE on representative_items: triage recommendations and insights
-  top-K set optimize for different objectives (composite score vs.
-  greedy unlock maximization). On large graphs these produce disjoint
-  top-N lists — triage output does not signal that high-unlock items
-  were excluded. representative_items should merge both sources with
-  diversity weighting to avoid executive summary clustering on one
-  graph region. If upstream --robot-overview lands, consume it here.
+  NOTE on representative_items: upstream `--robot-overview` (issue #4,
+  closed 2026-04-06, commits 92e61cd..2abdb95) now merges the two
+  candidate pools that matter — triage composite (`top_pick`/`fronts`)
+  and greedy-submodular unlock coverage (`unlock_maximizers`) — and
+  filters `unlock_maximizers` against ids already surfaced by
+  `top_pick`/`fronts`. `representative_items` consumes that payload
+  directly: no MMR / submodular selection implemented in audience,
+  no triage+insights merge duplicated here. Audience still applies a
+  local second-pass de-dup on
+  `representative.id` across `fronts` (multi-label recommendations
+  can appear as representatives for multiple labels — see Resolved
+  dependency section) and enforces an explicit item budget (1
+  `top_pick` + up to 4 unique `fronts` + fill to 8 from
+  `unlock_maximizers`). Executive summaries stay in sync with
+  `--robot-orient` automatically.
 
                     ↓ (template rendering)
 
@@ -393,10 +402,19 @@ Files: `src/audience/mod.rs` (continues Step 1 module)
   Maps priority + due_date + alerts + suggestions to Reinertsen archetypes
 - `AudienceView` owned struct — constructor extracts values from
   `&[Issue]`, `&TriageResult`, `&GraphMetrics`, `&ForecastOutput`,
-  `&RobotAlertsOutput`, `&RobotSuggestOutput`, `&OverlayConfig`,
-  `&Insights` (for top-K set used in representative_items selection;
-  alerts and suggestions are separate `analyzer.alerts()` /
-  `analyzer.suggest()` passes — not part of TriageResult)
+  `&RobotAlertsOutput`, `&RobotSuggestOutput`, `&RobotOverviewOutput`,
+  `&OverlayConfig` (alerts and suggestions are separate
+  `analyzer.alerts()` / `analyzer.suggest()` passes — not part of
+  `TriageResult`; `RobotOverviewOutput` is built via
+  `build_robot_overview_output(issues, analyzer, triage)` which must
+  first be moved from `src/main.rs` (the binary crate) into
+  `src/robot.rs` alongside `RobotEnvelope` and declared `pub` — a
+  `pub` in `main.rs` alone is unreachable from the library crate
+  where `src/audience/` lives. See Resolved dependency section.
+  `representative_items` is a thin projection of that payload with
+  local `representative.id` de-dup across `fronts` plus an explicit
+  1+4+3 item budget — not a full MMR / submodular pass, which
+  upstream already performs)
 - `has_app` field: true for engineer/owner, false for investor
 - Derive `Serialize` for robot-mode JSON output
 - Inline `#[cfg(test)]` unit tests: economics math, flow classification,
@@ -447,10 +465,12 @@ Executive summary (shell.html):
 - Sections: header, KPI cards (5 dimensions), risks, flow distribution,
   urgency breakdown, next steps
 - **Next steps renders `AudienceView.representative_items`** — NOT
-  `TriageResult.recommendations` directly. See data flow section for
-  why: triage clusters on large graphs and misses high-unlock items
-  from insights top-K. The template must consume the merged,
-  diversity-weighted selection, not the raw triage candidate pool.
+  `TriageResult.recommendations` directly. `representative_items` is
+  projected from `RobotOverviewOutput` (triage composite + submodular
+  unlock maximizers, de-duplicated), which upstream `--robot-overview`
+  / `--robot-orient` already computes. Rendering from raw triage
+  would clip high-unlock items like SL-000 on large graphs — see the
+  Resolved dependency section for the fixture and regression test.
 - Deep links rendered conditionally via `has_app`:
   - engineer/owner: links to `./index.html` (full SPA) and `./dashboard/`
   - investor: links to `./dashboard/` only (no SPA generated)
@@ -630,50 +650,104 @@ src/audience/
 
 | File | Change | Lines (est.) |
 |------|--------|-------------|
-| `src/audience/mod.rs` | NEW: structs, economics, flow, urgency, validation, locales | +400 |
+| `src/audience/mod.rs` | NEW: structs, economics, flow, urgency, validation, locales, representative_items projection from RobotOverviewOutput | +350 |
 | `src/audience/templates.rs` | NEW: placeholder engine + shell/dashboard renderers | +270 |
 | `src/audience/shell.html` | NEW: executive summary template | +100 |
 | `src/audience/dashboard.html` | NEW: dashboard template | +150 |
 | `src/audience/en.yaml` | NEW: English strings | +40 |
 | `src/audience/uk.yaml` | NEW: Ukrainian strings | +40 |
 | `src/cli.rs` | Add 4 flags + validation rules | +30 |
-| `src/main.rs` | Wire audience + robot-economics dispatch | +80 |
-| `src/robot.rs` | `implemented_robot_command_names`, docs, schema entries | +40 |
+| `src/main.rs` | Wire audience + robot-economics dispatch; delete moved overview types/builder (net change dominated by additions, ~−120 from removal + ~+80 dispatch) | ~−40 net |
+| `src/robot.rs` | `implemented_robot_command_names`, docs, schema entries (+40) + relocated overview types & builder from `main.rs` (~+200) | +240 |
+| *(prerequisite refactor)* | Move `RobotOverviewOutput`, `RobotOverviewPick`, `RobotOverviewFront`, `RobotOverviewUnlockMaximizer`, `RobotOverviewLabelCount`, `RobotOverviewCommands`, `RobotOverviewSummary`, `RobotOverviewBlocker`, and `build_robot_overview_output()` from `src/main.rs` to `src/robot.rs`, declare `pub`, update single call site. Net LOC: ~0 — a code shift, not new lines. Counted already in `main.rs` / `robot.rs` rows above. | n/a |
 | `src/export_pages.rs` | 4th param to bundle fn, audience branch, routing | +100 |
 | `src/export_md.rs` | Extend `HookContext` + `build_hook_env` for audience vars | +20 |
 | `src/pages_wizard.rs` | Audience awareness in config summary + operator messaging | +30 |
 | `scripts/e2e_preview_pages.sh` | Extend preview/watch/pages operator script with audience scenarios + artifact logging | +80 |
 | `src/lib.rs` | `pub mod audience;` | +1 |
 | `tests/` | Conformance + e2e + snapshot + mechanical `, None` additions | +280 |
-| **Total** | | **~1660** |
+| **Total** | (net project growth) | **~1600** |
+| *(diff-insertions incl. move)* | Add ~200 LOC of relocated code (diff counts move both as + in `robot.rs` and − in `main.rs`) | ~1800 |
 
-## Open dependency: upstream --robot-overview (#4)
+## Resolved dependency: upstream --robot-overview (#4, closed 2026-04-06)
 
-Dicklesworthstone/beads_viewer_rust#4 tracks a compact diverse-selection
-surface (`--robot-overview`). We contributed concrete data showing triage
-clustering on `stress_large_500.jsonl` and the gap between triage and
-insights top-K. Status: open, maintainer interested but not committed.
+Dicklesworthstone/beads_viewer_rust#4 shipped and closed the coverage
+gap we raised. The issue was closed 2026-04-06; the maintainer's
+closing rationale and SL-000 walkthrough landed as a follow-up comment
+on 2026-04-17 (comment `4266752765`). The merged implementation draws
+from both candidate sources — exactly the condition we called out as
+required. Relevant commits now in `main`:
 
-**Caveat:** the upstream discussion frames `--robot-overview` as MMR
-over existing scored recommendations — i.e. diversifying within the
-triage pool. On `stress_large_500.jsonl`, SL-000 (49 unlocks) never
-enters `TriageResult.recommendations` at all, so MMR over that pool
-would still miss it. Upstream `--robot-overview` would only close this
-gap if it draws candidates from both triage and insights top-K (or
-equivalent). If it diversifies only within triage, the SL-000 class
-of items remains invisible.
+- `92e61cd` — Add robot overview output
+- `a357d9d` — fronts coverage tests
+- `b7d8316` — README docs
+- **`2abdb95`** — `feat(robot_overview): surface unlock-maximizers
+  alongside triage picks` (the fix)
+- `d38b9ba` — harden regression test when `UNLOCK_KING` lands in `top_pick`
+- `e9f4078` — JSON-shape symmetry with `skip_serializing_if`
+- `e05e83e` — `--robot-orient` as visible alias for `--robot-overview`
+- `b77a7f0` / `4a800e7` / `84dbfe9` — follow-up cleanup, direct
+  `top_k_unlock_set` call, `compute_top_k_set` promoted to `pub`
 
-**Baseline: internal merge path.** `AudienceView.representative_items`
-must merge triage recommendations + insights top-K set as candidate
-sources, then apply diversity selection. This is the implementation
-baseline regardless of upstream. If a future upstream `--robot-overview`
-draws from both sources, audience-export can consume it instead — but
-that is an optimization, not a dependency.
+**Verified on the fixture we flagged.** Regression test
+`robot_overview_surfaces_unlock_maximizer_triage_would_miss` in
+`src/main.rs` asserts that `SL-000` (49 unlocks) appears in
+`unlock_maximizers` on `tests/testdata/stress_large_500.jsonl`. The
+SL-000 invisibility caveat no longer applies.
 
-For multi-agent swarms: a diversity-aware selection is also a work
-distribution primitive — a coordinator can partition agents across graph
-regions from the first assignment cycle instead of sending all agents to
-the same triage hotspot.
+**Upstream shape (consumed by audience export):** `build_robot_overview_output()`
+in `src/main.rs` returns `RobotOverviewOutput` with three objective-distinct
+candidate pools plus graph summary:
+
+- `top_pick: Option<RobotOverviewPick>` — triage composite winner
+- `fronts: Vec<RobotOverviewFront>` — per-label triage representatives
+  from `triage.recommendations_by_label`. **Caveat:** multi-label
+  recommendations are inserted into every matching label group
+  (`src/analysis/triage.rs:1108`), so a single issue can appear as
+  representative of multiple fronts. `representative_items` must apply
+  a local de-dup pass on `representative.id` after flattening fronts.
+- `unlock_maximizers: Vec<RobotOverviewUnlockMaximizer>` — greedy
+  submodular unlock coverage from `analyzer.top_k_unlock_set(10)` (the
+  single-purpose helper, not full `advanced_insights()`, per `4a800e7`),
+  filtered to exclude whatever `top_pick`/`fronts` already surfaced
+  (`src/main.rs:5988-6005`)
+- plus `summary`, `top_blocker`, `top_labels`, `commands`, `usage_hints`
+
+**Integration baseline (simplified):** Audience export consumes this
+function's output directly. The internal triage+insights merge path
+is no longer needed — upstream already does it, and duplicating the
+merge would drift.
+
+**Required upstream refactor: move overview types from `src/main.rs`
+to `src/robot.rs`.** `main.rs` is the `[[bin]]` target (see `Cargo.toml`);
+the audience module will live in the library crate (`src/audience/`,
+declared in `src/lib.rs`). Library code cannot import symbols from the
+binary target, so a simple `pub` on the types in `main.rs` does not
+make them reachable from `src/audience/`. The fix is a prerequisite
+refactor: move `RobotOverviewOutput`, `RobotOverviewPick`,
+`RobotOverviewFront`, `RobotOverviewUnlockMaximizer`,
+`RobotOverviewLabelCount`, `RobotOverviewCommands`,
+`RobotOverviewSummary`, `RobotOverviewBlocker`, and
+`build_robot_overview_output()` from `src/main.rs` to `src/robot.rs`
+(alongside `RobotEnvelope`), declare them `pub`, and update the call
+site in `main.rs` to use the new module path. Net LOC: ~0 (code moves,
+does not duplicate). This refactor is a hard prerequisite, not an
+optimization.
+
+**Item-budget policy for `representative_items` (explicit):** always
+include `top_pick` if present (1 slot), then up to 4 `fronts` entries
+de-duplicated by `representative.id` (catches the multi-label caveat
+above), then fill remaining slots from `unlock_maximizers` up to a
+hard cap of 8 total. Common case: 1 + 4 + 3 = 8. Preserves the orient
+composite winner, shows breadth across labels, and guarantees at
+least some pure unlock coverage. Unlock items do not carry
+`score`/`reasons`; the executive summary renders them as "unblocks N
+downstream issues" cards, not as pretended triage picks.
+
+For multi-agent swarms: the same payload also works as a work
+distribution primitive — a coordinator partitions agents across
+`fronts` + `unlock_maximizers` regions from the first assignment cycle
+instead of sending all agents to the same triage hotspot.
 
 ## Constraints
 

@@ -1686,7 +1686,7 @@ fn issue_scan_line(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ViewMode {
+pub enum ViewMode {
     Main,
     Board,
     Insights,
@@ -1699,6 +1699,27 @@ enum ViewMode {
     FlowMatrix,
     TimeTravelDiff,
     Sprint,
+}
+
+impl ViewMode {
+    /// Parse a CLI `--view` value into a `ViewMode`.
+    pub fn from_cli(s: &str) -> Option<Self> {
+        match s {
+            "main" => Some(Self::Main),
+            "board" => Some(Self::Board),
+            "insights" => Some(Self::Insights),
+            "graph" => Some(Self::Graph),
+            "history" => Some(Self::History),
+            "actionable" => Some(Self::Actionable),
+            "attention" => Some(Self::Attention),
+            "tree" => Some(Self::Tree),
+            "labels" => Some(Self::LabelDashboard),
+            "flow" => Some(Self::FlowMatrix),
+            "timediff" => Some(Self::TimeTravelDiff),
+            "sprint" => Some(Self::Sprint),
+            _ => None,
+        }
+    }
 }
 
 impl ViewMode {
@@ -1798,7 +1819,7 @@ impl FocusPane {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ListFilter {
+pub enum ListFilter {
     All,
     Open,
     InProgress,
@@ -1816,6 +1837,19 @@ impl ListFilter {
             Self::Blocked => "blocked",
             Self::Closed => "closed",
             Self::Ready => "ready",
+        }
+    }
+
+    /// Parse a CLI `--list-filter` value into a `ListFilter`.
+    pub fn from_cli(s: &str) -> Option<Self> {
+        match s {
+            "all" => Some(Self::All),
+            "open" => Some(Self::Open),
+            "in-progress" | "in_progress" | "inprogress" => Some(Self::InProgress),
+            "blocked" => Some(Self::Blocked),
+            "closed" => Some(Self::Closed),
+            "ready" => Some(Self::Ready),
+            _ => None,
         }
     }
 }
@@ -2357,6 +2391,15 @@ struct BvrApp {
     tree_flat_nodes: Vec<TreeFlatNode>,
     tree_cursor: usize,
     tree_collapsed: std::collections::HashSet<String>,
+    tree_search_active: bool,
+    tree_search_query: String,
+    tree_search_match_cursor: usize,
+    /// When true, the previous key was `g`; a second `g` triggers `gg` (jump-to-top).
+    pending_g: bool,
+    /// Saved mode before the speculative graph toggle so `gg` can restore it.
+    g_pre_toggle_mode: Option<ViewMode>,
+    /// When true, the previous key was `z`; the next key completes a z-command.
+    pending_z: bool,
     label_dashboard: Option<crate::analysis::label_intel::LabelHealthResult>,
     label_dashboard_cursor: usize,
     flow_matrix: Option<crate::analysis::label_intel::CrossLabelFlow>,
@@ -3802,6 +3845,12 @@ impl BvrApp {
             self.ensure_selected_visible();
         }
         self.sync_insights_heatmap_selection();
+
+        // Rebuild tree flat nodes after the analyzer was replaced so
+        // stale issue_index values don't cause out-of-bounds panics
+        // when Tree view renders with the new, potentially shorter,
+        // issue list.
+        self.rebuild_tree_if_active();
     }
 
     fn board_shortcut_focus(&self) -> bool {
@@ -4466,6 +4515,31 @@ impl BvrApp {
             return Cmd::None;
         }
 
+        // -- Tree search input -------------------------------------------------------
+        if matches!(self.mode, ViewMode::Tree)
+            && self.focus == FocusPane::List
+            && self.tree_search_active
+        {
+            match code {
+                KeyCode::Escape => self.cancel_tree_search(),
+                KeyCode::Enter => self.finish_tree_search(),
+                KeyCode::Backspace => {
+                    self.tree_search_query.pop();
+                    self.tree_search_match_cursor = 0;
+                    self.select_current_tree_search_match();
+                }
+                KeyCode::Char('n') => self.move_tree_search_match_relative(1),
+                KeyCode::Char('N') => self.move_tree_search_match_relative(-1),
+                KeyCode::Char(ch) if !modifiers.contains(Modifiers::CTRL) && !ch.is_control() => {
+                    self.tree_search_query.push(ch);
+                    self.tree_search_match_cursor = 0;
+                    self.select_current_tree_search_match();
+                }
+                _ => {}
+            }
+            return Cmd::None;
+        }
+
         // -- Time-travel ref input -----------------------------------------------
         if matches!(self.mode, ViewMode::TimeTravelDiff) && self.time_travel_input_active {
             match code {
@@ -4486,6 +4560,42 @@ impl BvrApp {
                 _ => {}
             }
             return Cmd::None;
+        }
+
+        // -- Vim z-prefix handling -----------------------------------------------
+        if self.pending_z {
+            self.pending_z = false;
+            if self.tree_shortcut_focus() {
+                match code {
+                    KeyCode::Char('o') => self.tree_expand_current(),
+                    KeyCode::Char('c') => self.tree_collapse_current(),
+                    KeyCode::Char('a') => self.tree_toggle_collapse(),
+                    KeyCode::Char('R') => self.tree_expand_all(),
+                    KeyCode::Char('M') => self.tree_collapse_all(),
+                    KeyCode::Char('z') => self.tree_recenter_cursor(),
+                    _ => {}
+                }
+            }
+            return Cmd::None;
+        }
+
+        // -- Vim gg (jump-to-top) handling ---------------------------------------
+        // First `g` speculatively toggles graph and latches pending_g. A rapid
+        // second `g` undoes the toggle and jumps to the top of the current list.
+        // Any other key after `g` just clears the latch (the toggle stands).
+        if self.pending_g {
+            self.pending_g = false;
+            if code == KeyCode::Char('g') {
+                // Restore mode that was saved before the speculative graph toggle.
+                if let Some(prev) = self.g_pre_toggle_mode.take() {
+                    self.mode = prev;
+                }
+                self.vim_jump_to_top();
+                return Cmd::None;
+            }
+            self.g_pre_toggle_mode = None;
+            // Not gg — the speculative graph toggle stands. Fall through to
+            // handle the current key normally.
         }
 
         match code {
@@ -4787,10 +4897,47 @@ impl BvrApp {
             KeyCode::Char('k') | KeyCode::Up if self.tree_shortcut_focus() => {
                 self.tree_cursor = self.tree_cursor.saturating_sub(1);
             }
+            KeyCode::Home if self.tree_shortcut_focus() => {
+                self.tree_cursor = 0;
+            }
+            KeyCode::End | KeyCode::Char('G') if self.tree_shortcut_focus() => {
+                self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
+            }
+            KeyCode::PageDown if self.tree_shortcut_focus() => {
+                let step = self.list_page_step();
+                self.tree_cursor =
+                    (self.tree_cursor + step).min(self.tree_flat_nodes.len().saturating_sub(1));
+            }
+            KeyCode::PageUp if self.tree_shortcut_focus() => {
+                let step = self.list_page_step();
+                self.tree_cursor = self.tree_cursor.saturating_sub(step);
+            }
             KeyCode::Enter
                 if matches!(self.mode, ViewMode::Tree) && self.focus == FocusPane::List =>
             {
                 self.tree_toggle_collapse();
+            }
+            KeyCode::Char('z') if self.tree_shortcut_focus() => {
+                self.pending_z = true;
+            }
+            KeyCode::Char('/')
+                if matches!(self.mode, ViewMode::Tree) && self.focus == FocusPane::List =>
+            {
+                self.start_tree_search();
+            }
+            KeyCode::Char('n')
+                if matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List
+                    && !self.tree_search_query.is_empty() =>
+            {
+                self.move_tree_search_match_relative(1);
+            }
+            KeyCode::Char('N')
+                if matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List
+                    && !self.tree_search_query.is_empty() =>
+            {
+                self.move_tree_search_match_relative(-1);
             }
             // -- LabelDashboard mode navigation
             KeyCode::Char('j') | KeyCode::Down if self.label_dashboard_shortcut_focus() => {
@@ -4910,12 +5057,102 @@ impl BvrApp {
             }
             KeyCode::Char('d')
                 if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
+            {
+                let half = self.list_page_step() / 2;
+                self.tree_cursor =
+                    (self.tree_cursor + half).min(self.tree_flat_nodes.len().saturating_sub(1));
+            }
+            KeyCode::Char('u')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
+            {
+                let half = self.list_page_step() / 2;
+                self.tree_cursor = self.tree_cursor.saturating_sub(half);
+            }
+            KeyCode::Char('d')
+                if modifiers.contains(Modifiers::CTRL)
                     && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::List =>
             {
                 self.move_selection_relative(self.list_page_step() as isize);
             }
             KeyCode::Char('u')
+                if modifiers.contains(Modifiers::CTRL)
+                    && !matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::List =>
+            {
+                self.move_selection_relative(-(self.list_page_step() as isize));
+            }
+            // Ctrl-F / Ctrl-B — full page scroll (vim aliases for PageDown/PageUp)
+            // Ordering mirrors Ctrl-D/Ctrl-U above: specific detail handlers
+            // MUST come before broad board_shortcut_focus() guards, which match
+            // both List and Detail focus.
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
+            {
+                let step = self.list_page_step();
+                self.tree_cursor =
+                    (self.tree_cursor + step).min(self.tree_flat_nodes.len().saturating_sub(1));
+            }
+            KeyCode::Char('b')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Tree)
+                    && self.focus == FocusPane::List =>
+            {
+                let step = self.list_page_step();
+                self.tree_cursor = self.tree_cursor.saturating_sub(step);
+            }
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(self.list_page_step() as isize);
+            }
+            KeyCode::Char('b')
+                if modifiers.contains(Modifiers::CTRL)
+                    && matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_board_detail(-(self.list_page_step() as isize));
+            }
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
+            {
+                self.move_board_row_relative(self.list_page_step() as isize);
+            }
+            KeyCode::Char('b')
+                if modifiers.contains(Modifiers::CTRL) && self.board_shortcut_focus() =>
+            {
+                self.move_board_row_relative(-(self.list_page_step() as isize));
+            }
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL)
+                    && !matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_detail(self.list_page_step() as isize);
+            }
+            KeyCode::Char('b')
+                if modifiers.contains(Modifiers::CTRL)
+                    && !matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::Detail =>
+            {
+                self.scroll_detail(-(self.list_page_step() as isize));
+            }
+            KeyCode::Char('f')
+                if modifiers.contains(Modifiers::CTRL)
+                    && !matches!(self.mode, ViewMode::Board)
+                    && self.focus == FocusPane::List =>
+            {
+                self.move_selection_relative(self.list_page_step() as isize);
+            }
+            KeyCode::Char('b')
                 if modifiers.contains(Modifiers::CTRL)
                     && !matches!(self.mode, ViewMode::Board)
                     && self.focus == FocusPane::List =>
@@ -5247,6 +5484,7 @@ impl BvrApp {
                 }
             }
             KeyCode::Char('g') if matches!(self.mode, ViewMode::History) => {
+                let saved = self.mode;
                 if matches!(self.history_view_mode, HistoryViewMode::Git)
                     && let Some(bead_id) = self
                         .selected_history_event()
@@ -5258,8 +5496,11 @@ impl BvrApp {
                 self.mode = ViewMode::Graph;
                 self.focus = FocusPane::List;
                 self.sync_ranked_list_context();
+                self.pending_g = true;
+                self.g_pre_toggle_mode = Some(saved);
             }
             KeyCode::Char('g') => {
+                let saved = self.mode;
                 let entering_graph = !matches!(self.mode, ViewMode::Graph);
                 let previous_mode = self.mode;
                 let previous_selected = self.selected;
@@ -5281,6 +5522,8 @@ impl BvrApp {
                 } else {
                     self.sync_ranked_list_context();
                 }
+                self.pending_g = true;
+                self.g_pre_toggle_mode = Some(saved);
             }
             KeyCode::Char('a') => {
                 self.mode = if matches!(self.mode, ViewMode::Actionable) {
@@ -6589,6 +6832,18 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
+        self.rebuild_tree_if_active();
+    }
+
+    /// Rebuild tree flat nodes when in Tree view so filter changes
+    /// take effect immediately.  Clamps the cursor afterward.
+    fn rebuild_tree_if_active(&mut self) {
+        if matches!(self.mode, ViewMode::Tree) {
+            self.build_tree_flat_nodes();
+            if self.tree_cursor >= self.tree_flat_nodes.len() {
+                self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
+            }
+        }
     }
 
     fn cycle_list_sort(&mut self) {
@@ -7830,7 +8085,9 @@ impl BvrApp {
                     ("Ctrl+0", "Reset pane splits"),
                     ("PgUp/PgDn", "Jump by 10"),
                     ("Home/End", "Jump to top/bottom"),
+                    ("gg", "Jump to top (any view)"),
                     ("G", "Jump to bottom"),
+                    ("Ctrl+f/b", "Full page down/up"),
                     ("Tab / Shift+Tab", "Toggle focus forward/back"),
                     ("J/K", "Navigate deps in detail"),
                     ("Enter", "Return to main / drill"),
@@ -7899,6 +8156,15 @@ impl BvrApp {
                     ("H/L", "First/last lane"),
                     ("0/$", "First/last in lane"),
                     ("e", "Toggle empty lanes"),
+                ],
+            },
+            Section {
+                title: "Tree",
+                bindings: vec![
+                    ("Enter/za", "Toggle fold"),
+                    ("zo/zc", "Open/close fold"),
+                    ("zR/zM", "Open/close all folds"),
+                    ("zz", "Recenter cursor"),
                 ],
             },
             Section {
@@ -8032,6 +8298,7 @@ impl BvrApp {
         match self.mode {
             ViewMode::Main => self.main_list_render_text(width),
             ViewMode::Graph => self.graph_list_render_text(width),
+            ViewMode::Tree => self.tree_list_render_text(width),
             _ => RichText::raw(self.list_panel_text()),
         }
     }
@@ -9953,6 +10220,9 @@ impl BvrApp {
             ViewMode::Attention => self.compute_attention(),
             _ => {}
         }
+        // Rebuild tree so stale issue_index values don't cause
+        // out-of-bounds panics with the new issue list.
+        self.rebuild_tree_if_active();
     }
 
     fn move_attention_cursor(&mut self, delta: i32) {
@@ -10057,7 +10327,15 @@ impl BvrApp {
 
     fn build_tree_flat_nodes(&mut self) {
         let issues = &self.analyzer.issues;
-        let graph = &self.analyzer.graph;
+
+        // Precompute which issues pass the active filter (list status,
+        // label, and/or repo) so the tree only shows matching issues
+        // (and their structural parents).
+        let filter_active = self.has_active_filter();
+        let passes: Vec<bool> = issues
+            .iter()
+            .map(|issue| self.issue_matches_filter(issue))
+            .collect();
 
         // Build a map from issue ID to index.
         let id_to_index: std::collections::HashMap<&str, usize> = issues
@@ -10066,37 +10344,127 @@ impl BvrApp {
             .map(|(i, issue)| (issue.id.as_str(), i))
             .collect();
 
-        // Find root issues: those with no blockers (nothing blocks them).
-        let mut roots: Vec<usize> = Vec::new();
+        // Build parent-child hierarchy from parent-child dependencies.
+        // A child issue has a dep with dep_type="parent-child" and
+        // depends_on_id pointing to its parent.
+        let mut children_of: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
         let mut has_parent: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         for (i, issue) in issues.iter().enumerate() {
-            let blockers = graph.blockers(&issue.id);
-            if !blockers.is_empty() {
-                has_parent.insert(i);
+            for dep in &issue.dependencies {
+                if dep.is_parent_child() && !dep.depends_on_id.trim().is_empty() {
+                    if let Some(&parent_idx) = id_to_index.get(dep.depends_on_id.as_str()) {
+                        children_of.entry(parent_idx).or_default().push(i);
+                        has_parent.insert(i);
+                    }
+                }
             }
         }
 
-        for i in 0..issues.len() {
-            if !has_parent.contains(&i) {
-                roots.push(i);
-            }
+        // Deduplicate and sort children lists.
+        for children in children_of.values_mut() {
+            children.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+            children.dedup();
         }
 
-        // Sort roots by ID for deterministic order.
+        // Roots: issues with no parent-child dependency pointing to a
+        // known parent. Fall back to blocking-based roots if no
+        // parent-child deps exist at all.
+        let mut roots: Vec<usize> = (0..issues.len())
+            .filter(|i| !has_parent.contains(i))
+            .collect();
+
+        if roots.len() == issues.len() && !issues.is_empty() {
+            // No parent-child deps at all — fall back to blocking graph
+            // so the tree still shows something useful.
+            let graph = &self.analyzer.graph;
+            let mut blocking_children_of: std::collections::HashMap<usize, Vec<usize>> =
+                std::collections::HashMap::new();
+            let mut has_blocker: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
+
+            for (i, issue) in issues.iter().enumerate() {
+                let blockers = graph.blockers(&issue.id);
+                if !blockers.is_empty() {
+                    has_blocker.insert(i);
+                    for blocker_id in &blockers {
+                        if let Some(&blocker_idx) = id_to_index.get(blocker_id.as_str()) {
+                            blocking_children_of.entry(blocker_idx).or_default().push(i);
+                        }
+                    }
+                }
+            }
+            for children in blocking_children_of.values_mut() {
+                children.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+                children.dedup();
+            }
+
+            roots = (0..issues.len())
+                .filter(|i| !has_blocker.contains(i))
+                .collect();
+
+            children_of = blocking_children_of;
+        }
+
         roots.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+
+        // When a list filter is active, compute which nodes are "visible":
+        // an issue that matches the filter, plus any ancestor whose subtree
+        // contains a matching descendant (so the tree structure stays intact).
+        let visible: Option<std::collections::HashSet<usize>> = if filter_active {
+            let mut vis: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            // Mark matching leaves and propagate upward.
+            fn mark_visible(
+                idx: usize,
+                children_of: &std::collections::HashMap<usize, Vec<usize>>,
+                passes: &[bool],
+                vis: &mut std::collections::HashSet<usize>,
+                visited: &mut std::collections::HashSet<usize>,
+            ) -> bool {
+                if !visited.insert(idx) {
+                    return vis.contains(&idx);
+                }
+                let mut dominated = passes[idx];
+                if let Some(children) = children_of.get(&idx) {
+                    for &child in children {
+                        if mark_visible(child, children_of, passes, vis, visited) {
+                            dominated = true;
+                        }
+                    }
+                }
+                if dominated {
+                    vis.insert(idx);
+                }
+                dominated
+            }
+            let mut visited_mark: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
+            for &root in &roots {
+                mark_visible(root, &children_of, &passes, &mut vis, &mut visited_mark);
+            }
+            Some(vis)
+        } else {
+            None
+        };
+
+        // Filter roots to only visible ones when a filter is active.
+        if let Some(ref vis) = visible {
+            roots.retain(|idx| vis.contains(idx));
+        }
+
+        // Collect issue IDs for collapse state lookup (avoids borrow conflict).
+        let issue_ids: Vec<String> = issues.iter().map(|i| i.id.clone()).collect();
 
         // DFS to build flat node list.
         let mut flat_nodes = Vec::new();
-        let mut stack: Vec<(usize, usize, bool, Vec<bool>)> = Vec::new(); // (issue_index, depth, is_last, ancestry)
+        // (issue_index, depth, is_last_sibling, ancestry_last)
+        let mut stack: Vec<(usize, usize, bool, Vec<bool>)> = Vec::new();
 
-        for (ri, &root_idx) in roots.iter().enumerate() {
+        for (ri, &root_idx) in roots.iter().enumerate().rev() {
             let is_last = ri + 1 == roots.len();
             stack.push((root_idx, 0, is_last, Vec::new()));
         }
-
-        // Process in reverse so first root is processed first (stack is LIFO).
-        stack.reverse();
 
         let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
@@ -10105,14 +10473,19 @@ impl BvrApp {
                 continue; // Avoid cycles.
             }
 
-            let issue_id = &issues[issue_idx].id;
-            let children_ids = graph.dependents(issue_id);
-            let mut children: Vec<usize> = children_ids
-                .iter()
-                .filter_map(|id| id_to_index.get(id.as_str()).copied())
-                .filter(|idx| !visited.contains(idx))
-                .collect();
-            children.sort_by(|&a, &b| issues[a].id.cmp(&issues[b].id));
+            let issue_id = &issue_ids[issue_idx];
+            let children: Vec<usize> = children_of
+                .get(&issue_idx)
+                .map(|c| {
+                    c.iter()
+                        .copied()
+                        .filter(|idx| {
+                            !visited.contains(idx)
+                                && visible.as_ref().map_or(true, |v| v.contains(idx))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
 
             let is_collapsed = self.tree_collapsed.contains(issue_id);
             let has_children = !children.is_empty();
@@ -10127,7 +10500,6 @@ impl BvrApp {
             });
 
             if !is_collapsed {
-                // Push children in reverse so first child is processed next.
                 for (ci, &child_idx) in children.iter().enumerate().rev() {
                     let child_is_last = ci + 1 == children.len();
                     let mut child_ancestry = ancestry.clone();
@@ -10168,48 +10540,344 @@ impl BvrApp {
         }
     }
 
-    fn tree_list_text(&self) -> String {
-        if self.tree_flat_nodes.is_empty() {
-            return "(no dependency tree — all issues are independent)".to_string();
+    /// `zo` — expand the fold under the cursor (no-op if already open or leaf).
+    fn tree_expand_current(&mut self) {
+        if let Some(node) = self.tree_flat_nodes.get(self.tree_cursor) {
+            if node.has_children {
+                let issue_id = self.analyzer.issues[node.issue_index].id.clone();
+                if self.tree_collapsed.remove(&issue_id) {
+                    self.build_tree_flat_nodes();
+                }
+            }
+        }
+    }
+
+    /// `zc` — close the fold under the cursor.
+    ///
+    /// Vim semantics: if the cursor is on a foldable node, close it.
+    /// If the cursor is on a leaf (or an already-collapsed node whose
+    /// parent fold should close next), walk up to the nearest ancestor
+    /// with children and collapse *that* fold, then move the cursor to
+    /// the newly-closed parent so repeat `zc` keeps walking up.
+    ///
+    /// Uses the flat-node depth column: the parent of the node at
+    /// flat index `i` is the nearest preceding node with
+    /// `depth < nodes[i].depth`. This matches the DFS invariant in
+    /// `build_tree_flat_nodes` and avoids rebuilding the parent map.
+    fn tree_collapse_current(&mut self) {
+        let Some(node) = self.tree_flat_nodes.get(self.tree_cursor) else {
+            return;
+        };
+        let cursor_has_children = node.has_children;
+        let cursor_issue_index = node.issue_index;
+        let cursor_depth = node.depth;
+        let cursor_issue_id = self.analyzer.issues[cursor_issue_index].id.clone();
+
+        // Case 1: cursor is on a foldable, currently-open node — collapse it in place.
+        if cursor_has_children && !self.tree_collapsed.contains(&cursor_issue_id) {
+            if self.tree_collapsed.insert(cursor_issue_id) {
+                self.build_tree_flat_nodes();
+                if self.tree_cursor >= self.tree_flat_nodes.len() {
+                    self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
+                }
+            }
+            return;
         }
 
+        // Case 2: cursor is on a leaf or an already-collapsed node.
+        // Walk up the flat list to find the nearest enclosing ancestor
+        // with children. The flat list is a DFS order, so the parent of
+        // the node at index `i` is the nearest preceding node with
+        // `depth < nodes[i].depth`.
+        let mut ancestor_cursor: Option<usize> = None;
+        let mut search_depth = cursor_depth;
+        let mut i = self.tree_cursor;
+        while i > 0 {
+            i -= 1;
+            let n = &self.tree_flat_nodes[i];
+            if n.depth < search_depth {
+                if n.has_children {
+                    ancestor_cursor = Some(i);
+                    break;
+                }
+                // Keep climbing past depth boundaries (defensive; the DFS
+                // invariant guarantees any depth-decreasing parent has children).
+                search_depth = n.depth;
+            }
+        }
+
+        let Some(ancestor_idx) = ancestor_cursor else {
+            // Orphan leaf at root — nothing to collapse. No-op gracefully.
+            return;
+        };
+
+        let ancestor_issue_index = self.tree_flat_nodes[ancestor_idx].issue_index;
+        let ancestor_issue_id = self.analyzer.issues[ancestor_issue_index].id.clone();
+        let inserted = self.tree_collapsed.insert(ancestor_issue_id.clone());
+        if inserted {
+            self.build_tree_flat_nodes();
+        }
+        // Move cursor to the newly-closed ancestor (by issue id, since
+        // the flat list was rebuilt and descendant rows vanished).
+        if let Some(new_cursor) = self
+            .tree_flat_nodes
+            .iter()
+            .position(|n| self.analyzer.issues[n.issue_index].id == ancestor_issue_id)
+        {
+            self.tree_cursor = new_cursor;
+        } else if self.tree_cursor >= self.tree_flat_nodes.len() {
+            self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
+        }
+    }
+
+    /// `zR` — expand every fold in the tree.
+    fn tree_expand_all(&mut self) {
+        if !self.tree_collapsed.is_empty() {
+            self.tree_collapsed.clear();
+            self.build_tree_flat_nodes();
+        }
+    }
+
+    /// `zM` — collapse every fold in the tree.
+    ///
+    /// Temporarily expands all to discover every node (including deeply nested
+    /// ones hidden inside collapsed parents), then collapses everything.
+    fn tree_collapse_all(&mut self) {
+        self.tree_collapsed.clear();
+        self.build_tree_flat_nodes();
+        let ids: Vec<String> = self
+            .tree_flat_nodes
+            .iter()
+            .filter(|n| n.has_children)
+            .map(|n| self.analyzer.issues[n.issue_index].id.clone())
+            .collect();
+        for id in ids {
+            self.tree_collapsed.insert(id);
+        }
+        self.build_tree_flat_nodes();
+        if self.tree_cursor >= self.tree_flat_nodes.len() {
+            self.tree_cursor = self.tree_flat_nodes.len().saturating_sub(1);
+        }
+    }
+
+    /// `zz` — recenter the viewport so the cursor is roughly centred.
+    fn tree_recenter_cursor(&mut self) {
+        // The rendered tree text has header lines before the first node:
+        // panel_header (1) + optional search banner (0-1) + separator (1).
+        let header_lines = if self.tree_search_active || !self.tree_search_query.is_empty() {
+            3
+        } else {
+            2
+        };
+        let cursor_line = self.tree_cursor + header_lines;
+        let half = self.list_page_step() / 2;
+        self.list_scroll_offset
+            .set(cursor_line.saturating_sub(half));
+    }
+
+    // -- Vim gg jump-to-top ---------------------------------------------------
+
+    fn vim_jump_to_top(&mut self) {
+        if self.tree_shortcut_focus() {
+            self.tree_cursor = 0;
+        } else if self.board_shortcut_focus() {
+            self.select_edge_in_current_board_lane(false);
+        } else if matches!(self.mode, ViewMode::History) && self.focus == FocusPane::List {
+            self.history_event_cursor = 0;
+            self.history_related_bead_cursor = 0;
+            self.history_bead_commit_cursor = 0;
+        } else if self.focus == FocusPane::List {
+            self.select_first_visible();
+        }
+    }
+
+    // -- Tree search ----------------------------------------------------------
+
+    fn start_tree_search(&mut self) {
+        if !matches!(self.mode, ViewMode::Tree) || self.focus != FocusPane::List {
+            return;
+        }
+        self.tree_search_active = true;
+        self.tree_search_query.clear();
+        self.tree_search_match_cursor = 0;
+    }
+
+    fn finish_tree_search(&mut self) {
+        self.tree_search_active = false;
+    }
+
+    fn cancel_tree_search(&mut self) {
+        self.tree_search_active = false;
+        self.tree_search_query.clear();
+        self.tree_search_match_cursor = 0;
+    }
+
+    fn tree_search_matches(&self) -> Vec<usize> {
+        let query = self.tree_search_query.trim().to_ascii_lowercase();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        self.tree_flat_nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| {
+                let issue = &self.analyzer.issues[node.issue_index];
+                issue.id.to_ascii_lowercase().contains(&query)
+                    || issue.title.to_ascii_lowercase().contains(&query)
+                    || issue.status.to_ascii_lowercase().contains(&query)
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    fn select_current_tree_search_match(&mut self) {
+        let matches = self.tree_search_matches();
+        if matches.is_empty() {
+            return;
+        }
+        self.tree_search_match_cursor = self
+            .tree_search_match_cursor
+            .min(matches.len().saturating_sub(1));
+        self.tree_cursor = matches[self.tree_search_match_cursor];
+    }
+
+    fn move_tree_search_match_relative(&mut self, delta: isize) {
+        let matches = self.tree_search_matches();
+        if matches.is_empty() || delta == 0 {
+            return;
+        }
+        let len = matches.len();
+        let current = self.tree_search_match_cursor.min(len.saturating_sub(1));
+        let step = delta.unsigned_abs() % len;
+        let next = if delta > 0 {
+            (current + step) % len
+        } else {
+            (current + len - step) % len
+        };
+        self.tree_search_match_cursor = next;
+        self.tree_cursor = matches[next];
+    }
+
+    fn tree_list_text(&self) -> String {
+        self.tree_list_render_text(80).to_plain_text()
+    }
+
+    fn tree_list_render_text(&self, width: u16) -> RichText {
+        if self.tree_flat_nodes.is_empty() {
+            return RichText::raw("(no dependency tree — all issues are independent)".to_string());
+        }
+
+        let line_width = usize::from(width.saturating_sub(2)).max(24);
         let mut lines = Vec::new();
-        lines.push(format!(
-            "Dependency tree ({} nodes) | Enter expand/collapse | T/Esc back",
-            self.tree_flat_nodes.len()
+
+        lines.push(panel_header(
+            "Dependency tree",
+            Some(&format!(
+                "{} nodes | Enter/za toggle | zo/zc open/close | zR/zM all | T/Esc back",
+                self.tree_flat_nodes.len()
+            )),
         ));
-        lines.push(String::new());
+        // Compute search matches once for both the banner and hit indicators.
+        let tree_search_match_indices = self.tree_search_matches();
+        let tree_search_hits: BTreeMap<usize, usize> = tree_search_match_indices
+            .iter()
+            .enumerate()
+            .map(|(slot, &idx)| (idx, slot + 1))
+            .collect();
+
+        if self.tree_search_active {
+            lines.push(RichLine::raw(format!(
+                "Search (active): /{}",
+                self.tree_search_query
+            )));
+        } else if !self.tree_search_query.is_empty() {
+            let pos = if tree_search_match_indices.is_empty() {
+                "none".to_string()
+            } else {
+                format!(
+                    "{}/{}",
+                    self.tree_search_match_cursor
+                        .min(tree_search_match_indices.len().saturating_sub(1))
+                        + 1,
+                    tree_search_match_indices.len()
+                )
+            };
+            lines.push(RichLine::raw(format!(
+                "Search: /{} (n/N cycles, matches: {})",
+                self.tree_search_query, pos
+            )));
+        }
+        lines.push(section_separator(line_width));
 
         for (i, node) in self.tree_flat_nodes.iter().enumerate() {
-            let marker = if i == self.tree_cursor { '>' } else { ' ' };
+            let is_selected = i == self.tree_cursor;
             let issue = &self.analyzer.issues[node.issue_index];
+            let mut line = RichLine::new();
 
-            // Build tree prefix with box-drawing characters.
+            // Cursor marker
+            let marker_style = if is_selected {
+                tokens::selected()
+            } else {
+                tokens::dim()
+            };
+            line.push_span(RichSpan::styled(
+                if is_selected { "▸" } else { " " },
+                marker_style,
+            ));
+            line.push_span(RichSpan::raw(" "));
+
+            // Tree prefix (box-drawing characters)
             let mut prefix = String::new();
             for &parent_was_last in &node.ancestry_last {
                 if parent_was_last {
                     prefix.push_str("    ");
                 } else {
-                    prefix.push_str(" |  ");
+                    prefix.push_str("│   ");
                 }
             }
-
             if node.depth > 0 {
                 if node.is_last_sibling {
-                    prefix.push_str(" `- ");
+                    prefix.push_str("└── ");
                 } else {
-                    prefix.push_str(" |- ");
+                    prefix.push_str("├── ");
                 }
             }
+            if !prefix.is_empty() {
+                line.push_span(RichSpan::styled(prefix, tokens::dim()));
+            }
 
-            // Collapse indicator.
-            let collapse_indicator = if node.has_children {
-                if node.is_collapsed { "[+] " } else { "[-] " }
+            // Collapse indicator
+            if node.has_children {
+                let indicator = if node.is_collapsed { "[+] " } else { "[-] " };
+                line.push_span(RichSpan::styled(indicator, tokens::panel_title()));
             } else {
-                "    "
-            };
+                line.push_span(RichSpan::raw("    "));
+            }
 
+            // Status icon with status-specific color
             let si = status_icon(&issue.status);
+            line.push_span(RichSpan::styled(si, tokens::status_style(&issue.status)));
+            line.push_span(RichSpan::raw(" "));
+
+            // Priority badge
+            line.push_span(priority_badge(issue.priority));
+            line.push_span(RichSpan::raw(" "));
+
+            // Issue ID
+            line.push_span(RichSpan::styled(
+                truncate_display(&issue.id, 12),
+                tokens::dim(),
+            ));
+            line.push_span(RichSpan::raw(" "));
+
+            // Title
+            let title_width = line_width.saturating_sub(30 + node.depth * 4);
+            line.push_span(RichSpan::styled(
+                truncate_display(&issue.title, title_width.max(8)),
+                tokens::help_desc(),
+            ));
+
+            // Dependency indicators
             let blocks = self
                 .analyzer
                 .metrics
@@ -10218,34 +10886,40 @@ impl BvrApp {
                 .copied()
                 .unwrap_or(0);
             let open_bl = self.analyzer.graph.open_blockers(&issue.id).len();
-            let dep_tag = if open_bl > 0 {
-                format!(" \u{2298}{open_bl}")
-            } else if blocks > 0 {
-                format!(" \u{2193}{blocks}")
-            } else {
-                String::new()
-            };
-            let cycle_tag = if self
+            let bl = blocker_indicator(open_bl, blocks);
+            if !bl.is_empty() {
+                line.push_span(RichSpan::raw(" "));
+                for s in bl {
+                    line.push_span(s);
+                }
+            }
+
+            // Cycle indicator
+            if self
                 .analyzer
                 .metrics
                 .cycles
                 .iter()
                 .any(|c| c.contains(&issue.id))
             {
-                " \u{27f3}"
-            } else {
-                ""
-            };
+                line.push_span(RichSpan::styled(
+                    " \u{27f3}",
+                    tokens::status_style("blocked"),
+                ));
+            }
 
-            lines.push(format!(
-                "{marker} {prefix}{collapse_indicator}{si} P{} {} {}{dep_tag}{cycle_tag}",
-                issue.priority.clamp(0, 4),
-                issue.id,
-                truncate_str(&issue.title, 30)
-            ));
+            // Search hit indicator
+            if let Some(&pos) = tree_search_hits.get(&i) {
+                line.push_span(RichSpan::styled(
+                    format!(" hit {pos}/{}", tree_search_hits.len()),
+                    tokens::panel_title(),
+                ));
+            }
+
+            lines.push(line);
         }
 
-        lines.join("\n")
+        RichText::from_lines(lines)
     }
 
     fn tree_detail_text(&self) -> String {
@@ -11281,6 +11955,7 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
+        self.rebuild_tree_if_active();
     }
 
     fn set_repo_filter(&mut self, repo: &str) {
@@ -11299,6 +11974,7 @@ impl BvrApp {
         self.ensure_selected_visible();
         self.sync_insights_heatmap_selection();
         self.focus = FocusPane::List;
+        self.rebuild_tree_if_active();
     }
 
     // -- end Modal pickers ---------------------------------------------------
@@ -14323,6 +14999,12 @@ fn new_app_with_background(
         tree_flat_nodes: Vec::new(),
         tree_cursor: 0,
         tree_collapsed: std::collections::HashSet::new(),
+        tree_search_active: false,
+        tree_search_query: String::new(),
+        tree_search_match_cursor: 0,
+        pending_g: false,
+        g_pre_toggle_mode: None,
+        pending_z: false,
         label_dashboard: None,
         label_dashboard_cursor: 0,
         flow_matrix: None,
@@ -14352,14 +15034,33 @@ fn new_app_with_background(
 }
 
 pub fn run_tui(issues: Vec<Issue>) -> Result<()> {
-    run_tui_with_background(issues, None)
+    run_tui_with_background(issues, None, None, None)
 }
 
 pub fn run_tui_with_background(
     issues: Vec<Issue>,
     background_config: Option<BackgroundModeConfig>,
+    initial_view: Option<ViewMode>,
+    initial_filter: Option<ListFilter>,
 ) -> Result<()> {
-    let model = new_app_with_background(issues, ViewMode::Main, background_config);
+    let mode = initial_view.unwrap_or(ViewMode::Main);
+    let mut model = new_app_with_background(issues, mode, background_config);
+    if let Some(filter) = initial_filter {
+        model.list_filter = filter;
+    }
+    // Computed views initialise their data lazily when toggled via
+    // keybinding, but `--view` bypasses those toggle functions.
+    // Trigger the same initialisation here so the view is populated
+    // on the very first frame.
+    match mode {
+        ViewMode::Tree => model.build_tree_flat_nodes(),
+        ViewMode::LabelDashboard => model.compute_label_dashboard(),
+        ViewMode::FlowMatrix => model.compute_flow_matrix(),
+        ViewMode::Sprint => model.load_sprint_data(),
+        ViewMode::Actionable => model.compute_actionable_plan(),
+        ViewMode::Attention => model.compute_attention(),
+        _ => {}
+    }
     App::new(model)
         .screen_mode(ScreenMode::AltScreen)
         .run()
@@ -15018,6 +15719,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -16367,6 +17074,8 @@ mod tests {
 
         app.update(key(KeyCode::Char('g')));
         assert_eq!(app.mode, ViewMode::Main);
+        // Clear pending_g latch (any non-g key) before re-toggling
+        app.update(key(KeyCode::F(20)));
         app.update(key(KeyCode::Char('g')));
         assert_eq!(app.mode, ViewMode::Graph);
         assert_eq!(selected_issue_id(&app), "B");
@@ -17102,6 +17811,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17206,6 +17921,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17304,6 +18025,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17420,6 +18147,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17520,6 +18253,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17621,6 +18360,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17723,6 +18468,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17820,6 +18571,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -17932,6 +18689,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18068,6 +18831,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18309,6 +19078,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -18413,6 +19188,12 @@ mod tests {
             tree_flat_nodes: Vec::new(),
             tree_cursor: 0,
             tree_collapsed: std::collections::HashSet::new(),
+            tree_search_active: false,
+            tree_search_query: String::new(),
+            tree_search_match_cursor: 0,
+            pending_g: false,
+            g_pre_toggle_mode: None,
+            pending_z: false,
             label_dashboard: None,
             label_dashboard_cursor: 0,
             flow_matrix: None,
@@ -25726,5 +26507,141 @@ mod tests {
         .to_plain_text();
         assert!(text.contains("⊘2"), "blocker missing: {text}");
         assert!(text.contains("↓1"), "downstream count missing: {text}");
+    }
+
+    // ---------- tree fold (zc / zo) tests ----------
+
+    /// Build a three-level parent-child tree:
+    ///     P
+    ///     ├── C1   (leaf)
+    ///     ├── C2
+    ///     │   └── G (leaf grandchild of P, child of C2)
+    ///     └── C3   (leaf)
+    fn tree_fold_fixture_issues() -> Vec<Issue> {
+        let p = Issue {
+            id: "P".to_string(),
+            title: "Parent".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        };
+        let mk_child = |id: &str, parent: &str| Issue {
+            id: id.to_string(),
+            title: id.to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            dependencies: vec![Dependency {
+                issue_id: id.to_string(),
+                depends_on_id: parent.to_string(),
+                dep_type: "parent-child".to_string(),
+                ..Dependency::default()
+            }],
+            ..Issue::default()
+        };
+        vec![
+            p,
+            mk_child("C1", "P"),
+            mk_child("C2", "P"),
+            mk_child("G", "C2"),
+            mk_child("C3", "P"),
+        ]
+    }
+
+    fn tree_app_with(issues: Vec<Issue>) -> BvrApp {
+        let mut app = new_app(ViewMode::Tree, 0);
+        app.analyzer = Analyzer::new(issues);
+        app.tree_cursor = 0;
+        app.tree_collapsed = std::collections::HashSet::new();
+        app.build_tree_flat_nodes();
+        app
+    }
+
+    fn tree_row_ids(app: &BvrApp) -> Vec<String> {
+        app.tree_flat_nodes
+            .iter()
+            .map(|n| app.analyzer.issues[n.issue_index].id.clone())
+            .collect()
+    }
+
+    fn tree_cursor_id(app: &BvrApp) -> String {
+        app.tree_flat_nodes
+            .get(app.tree_cursor)
+            .map(|n| app.analyzer.issues[n.issue_index].id.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn tree_zc_on_leaf_closes_enclosing_parent_and_moves_cursor() {
+        let mut app = tree_app_with(tree_fold_fixture_issues());
+        let rows = tree_row_ids(&app);
+        // Expected DFS order: P, C1, C2, G, C3.
+        assert_eq!(rows, vec!["P", "C1", "C2", "G", "C3"]);
+
+        // Place cursor on leaf C1, press zc — should collapse P, cursor moves to P.
+        let c1_idx = rows.iter().position(|id| id == "C1").unwrap();
+        app.tree_cursor = c1_idx;
+        app.tree_collapse_current();
+        assert_eq!(
+            tree_row_ids(&app),
+            vec!["P"],
+            "all children should fold into P"
+        );
+        assert_eq!(
+            tree_cursor_id(&app),
+            "P",
+            "cursor should land on the newly closed parent"
+        );
+    }
+
+    #[test]
+    fn tree_zc_on_deep_leaf_closes_nearest_enclosing_ancestor() {
+        let mut app = tree_app_with(tree_fold_fixture_issues());
+        let rows = tree_row_ids(&app);
+
+        // Cursor on grandchild G — should close C2 (nearest foldable ancestor),
+        // NOT jump straight to P.
+        let g_idx = rows.iter().position(|id| id == "G").unwrap();
+        app.tree_cursor = g_idx;
+        app.tree_collapse_current();
+
+        let rows_after = tree_row_ids(&app);
+        assert_eq!(rows_after, vec!["P", "C1", "C2", "C3"]);
+        assert_eq!(tree_cursor_id(&app), "C2");
+
+        // Pressing zc again from C2 (now a collapsed foldable) should walk up to P.
+        app.tree_collapse_current();
+        assert_eq!(tree_row_ids(&app), vec!["P"]);
+        assert_eq!(tree_cursor_id(&app), "P");
+    }
+
+    #[test]
+    fn tree_zc_on_open_parent_still_collapses_in_place() {
+        // Regression guard: the original behavior — zc on a foldable, open node
+        // collapses that node — must still work.
+        let mut app = tree_app_with(tree_fold_fixture_issues());
+        // Cursor on P (root, foldable).
+        app.tree_cursor = 0;
+        assert_eq!(tree_cursor_id(&app), "P");
+        app.tree_collapse_current();
+        assert_eq!(tree_row_ids(&app), vec!["P"]);
+        assert_eq!(tree_cursor_id(&app), "P");
+    }
+
+    #[test]
+    fn tree_zc_on_orphan_root_leaf_is_noop() {
+        // A single issue with no children and no parent: zc must not panic or move cursor.
+        let issues = vec![Issue {
+            id: "SOLO".to_string(),
+            title: "Solo".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let mut app = tree_app_with(issues);
+        assert_eq!(tree_row_ids(&app), vec!["SOLO"]);
+        app.tree_cursor = 0;
+        app.tree_collapse_current();
+        assert_eq!(tree_row_ids(&app), vec!["SOLO"]);
+        assert_eq!(tree_cursor_id(&app), "SOLO");
     }
 }

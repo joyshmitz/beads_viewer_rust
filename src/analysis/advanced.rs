@@ -67,7 +67,12 @@ pub struct TopKItem {
 ///
 /// At each step we pick the open issue whose completion would unblock the most new downstream
 /// issues (that are not already unblocked by previously selected items).
-fn compute_top_k_set(graph: &IssueGraph, _metrics: &GraphMetrics, k: usize) -> TopKSetResult {
+///
+/// This is exposed `pub` so callers that only need the unlock ranking can
+/// skip the full `compute_advanced_insights` which also computes coverage,
+/// k-paths, cycle-break, parallel-cut, and parallel-gain.
+#[must_use]
+pub fn compute_top_k_set(graph: &IssueGraph, _metrics: &GraphMetrics, k: usize) -> TopKSetResult {
     let open_ids: Vec<String> = graph
         .issue_ids_sorted()
         .into_iter()

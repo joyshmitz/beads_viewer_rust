@@ -345,11 +345,6 @@ pub fn execute_search(
         .filter_map(|issue| {
             let text_score = compute_text_score(query, issue);
 
-            // In text mode, only return issues with non-zero text score
-            if mode == SearchMode::Text && text_score <= 0.0 {
-                return None;
-            }
-
             // Short query lexical boost
             let lexical_boost = if is_short_query(query) {
                 let doc = format!(
@@ -372,6 +367,13 @@ pub fn execute_search(
             };
 
             let boosted_text = (text_score + lexical_boost).min(1.0);
+
+            // Search results should always have some lexical evidence for the
+            // query. Hybrid mode ranks lexical matches using graph-aware
+            // signals; it should not degrade into a global priority listing.
+            if boosted_text <= 0.0 {
+                return None;
+            }
 
             let (score, text_score_field, components) = match mode {
                 SearchMode::Text => (boosted_text, None, None),
@@ -554,6 +556,22 @@ mod tests {
         let (issues, metrics) = make_issues_and_metrics();
         let weights = SearchWeights::default_preset();
         let results = execute_search("   \n", &issues, &metrics, SearchMode::Hybrid, &weights, 10);
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn hybrid_search_without_lexical_match_returns_no_results() {
+        let (issues, metrics) = make_issues_and_metrics();
+        let weights = SearchWeights::default_preset();
+        let results = execute_search(
+            "zzzznotfound",
+            &issues,
+            &metrics,
+            SearchMode::Hybrid,
+            &weights,
+            10,
+        );
 
         assert!(results.is_empty());
     }

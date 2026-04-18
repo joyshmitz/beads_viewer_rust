@@ -15,20 +15,20 @@ bvr 1 Main b Board i Insights | mode=Main | focus=list | issues=3/3 | filter=all
 │   Ctrl+0       Reset pane splits                 | [Actions]                                     │
 │   PgUp/PgDn    Jump by 10                        |   p            Toggle priority hints          │
 │   Home/End     Jump to top/bottom                |   P            Pages export wizard            │
-│   G            Jump to bottom                    |   C            Copy issue ID                  │
-│   Tab / Shift+Tab Toggle focus forward/back      |   x            Export issue markdown          │
-│   J/K          Navigate deps in detail           |   O            Open in editor                 │
-│   Enter        Return to main / drill            |   Ctrl+R/F5    Refresh from disk              │
-│   scroll       Mouse wheel scrolls list          |                                               │
-│   splitter click/scroll Mouse-resize active div… | [History]                                     │
-│                                                  |   c            Cycle confidence filter        │
-│ [Views]                                          |   y            Copy SHA/ID                    │
-│   a            Toggle actionable mode            |   o            Open commit in browser         │
-│   b            Toggle board mode                 |   f            Toggle file tree               │
-│   i            Toggle insights mode              |                                               │
-│   g            Toggle graph mode                 | [Board]                                       │
-│   h            Toggle history mode               |   1-4          Jump to lane                   │
-│   !            Toggle attention mode             |   H/L          First/last lane                │
+│   gg           Jump to top (any view)            |   C            Copy issue ID                  │
+│   G            Jump to bottom                    |   x            Export issue markdown          │
+│   Ctrl+f/b     Full page down/up                 |   O            Open in editor                 │
+│   Tab / Shift+Tab Toggle focus forward/back      |   Ctrl+R/F5    Refresh from disk              │
+│   J/K          Navigate deps in detail           |                                               │
+│   Enter        Return to main / drill            | [History]                                     │
+│   scroll       Mouse wheel scrolls list          |   c            Cycle confidence filter        │
+│   splitter click/scroll Mouse-resize active div… |   y            Copy SHA/ID                    │
+│                                                  |   o            Open commit in browser         │
+│ [Views]                                          |   f            Toggle file tree               │
+│   a            Toggle actionable mode            |                                               │
+│   b            Toggle board mode                 | [Board]                                       │
+│   i            Toggle insights mode              |   1-4          Jump to lane                   │
+│   g            Toggle graph mode                 |   H/L          First/last lane                │
 │                                                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
-? or Esc close | j/k scroll | Ctrl+d/u page | line 1/39
+? or Esc close | j/k scroll | Ctrl+d/u page | line 1/45

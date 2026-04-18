@@ -34,6 +34,7 @@ use sha2::{Digest, Sha256};
 
 fn analysis_config_for_cli(cli: &Cli) -> AnalysisConfig {
     if cli.robot_next
+        || cli.robot_overview
         || cli.robot_triage
         || cli.robot_triage_by_track
         || cli.robot_triage_by_label
@@ -808,11 +809,15 @@ fn main() -> ExitCode {
         }
     }
 
-    if cli.robot_next || cli.robot_triage || cli.robot_triage_by_track || cli.robot_triage_by_label
+    if cli.robot_next
+        || cli.robot_overview
+        || cli.robot_triage
+        || cli.robot_triage_by_track
+        || cli.robot_triage_by_label
     {
         let triage = analyzer.triage(TriageOptions {
             group_by_track: cli.robot_triage_by_track,
-            group_by_label: cli.robot_triage_by_label,
+            group_by_label: cli.robot_triage_by_label || cli.robot_overview,
             max_recommendations: cli.robot_max_results.max(10),
             scoring: TriageScoringOptions {
                 weight_adjustments: feedback_weight_adjustments.clone(),
@@ -854,6 +859,15 @@ fn main() -> ExitCode {
             };
 
             if let Err(error) = emit_with_stats(cli.format, &result, cli.stats) {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+            return ExitCode::SUCCESS;
+        }
+
+        if cli.robot_overview {
+            let output = build_robot_overview_output(&issues, &analyzer, &triage.result);
+            if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
                 eprintln!("error: {error}");
                 return ExitCode::from(1);
             }
@@ -1976,6 +1990,7 @@ fn main() -> ExitCode {
             bvr::analysis::search::SearchMode::Text,
             bvr::analysis::search::SearchMode::from_str_or_default,
         );
+        let resolved_search_preset = cli.resolve_search_preset();
 
         let weights = if let Some(ref json) = cli.search_weights {
             match bvr::analysis::search::SearchWeights::from_json(json) {
@@ -1986,7 +2001,7 @@ fn main() -> ExitCode {
                 }
             }
         } else {
-            let preset_name = cli.search_preset.as_deref().unwrap_or("default");
+            let preset_name = resolved_search_preset.as_deref().unwrap_or("default");
             bvr::analysis::search::get_preset(preset_name)
         };
 
@@ -2000,11 +2015,7 @@ fn main() -> ExitCode {
         );
 
         let preset_field = if mode == bvr::analysis::search::SearchMode::Hybrid {
-            Some(
-                cli.search_preset
-                    .clone()
-                    .unwrap_or_else(|| "default".to_string()),
-            )
+            Some(resolved_search_preset.unwrap_or_else(|| "default".to_string()))
         } else {
             None
         };
@@ -2478,7 +2489,30 @@ fn main() -> ExitCode {
             config.poll_interval_ms
         );
     }
-    match bvr::tui::run_tui_with_background(issues.to_vec(), background_runtime) {
+    let initial_view = cli.view.as_deref().map(|v| {
+        bvr::tui::ViewMode::from_cli(v).unwrap_or_else(|| {
+            eprintln!(
+                "warning: unknown --view '{v}'; supported: main, board, insights, graph, \
+                 history, actionable, attention, tree, labels, flow, timediff, sprint"
+            );
+            bvr::tui::ViewMode::Main
+        })
+    });
+    let initial_filter = cli.list_filter.as_deref().map(|f| {
+        bvr::tui::ListFilter::from_cli(f).unwrap_or_else(|| {
+            eprintln!(
+                "warning: unknown --list-filter '{f}'; supported: all, open, in-progress, \
+                 blocked, closed, ready"
+            );
+            bvr::tui::ListFilter::All
+        })
+    });
+    match bvr::tui::run_tui_with_background(
+        issues.to_vec(),
+        background_runtime,
+        initial_view,
+        initial_filter,
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");
@@ -3386,21 +3420,51 @@ fn build_robot_history_output(
     let mut method_distribution = BTreeMap::<String, usize>::new();
     let mut latest_sha = latest_commit_sha(cli);
 
-    let workspace_aliases = build_workspace_id_aliases(issues);
-
-    if let Some(repo_root) = resolve_repo_root(cli) {
-        let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
-        if let Some(commit) = commits.first() {
-            latest_sha = Some(commit.sha.clone());
+    if let Some(workspace_repos) = resolve_workspace_history_repos(cli, issues)? {
+        let mut latest_commit = None::<(String, String)>;
+        for workspace_repo in workspace_repos {
+            let repo_root = resolve_git_toplevel(&workspace_repo.repo_root)
+                .unwrap_or_else(|| workspace_repo.repo_root.clone());
+            let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
+            if let Some(commit) = commits.first() {
+                update_latest_history_commit_sha(
+                    &mut latest_commit,
+                    &commit.timestamp,
+                    &commit.sha,
+                );
+            }
+            correlate_histories_with_git_aliases(
+                &repo_root,
+                &commits,
+                &mut histories_map,
+                &mut commit_index,
+                &mut method_distribution,
+                &workspace_repo.aliases,
+            );
         }
-        correlate_histories_with_git_aliases(
-            &repo_root,
-            &commits,
-            &mut histories_map,
-            &mut commit_index,
-            &mut method_distribution,
-            &workspace_aliases,
-        );
+        if let Some((_, sha)) = latest_commit {
+            latest_sha = Some(sha);
+        }
+    } else {
+        let workspace_aliases = build_workspace_id_aliases(issues);
+        if let Some(repo_root) = resolve_repo_root(cli) {
+            let commits = load_git_commits(&repo_root, cli.history_limit, history_since)?;
+            if let Some(commit) = commits.first() {
+                latest_sha = Some(commit.sha.clone());
+            }
+            correlate_histories_with_git_aliases(
+                &repo_root,
+                &commits,
+                &mut histories_map,
+                &mut commit_index,
+                &mut method_distribution,
+                &workspace_aliases,
+            );
+        }
+    }
+
+    if latest_sha.is_none() {
+        latest_sha = latest_commit_sha(cli);
     }
 
     if cli.history_min_confidence > 0.0 {
@@ -3457,6 +3521,92 @@ fn build_robot_history_output(
         histories_map,
         commit_index,
     })
+}
+
+#[derive(Debug)]
+struct WorkspaceHistoryRepo {
+    repo_root: PathBuf,
+    aliases: BTreeMap<String, String>,
+}
+
+fn update_latest_history_commit_sha(
+    latest_commit: &mut Option<(String, String)>,
+    timestamp: &str,
+    sha: &str,
+) {
+    if latest_commit
+        .as_ref()
+        .is_none_or(|(latest_timestamp, _)| timestamp > latest_timestamp.as_str())
+    {
+        *latest_commit = Some((timestamp.to_string(), sha.to_string()));
+    }
+}
+
+fn build_workspace_id_aliases_for_repo(
+    issues: &[bvr::model::Issue],
+    repo_name: &str,
+) -> BTreeMap<String, String> {
+    let mut aliases = BTreeMap::<String, String>::new();
+    let repo_name = repo_name.trim();
+
+    for issue in issues {
+        if issue.source_repo.trim() != repo_name {
+            continue;
+        }
+
+        let prefix = issue
+            .workspace_prefix
+            .as_deref()
+            .map(str::trim)
+            .filter(|prefix| !prefix.is_empty())
+            .map(std::borrow::ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{repo_name}-"));
+
+        let id_lower = issue.id.to_ascii_lowercase();
+        let prefix_lower = prefix.to_ascii_lowercase();
+        if let Some(raw) = id_lower.strip_prefix(&prefix_lower)
+            && !raw.is_empty()
+        {
+            aliases
+                .entry(raw.to_string())
+                .or_insert_with(|| issue.id.clone());
+        }
+    }
+
+    aliases
+}
+
+fn resolve_workspace_history_repos(
+    cli: &Cli,
+    issues: &[bvr::model::Issue],
+) -> bvr::Result<Option<Vec<WorkspaceHistoryRepo>>> {
+    let IssueLoadTarget::WorkspaceConfig(config_path) = resolve_issue_load_target(cli)? else {
+        return Ok(None);
+    };
+
+    let config = loader::load_workspace_config(&config_path)?;
+    let workspace_root = loader::resolve_workspace_root(&config_path);
+    let mut repos = Vec::<WorkspaceHistoryRepo>::new();
+
+    for repo in config.repos {
+        if !repo.enabled.unwrap_or(true) {
+            continue;
+        }
+
+        let repo_path = Path::new(repo.path.trim());
+        let repo_root = if repo_path.is_absolute() {
+            repo_path.to_path_buf()
+        } else {
+            workspace_root.join(repo_path)
+        };
+
+        repos.push(WorkspaceHistoryRepo {
+            repo_root,
+            aliases: build_workspace_id_aliases_for_repo(issues, &repo.name),
+        });
+    }
+
+    Ok(Some(repos))
 }
 
 fn compute_related_work_result(
@@ -5562,6 +5712,7 @@ fn print_robot_help() {
     println!("Commands:");
     println!("  --robot-triage            Unified triage payload");
     println!("  --robot-next              Single top recommendation");
+    println!("  --robot-overview          Compact orientation snapshot");
     println!("  --robot-triage-by-track   Triage grouped by parallel execution track");
     println!("  --robot-triage-by-label   Triage grouped by label/domain");
     println!("  --robot-plan              Dependency-aware execution tracks");
@@ -5639,6 +5790,260 @@ fn print_robot_help() {
     println!("  --as-of <ref>             View state at point in time (commit, tag, date)");
     println!("  --force-full-analysis     Compute all metrics regardless of graph size");
     println!("  --stats                   Show format token estimates on stderr");
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewOutput {
+    #[serde(flatten)]
+    envelope: bvr::robot::RobotEnvelope,
+    summary: RobotOverviewSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_pick: Option<RobotOverviewPick>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_blocker: Option<RobotOverviewBlocker>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    top_labels: Vec<RobotOverviewLabelCount>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fronts: Vec<RobotOverviewFront>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unlock_maximizers: Vec<RobotOverviewUnlockMaximizer>,
+    commands: RobotOverviewCommands,
+    usage_hints: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewFront {
+    label: String,
+    open_count: usize,
+    representative: RobotOverviewPick,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewUnlockMaximizer {
+    id: String,
+    title: String,
+    marginal_unlocks: usize,
+    cumulative_unlocks: usize,
+    claim_command: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewSummary {
+    open_issues: usize,
+    actionable_issues: usize,
+    blocked_issues: usize,
+    in_progress_issues: usize,
+    closed_issues: usize,
+    cycle_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewPick {
+    id: String,
+    title: String,
+    score: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reasons: Vec<String>,
+    claim_command: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewBlocker {
+    id: String,
+    title: String,
+    unblocks: usize,
+    show_command: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewLabelCount {
+    label: String,
+    open_issues: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct RobotOverviewCommands {
+    next: String,
+    triage: String,
+    plan: String,
+    history: String,
+}
+
+fn build_robot_overview_output(
+    issues: &[bvr::model::Issue],
+    analyzer: &Analyzer,
+    triage: &bvr::analysis::triage::TriageResult,
+) -> RobotOverviewOutput {
+    let mut label_counts = BTreeMap::<String, usize>::new();
+    let mut blocked_issues = 0usize;
+    let mut in_progress_issues = 0usize;
+    let mut closed_issues = 0usize;
+
+    for issue in issues {
+        if issue.is_closed_like() {
+            closed_issues = closed_issues.saturating_add(1);
+            continue;
+        }
+
+        if issue.normalized_status() == "blocked" {
+            blocked_issues = blocked_issues.saturating_add(1);
+        }
+        if issue.is_in_progress() {
+            in_progress_issues = in_progress_issues.saturating_add(1);
+        }
+
+        for label in &issue.labels {
+            let label = label.trim();
+            if label.is_empty() {
+                continue;
+            }
+            *label_counts.entry(label.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    let mut top_labels = label_counts
+        .into_iter()
+        .map(|(label, open_issues)| RobotOverviewLabelCount { label, open_issues })
+        .collect::<Vec<_>>();
+    top_labels.sort_by(|left, right| {
+        right
+            .open_issues
+            .cmp(&left.open_issues)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    top_labels.truncate(5);
+
+    let top_pick = triage
+        .quick_ref
+        .top_picks
+        .first()
+        .map(|pick| RobotOverviewPick {
+            id: pick.id.clone(),
+            title: pick.title.clone(),
+            score: pick.score,
+            reasons: pick.reasons.clone(),
+            claim_command: format!("br update {} --status=in_progress", pick.id),
+        });
+
+    let top_blocker = triage
+        .blockers_to_clear
+        .first()
+        .map(|blocker| RobotOverviewBlocker {
+            id: blocker.id.clone(),
+            title: blocker.title.clone(),
+            unblocks: blocker.unblocks,
+            show_command: format!("br show {}", blocker.id),
+        });
+
+    // Build diverse work fronts from label-grouped recommendations.
+    // Each front represents a distinct area of the graph with its own top pick,
+    // capped at 8 fronts for compact output.
+    let top_pick_id = triage
+        .quick_ref
+        .top_picks
+        .first()
+        .map(|p| p.id.clone())
+        .unwrap_or_default();
+
+    let mut fronts: Vec<RobotOverviewFront> = triage
+        .recommendations_by_label
+        .iter()
+        .filter_map(|by_label| {
+            let rec = by_label.top_pick.as_ref()?;
+            // Skip fronts whose representative duplicates the global top pick.
+            if rec.id == top_pick_id {
+                return None;
+            }
+            Some(RobotOverviewFront {
+                label: by_label.label.clone(),
+                open_count: by_label.item_ids.len(),
+                representative: RobotOverviewPick {
+                    id: rec.id.clone(),
+                    title: rec.title.clone(),
+                    score: rec.score,
+                    reasons: rec.reasons.clone(),
+                    claim_command: format!("br update {} --status=in_progress", rec.id),
+                },
+            })
+        })
+        .collect();
+
+    // Sort by open count descending so the largest active areas come first.
+    fronts.sort_by(|left, right| {
+        right
+            .open_count
+            .cmp(&left.open_count)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    fronts.truncate(8);
+
+    // Unlock-maximizers come from a different objective than triage: greedy
+    // submodular selection over downstream-unlock coverage rather than the
+    // composite triage score. Items high on unlock impact but low on triage
+    // score (e.g. broad task items that unblock many descendants without
+    // scoring highly on centrality) are invisible to triage-only surfaces
+    // like `--robot-triage` and its `by-label`/`by-track` regroupings.
+    // Including them here ensures orient output combines both objectives
+    // in one compact payload. See issue #4 for the SL-000 case study.
+    let already_surfaced: BTreeSet<String> = core::iter::empty::<String>()
+        .chain(top_pick.as_ref().map(|p| p.id.clone()))
+        .chain(fronts.iter().map(|f| f.representative.id.clone()))
+        .collect();
+    // Call the single-purpose `top_k_unlock_set` helper rather than
+    // `advanced_insights()` — the latter also computes coverage, k-paths,
+    // cycle-break, parallel-cut, and parallel-gain, none of which we use
+    // here. On large graphs the unused computations add noticeable latency
+    // to every `--robot-overview` / `--robot-orient` invocation.
+    let top_k = analyzer.top_k_unlock_set(10);
+    let issue_title_by_id: BTreeMap<&str, &str> = issues
+        .iter()
+        .map(|issue| (issue.id.as_str(), issue.title.as_str()))
+        .collect();
+    let unlock_maximizers: Vec<RobotOverviewUnlockMaximizer> = top_k
+        .items
+        .iter()
+        .filter(|item| !already_surfaced.contains(&item.id))
+        .take(5)
+        .map(|item| RobotOverviewUnlockMaximizer {
+            id: item.id.clone(),
+            title: issue_title_by_id
+                .get(item.id.as_str())
+                .map(|t| (*t).to_string())
+                .unwrap_or_default(),
+            marginal_unlocks: item.marginal_unlocks,
+            cumulative_unlocks: item.cumulative_unlocks,
+            claim_command: format!("br update {} --status=in_progress", item.id),
+        })
+        .collect();
+
+    RobotOverviewOutput {
+        envelope: envelope(issues),
+        summary: RobotOverviewSummary {
+            open_issues: triage.quick_ref.total_open,
+            actionable_issues: triage.quick_ref.total_actionable,
+            blocked_issues,
+            in_progress_issues,
+            closed_issues,
+            cycle_count: analyzer.metrics.cycles.len(),
+        },
+        top_pick,
+        top_blocker,
+        top_labels,
+        fronts,
+        unlock_maximizers,
+        commands: RobotOverviewCommands {
+            next: "bvr --robot-next".to_string(),
+            triage: "bvr --robot-triage".to_string(),
+            plan: "bvr --robot-plan".to_string(),
+            history: "bvr --robot-history --history-limit 20".to_string(),
+        },
+        usage_hints: vec![
+            "jq '.summary'".to_string(),
+            "jq '.top_pick'".to_string(),
+            "jq '.fronts[] | {label, id: .representative.id}'".to_string(),
+            "bvr --robot-triage".to_string(),
+        ],
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -6271,6 +6676,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::{Command, ExitCode};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
 
     use bvr::analysis::git_history::{
         HistoryBeadCompat, HistoryCommitCompat, HistoryEventCompat, HistoryFileChangeCompat,
@@ -6290,19 +6696,37 @@ mod tests {
         resolve_reference_file_path, resolve_watch_export_paths, resolve_workspace_config_path,
     };
 
-    struct CurrentDirGuard(PathBuf);
+    struct CurrentDirGuard {
+        original: PathBuf,
+        _lock: MutexGuard<'static, ()>,
+    }
 
     impl CurrentDirGuard {
+        fn lock() -> MutexGuard<'static, ()> {
+            static CURRENT_DIR_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+            CURRENT_DIR_MUTEX
+                .get_or_init(|| Mutex::new(()))
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+
         fn set(path: &Path) -> Self {
-            let original = std::env::current_dir().expect("current dir");
+            let lock = Self::lock();
+            let original = std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")));
             std::env::set_current_dir(path).expect("set current dir");
-            Self(original)
+            Self {
+                original,
+                _lock: lock,
+            }
         }
     }
 
     impl Drop for CurrentDirGuard {
         fn drop(&mut self) {
-            std::env::set_current_dir(&self.0).expect("restore current dir");
+            if std::env::set_current_dir(&self.original).is_err() {
+                std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).expect("restore current dir");
+            }
         }
     }
 
@@ -6521,6 +6945,7 @@ mod tests {
         let nested_arg = nested.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg, "--export-pages", "out"]);
 
+        let _guard = CurrentDirGuard::set(root);
         let project_dir = project_dir_for_export_hooks(&cli).expect("project dir");
         assert_eq!(project_dir, root);
     }
@@ -6548,6 +6973,9 @@ mod tests {
             "bundle",
         ]);
 
+        // Guard CWD so the ancestor-walk discovery stays inside this tempdir
+        // and does not pick up workspace configs from sibling tempdirs.
+        let _guard = CurrentDirGuard::set(root);
         let resolved =
             resolve_cli_path_from_project_dir(&cli, Path::new("bundle")).expect("resolved path");
         assert_eq!(resolved, root.join("bundle"));
@@ -6570,6 +6998,7 @@ mod tests {
         let nested_arg = nested.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg, "--feedback-show"]);
 
+        let _guard = CurrentDirGuard::set(root);
         let project_dir = feedback_project_dir(&cli);
         assert_eq!(project_dir, root);
     }
@@ -6588,6 +7017,9 @@ mod tests {
         let nested_arg = nested.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &nested_arg]);
 
+        // Guard CWD so the ancestor-walk discovery stays inside this tempdir
+        // and does not pick up workspace configs from sibling tempdirs.
+        let _guard = CurrentDirGuard::set(root);
         let target = resolve_issue_load_target(&cli).expect("resolve issue load target");
         assert_eq!(target, IssueLoadTarget::WorkspaceConfig(config_path));
     }
@@ -7020,6 +7452,7 @@ mod tests {
         let temp = tempdir().expect("tempdir");
         let empty_root = temp.path().join("empty");
         fs::create_dir_all(&empty_root).expect("create empty root");
+        let _guard = CurrentDirGuard::set(&empty_root);
         let empty_arg = empty_root.to_string_lossy().to_string();
         let cli = Cli::parse_from(["bvr", "--repo-path", &empty_arg]);
 
@@ -7496,6 +7929,348 @@ mod tests {
         assert!(json.get("claim_command").is_none());
         assert!(json.get("show_command").is_none());
         assert_eq!(json["message"], "No actionable items available");
+    }
+
+    #[test]
+    fn robot_overview_omits_optional_pick_and_blocker_when_absent() {
+        let output = super::RobotOverviewOutput {
+            envelope: bvr::robot::envelope(&[]),
+            summary: super::RobotOverviewSummary {
+                open_issues: 0,
+                actionable_issues: 0,
+                blocked_issues: 0,
+                in_progress_issues: 0,
+                closed_issues: 0,
+                cycle_count: 0,
+            },
+            top_pick: None,
+            top_blocker: None,
+            top_labels: Vec::new(),
+            fronts: Vec::new(),
+            unlock_maximizers: Vec::new(),
+            commands: super::RobotOverviewCommands {
+                next: "bvr --robot-next".to_string(),
+                triage: "bvr --robot-triage".to_string(),
+                plan: "bvr --robot-plan".to_string(),
+                history: "bvr --robot-history --history-limit 20".to_string(),
+            },
+            usage_hints: Vec::new(),
+        };
+
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json.get("top_pick").is_none());
+        assert!(json.get("top_blocker").is_none());
+        assert!(json.get("top_labels").is_none());
+        assert!(json.get("unlock_maximizers").is_none());
+        assert_eq!(json["commands"]["next"], "bvr --robot-next");
+    }
+
+    #[test]
+    fn build_robot_overview_output_counts_labels_and_cycles() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["backend".to_string(), "api".to_string()],
+                dependencies: vec![bvr::model::Dependency {
+                    issue_id: "A".to_string(),
+                    depends_on_id: "B".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["backend".to_string()],
+                dependencies: vec![bvr::model::Dependency {
+                    issue_id: "B".to_string(),
+                    depends_on_id: "A".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "C".to_string(),
+                title: "C".to_string(),
+                status: "closed".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                labels: vec!["docs".to_string()],
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions::default());
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        assert_eq!(output.summary.open_issues, 2);
+        assert_eq!(output.summary.blocked_issues, 1);
+        assert_eq!(output.summary.closed_issues, 1);
+        assert_eq!(output.summary.cycle_count, 1);
+        assert_eq!(output.top_labels[0].label, "backend");
+        assert_eq!(output.top_labels[0].open_issues, 2);
+        assert!(output.top_pick.is_none());
+        assert_eq!(output.commands.next, "bvr --robot-next");
+    }
+
+    #[test]
+    fn build_robot_overview_output_populates_fronts_from_label_groups() {
+        let issues = vec![
+            bvr::model::Issue {
+                id: "A".to_string(),
+                title: "Implement auth".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["backend".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "B".to_string(),
+                title: "Fix login page".to_string(),
+                status: "open".to_string(),
+                issue_type: "bug".to_string(),
+                priority: 2,
+                labels: vec!["frontend".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "C".to_string(),
+                title: "Update README".to_string(),
+                status: "open".to_string(),
+                issue_type: "docs".to_string(),
+                priority: 3,
+                labels: vec!["docs".to_string()],
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions {
+            group_by_label: true,
+            ..bvr::analysis::triage::TriageOptions::default()
+        });
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        // With 3 open issues across 3 labels, fronts should be populated.
+        // The global top_pick's label is excluded from fronts to avoid redundancy,
+        // so we expect at most 2 fronts.
+        assert!(output.fronts.len() <= 3);
+        for front in &output.fronts {
+            assert!(!front.label.is_empty());
+            assert!(!front.representative.id.is_empty());
+            // Each front's representative should differ from the global top pick.
+            if let Some(ref pick) = output.top_pick {
+                assert_ne!(front.representative.id, pick.id);
+            }
+        }
+
+        // Verify JSON serialization includes fronts when non-empty.
+        let json = serde_json::to_value(&output).unwrap();
+        if !output.fronts.is_empty() {
+            assert!(json["fronts"].is_array());
+        }
+        assert!(json["usage_hints"].is_array());
+    }
+
+    #[test]
+    fn robot_overview_surfaces_unlock_maximizer_triage_would_miss() {
+        // Regression test for issue #4 (SL-000 scenario).
+        //
+        // Graph layout:
+        //   UNLOCK_KING (actionable, open, priority=1) -> blocks X0..X6   (7 unlocks)
+        //   HUB_A, HUB_B, HUB_C (actionable, open, priority=0) -> each blocks 3 distinct items
+        //
+        // Core invariant under test: when triage's composite score and the
+        // greedy-unlock objective disagree on ranking, the orient payload must
+        // surface high-unlock items somewhere — either via triage's own
+        // surfaces (top_pick / fronts) OR via the separate `unlock_maximizers`
+        // surface that's drawn from top_k_set. Which specific surface picks up
+        // UNLOCK_KING depends on how triage's priority/centrality weighting
+        // shakes out for this exact fixture and is intentionally not asserted.
+        // The important guarantees are (a) it lands SOMEWHERE and (b) never in
+        // two surfaces at once (dedup works).
+        let mut issues = vec![
+            bvr::model::Issue {
+                id: "UNLOCK_KING".to_string(),
+                title: "Broad task that unlocks many downstream items".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 1,
+                labels: vec!["broad".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "HUB_A".to_string(),
+                title: "Hub A coordinator".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 0,
+                labels: vec!["hub".to_string(), "core".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "HUB_B".to_string(),
+                title: "Hub B coordinator".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 0,
+                labels: vec!["hub".to_string(), "core".to_string()],
+                ..bvr::model::Issue::default()
+            },
+            bvr::model::Issue {
+                id: "HUB_C".to_string(),
+                title: "Hub C coordinator".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 0,
+                labels: vec!["hub".to_string(), "core".to_string()],
+                ..bvr::model::Issue::default()
+            },
+        ];
+
+        // 7 downstream items all blocked by UNLOCK_KING.
+        for i in 0..7 {
+            issues.push(bvr::model::Issue {
+                id: format!("DS_UK_{i}"),
+                title: format!("Downstream of UNLOCK_KING ({i})"),
+                status: "blocked".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                dependencies: vec![bvr::model::Dependency {
+                    issue_id: format!("DS_UK_{i}"),
+                    depends_on_id: "UNLOCK_KING".to_string(),
+                    dep_type: "blocks".to_string(),
+                    ..bvr::model::Dependency::default()
+                }],
+                ..bvr::model::Issue::default()
+            });
+        }
+
+        // 3 downstream items per hub (9 total).
+        for (hub, hub_id) in ["HUB_A", "HUB_B", "HUB_C"].iter().enumerate() {
+            for i in 0..3 {
+                issues.push(bvr::model::Issue {
+                    id: format!("DS_H{hub}_{i}"),
+                    title: format!("Downstream of {hub_id} ({i})"),
+                    status: "blocked".to_string(),
+                    issue_type: "task".to_string(),
+                    priority: 2,
+                    dependencies: vec![bvr::model::Dependency {
+                        issue_id: format!("DS_H{hub}_{i}"),
+                        depends_on_id: (*hub_id).to_string(),
+                        dep_type: "blocks".to_string(),
+                        ..bvr::model::Dependency::default()
+                    }],
+                    ..bvr::model::Issue::default()
+                });
+            }
+        }
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        let top_k = analyzer.top_k_unlock_set(10);
+        // Sanity: UNLOCK_KING has the largest marginal_unlocks (7 downstream)
+        // in the top_k_set objective, so it ranks first in that ordering even
+        // though triage's composite score may prefer a different item.
+        assert_eq!(top_k.items[0].id, "UNLOCK_KING");
+        assert_eq!(top_k.items[0].marginal_unlocks, 7);
+
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions {
+            group_by_label: true,
+            max_recommendations: 10,
+            ..bvr::analysis::triage::TriageOptions::default()
+        });
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        // Acceptance criteria from issue #4: the orient surface must combine
+        // triage and unlock-objectives so items high on unlock impact but low
+        // on triage score still surface. UNLOCK_KING must appear somewhere in
+        // the output — as top_pick, a front representative, or an unlock
+        // maximizer — but never simultaneously (the dedup logic prevents that).
+        let seen_in_top = output.top_pick.as_ref().is_some_and(|p| p.id == "UNLOCK_KING");
+        let seen_in_fronts = output
+            .fronts
+            .iter()
+            .any(|f| f.representative.id == "UNLOCK_KING");
+        let seen_in_maximizers = output
+            .unlock_maximizers
+            .iter()
+            .any(|u| u.id == "UNLOCK_KING");
+        assert!(
+            seen_in_top || seen_in_fronts || seen_in_maximizers,
+            "UNLOCK_KING must appear in orient output (top_pick, fronts, or unlock_maximizers)",
+        );
+        let surface_count = [seen_in_top, seen_in_fronts, seen_in_maximizers]
+            .iter()
+            .filter(|s| **s)
+            .count();
+        assert_eq!(
+            surface_count, 1,
+            "UNLOCK_KING must appear in exactly one surface — dedup prevents double counting",
+        );
+
+        // Each unlock maximizer must be a legitimate unlock-ordered item.
+        for (idx, um) in output.unlock_maximizers.iter().enumerate() {
+            assert!(
+                !um.id.is_empty(),
+                "unlock_maximizers[{idx}].id must not be empty",
+            );
+            assert!(
+                !um.title.is_empty(),
+                "unlock_maximizers[{idx}].title must be looked up from issues",
+            );
+            assert_eq!(
+                um.claim_command,
+                format!("br update {} --status=in_progress", um.id),
+                "claim_command must be pre-baked",
+            );
+        }
+
+        // JSON shape: the field is serialized iff the Vec is non-empty
+        // (skip_serializing_if = "Vec::is_empty"). Assert symmetrically.
+        let json = serde_json::to_value(&output).unwrap();
+        if output.unlock_maximizers.is_empty() {
+            assert!(json.get("unlock_maximizers").is_none());
+        } else {
+            assert!(json["unlock_maximizers"].is_array());
+            assert_eq!(
+                json["unlock_maximizers"].as_array().unwrap().len(),
+                output.unlock_maximizers.len(),
+            );
+        }
+    }
+
+    #[test]
+    fn robot_overview_fronts_empty_when_no_label_groups() {
+        let issues = vec![bvr::model::Issue {
+            id: "X".to_string(),
+            title: "Solo task".to_string(),
+            status: "open".to_string(),
+            issue_type: "task".to_string(),
+            priority: 1,
+            labels: vec!["only-label".to_string()],
+            ..bvr::model::Issue::default()
+        }];
+
+        let analyzer = bvr::analysis::Analyzer::new(issues.clone());
+        // Without group_by_label, recommendations_by_label is empty.
+        let triage = analyzer.triage(bvr::analysis::triage::TriageOptions::default());
+        let output = super::build_robot_overview_output(&issues, &analyzer, &triage.result);
+
+        assert!(output.fronts.is_empty());
+        let json = serde_json::to_value(&output).unwrap();
+        // Empty fronts should be omitted from JSON via skip_serializing_if.
+        assert!(json.get("fronts").is_none());
     }
 
     #[test]

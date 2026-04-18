@@ -1,6 +1,5 @@
 ---
 source: src/tui.rs
-assertion_line: 25541
 expression: artifact
 ---
 === E2E Journey: history-deep-dive | 120x35 ===

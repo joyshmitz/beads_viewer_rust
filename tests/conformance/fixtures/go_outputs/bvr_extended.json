@@ -22,7 +22,7 @@
         "claim_top": "CI=1 br update bd-101 --status in_progress --json",
         "list_blocked": "CI=1 br blocked --json",
         "list_ready": "CI=1 br ready --json",
-        "refresh_triage": "bv --robot-triage",
+        "refresh_triage": "bvr --robot-triage",
         "show_top": "CI=1 br show bd-101 --json"
       },
       "meta": {
@@ -417,18 +417,10 @@
       ]
     },
     "usage_hints": [
-      "jq '.triage.quick_ref.top_picks[:3]' - Top 3 picks for immediate work",
-      "jq '.triage.recommendations[3:10] | map({id,title,score})' - Next candidates after top picks",
-      "jq '.triage.blockers_to_clear | map(.id)' - High-impact blockers to clear",
-      "jq '.triage.recommendations[] | select(.type == \"bug\")' - Bug-focused recommendations",
-      "jq '.triage.quick_ref.top_picks[] | select(.unblocks \u003e 2)' - High-impact picks",
-      "jq '.triage.quick_wins' - Low-effort, high-impact items",
-      "--robot-next - Get only the single top recommendation",
-      "--robot-triage-by-track - Group by execution track for multi-agent coordination",
-      "--robot-triage-by-label - Group by label for area-focused agents",
-      "jq '.triage.recommendations_by_track[].top_pick' - Top pick per track",
-      "jq '.triage.recommendations_by_label[].claim_command' - Claim commands per label",
-      "jq '.feedback.weight_adjustments' - View feedback-adjusted weights (bv-90)"
+      "jq '.triage.quick_ref.top_picks[:3]'",
+      "jq '.triage.blockers_to_clear | map(.id)'",
+      "jq '.triage.quick_wins | map({id,score})'",
+      "bvr --robot-next"
     ]
   },
   "plan": {
@@ -557,11 +549,8 @@
       }
     },
     "usage_hints": [
-      "jq '.plan.tracks | length' - Number of parallel execution tracks",
-      "jq '.plan.tracks[0].items | map(.id)' - First track item IDs",
-      "jq '.plan.tracks[].items[] | select(.unblocks | length \u003e 0)' - Items that unblock others",
-      "jq '.plan.summary' - High-level execution summary",
-      "jq '[.plan.tracks[].items[]] | length' - Total items across all tracks"
+      "jq '.plan.summary'",
+      "jq '.plan.tracks[].items[] | select(.unblocks | length \u003e 0)'"
     ]
   },
   "insights": {
@@ -1065,16 +1054,11 @@
       }
     ],
     "usage_hints": [
-      "jq '.Bottlenecks[:5] | map(.ID)' - Top 5 bottleneck IDs",
-      "jq '.CriticalPath[:3]' - Top 3 critical path items",
-      "jq '.top_what_ifs[] | select(.delta.direct_unblocks \u003e 2)' - High-impact items",
-      "jq '.full_stats.pagerank | to_entries | sort_by(-.value)[:5]' - Top PageRank",
-      "jq '.full_stats.core_number | to_entries | sort_by(-.value)[:5]' - Strongly embedded nodes (k-core)",
-      "jq '.full_stats.articulation_points' - Structural cut points",
-      "jq '.Slack[:5]' - Nodes with slack (good parallel work candidates)",
-      "jq '.Cycles | length' - Count of detected cycles",
-      "jq '.advanced_insights.cycle_break' - Cycle break suggestions (bv-181)",
-      "BV_INSIGHTS_MAP_LIMIT=50 bv --robot-insights - Reduce map sizes"
+      "jq '.Bottlenecks[:5]'",
+      "jq '.Cycles'",
+      "jq '.CriticalPath[:10]'",
+      "jq '.Keystones'",
+      "jq '.Velocity'"
     ]
   },
   "priority": {
@@ -1456,13 +1440,8 @@
       "total_issues": 6
     },
     "usage_hints": [
-      "jq '.recommendations[] | select(.confidence \u003e 0.7)' - Filter high confidence",
-      "jq '.recommendations[0].explanation.what_if' - Get top item's impact",
-      "jq '.recommendations | map({id: .issue_id, score: .impact_score})' - Extract IDs and scores",
-      "jq '.recommendations[] | select(.explanation.what_if.parallelization_gain \u003e 0)' - Find items that increase parallel work capacity",
-      "--robot-min-confidence 0.6 - Pre-filter by confidence",
-      "--robot-max-results 5 - Limit to top N results",
-      "--robot-by-label bug - Filter by specific label"
+      "jq '.recommendations[] | select(.confidence \u003e 0.7)'",
+      "jq '.recommendations | map({id,score,unblocks})'"
     ]
   },
   "forecast": {

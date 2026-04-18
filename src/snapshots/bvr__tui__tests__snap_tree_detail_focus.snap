@@ -5,10 +5,10 @@ expression: text
 bvr 1 Main b Board i Insights T Tree | mode=Tree | focus=detail | issues=3/3 | filter=all |
 ┌Dependency Tree─────────────────────────┐┌Issue Detail [focus]────────────────────────────────────┐
 │                                        ││                                                        │
-│ Dependency tree (3 nodes) | Enter expa ││ ID: A                                                  │
-│                                        ││ Title: Root                                            │
-│ > [-] o P0 A Root ↓1                   ││ Status: open                                           │
-│    |   `-     o P0 B Dependent ⊘1      ││ Type: task                                             │
+│ Dependency tree  3 nodes | Enter/za to ││ ID: A                                                  │
+│ ────────────────────────────────────── ││ Title: Root                                            │
+│ ▸ [-] o P0 A Root ↓1                   ││ Status: open                                           │
+│   │   └──     o P0 B Depende… ⊘1       ││ Type: task                                             │
 │       x P0 C Closed                    ││ Depth: 0                                               │
 │                                        ││ Labels: core, parity                                   │
 │                                        ││                                                        │

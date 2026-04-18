@@ -78,6 +78,9 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_next: bool,
 
+    #[arg(long, visible_alias = "robot-orient", action = ArgAction::SetTrue)]
+    pub robot_overview: bool,
+
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_triage: bool,
 
@@ -430,6 +433,17 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub no_hooks: bool,
 
+    /// Start the TUI in the given view instead of Main.
+    /// Supported: main, board, insights, graph, history, actionable,
+    /// attention, tree, labels, flow, timediff, sprint.
+    #[arg(long)]
+    pub view: Option<String>,
+
+    /// Start the TUI with a list-status filter applied.
+    /// Supported: all, open, in-progress, blocked, closed, ready.
+    #[arg(long)]
+    pub list_filter: Option<String>,
+
     /// Render a named TUI view non-interactively and output to stdout.
     /// Supported views: insights, board, history, main, graph.
     #[arg(long)]
@@ -525,6 +539,14 @@ impl Cli {
     }
 
     #[must_use]
+    pub fn resolve_search_preset(&self) -> Option<String> {
+        resolve_optional_string_choice(
+            self.search_preset.as_deref(),
+            std::env::var("BV_SEARCH_PRESET").ok().as_deref(),
+        )
+    }
+
+    #[must_use]
     pub fn is_operational_command(&self) -> bool {
         self.check_update
     }
@@ -533,6 +555,7 @@ impl Cli {
     pub fn is_robot_command(&self) -> bool {
         self.robot_help
             || self.robot_next
+            || self.robot_overview
             || self.robot_triage
             || self.robot_triage_by_track
             || self.robot_triage_by_label
@@ -620,6 +643,22 @@ fn resolve_output_format_choice(
     Ok(cli_format)
 }
 
+fn resolve_optional_string_choice(
+    cli_value: Option<&str>,
+    env_value: Option<&str>,
+) -> Option<String> {
+    cli_value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(std::string::ToString::to_string)
+        .or_else(|| {
+            env_value
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(std::string::ToString::to_string)
+        })
+}
+
 fn format_flag_was_explicit_in_args<I, S>(args: I) -> bool
 where
     I: IntoIterator<Item = S>,
@@ -636,7 +675,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, OutputFormat, format_flag_was_explicit_in_args, resolve_output_format_choice,
+        Cli, OutputFormat, format_flag_was_explicit_in_args, resolve_optional_string_choice,
+        resolve_output_format_choice,
     };
 
     #[test]
@@ -735,6 +775,24 @@ mod tests {
     }
 
     #[test]
+    fn resolve_search_preset_uses_env_when_cli_flag_absent() {
+        let resolved = resolve_optional_string_choice(None, Some("impact-first"));
+        assert_eq!(resolved.as_deref(), Some("impact-first"));
+    }
+
+    #[test]
+    fn resolve_search_preset_prefers_cli_over_env() {
+        let resolved = resolve_optional_string_choice(Some("text-only"), Some("impact-first"));
+        assert_eq!(resolved.as_deref(), Some("text-only"));
+    }
+
+    #[test]
+    fn resolve_search_preset_ignores_blank_values() {
+        let resolved = resolve_optional_string_choice(Some("   "), Some("  "));
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
     fn parse_no_cache_flag() {
         let cli = Cli::parse_from(["bvr", "--no-cache", "--robot-triage"]);
         assert!(cli.no_cache);
@@ -768,5 +826,13 @@ mod tests {
     fn parse_related_include_closed_flag() {
         let cli = Cli::parse_from(["bvr", "--robot-related", "bd-1", "--related-include-closed"]);
         assert!(cli.related_include_closed);
+    }
+
+    #[test]
+    fn robot_orient_is_alias_for_robot_overview() {
+        let overview = Cli::parse_from(["bvr", "--robot-overview"]);
+        let orient = Cli::parse_from(["bvr", "--robot-orient"]);
+        assert!(overview.robot_overview);
+        assert!(orient.robot_overview);
     }
 }

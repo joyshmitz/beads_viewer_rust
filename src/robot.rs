@@ -267,6 +267,7 @@ fn implemented_robot_command_names() -> &'static [&'static str] {
     &[
         "robot-triage",
         "robot-next",
+        "robot-overview",
         "robot-plan",
         "robot-insights",
         "robot-priority",
@@ -338,6 +339,23 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
                     "unblocks",
                     "claim_command",
                     "show_command",
+                ],
+                params: vec![],
+                needs_issues: true,
+            },
+        ),
+        (
+            "robot-overview",
+            CmdDoc {
+                flag: "--robot-overview",
+                description: "Compact project orientation surface: counts, next action, blocker signal, diverse work fronts, and quick commands.",
+                key_fields: vec![
+                    "summary",
+                    "top_pick",
+                    "top_blocker",
+                    "top_labels",
+                    "fronts",
+                    "commands",
                 ],
                 params: vec![],
                 needs_issues: true,
@@ -783,6 +801,7 @@ pub fn generate_robot_docs(topic: &str) -> Value {
         "quickstart": [
             "bvr --robot-triage               # Full triage with recommendations",
             "bvr --robot-next                  # Single top pick for immediate work",
+            "bvr --robot-overview              # Compact orientation snapshot for fast agent loops",
             "bvr --robot-plan                  # Dependency-respecting execution plan",
             "bvr --robot-insights              # Deep graph analysis (PageRank, betweenness, etc.)",
             "bvr --robot-triage-by-track       # Parallel work streams for multi-agent coordination",
@@ -1023,6 +1042,89 @@ pub fn generate_robot_schemas() -> RobotSchemas {
             },
             "required": ["generated_at", "data_hash", "id", "title", "score"],
         }),
+    );
+
+    commands.insert(
+        "robot-overview".to_string(),
+        versioned_simple_command_schema(
+            "Robot Overview Output",
+            "Compact orientation payload with headline counts, top action, blocker signal, labels, and suggested next commands.",
+            serde_json::json!({
+                "generated_at": schema_prop_dt(),
+                "data_hash": schema_prop("string"),
+                "summary": {
+                    "type": "object",
+                    "properties": {
+                        "open_issues": schema_prop("integer"),
+                        "actionable_issues": schema_prop("integer"),
+                        "blocked_issues": schema_prop("integer"),
+                        "in_progress_issues": schema_prop("integer"),
+                        "closed_issues": schema_prop("integer"),
+                        "cycle_count": schema_prop("integer"),
+                    },
+                },
+                "top_pick": {
+                    "type": "object",
+                    "properties": {
+                        "id": schema_prop("string"),
+                        "title": schema_prop("string"),
+                        "score": schema_prop("number"),
+                        "reasons": {"type": "array", "items": schema_prop("string")},
+                        "claim_command": schema_prop("string"),
+                    },
+                },
+                "top_blocker": {
+                    "type": "object",
+                    "properties": {
+                        "id": schema_prop("string"),
+                        "title": schema_prop("string"),
+                        "unblocks": schema_prop("integer"),
+                        "show_command": schema_prop("string"),
+                    },
+                },
+                "top_labels": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": schema_prop("string"),
+                            "open_issues": schema_prop("integer"),
+                        },
+                    },
+                },
+                "fronts": {
+                    "type": "array",
+                    "description": "Diverse work fronts grouped by label, each with a representative pick (max 8)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": schema_prop("string"),
+                            "open_count": schema_prop("integer"),
+                            "representative": {
+                                "type": "object",
+                                "properties": {
+                                    "id": schema_prop("string"),
+                                    "title": schema_prop("string"),
+                                    "score": schema_prop("number"),
+                                    "reasons": {"type": "array", "items": schema_prop("string")},
+                                    "claim_command": schema_prop("string"),
+                                },
+                            },
+                        },
+                    },
+                },
+                "commands": {
+                    "type": "object",
+                    "properties": {
+                        "next": schema_prop("string"),
+                        "triage": schema_prop("string"),
+                        "plan": schema_prop("string"),
+                        "history": schema_prop("string"),
+                    },
+                },
+                "usage_hints": {"type": "array", "items": schema_prop("string")},
+            }),
+        ),
     );
 
     commands.insert(
@@ -1794,6 +1896,17 @@ mod tests {
             commands["robot-label-attention"]["key_fields"],
             json!(["limit", "labels", "total_labels"])
         );
+        assert_eq!(
+            commands["robot-overview"]["key_fields"],
+            json!([
+                "summary",
+                "top_pick",
+                "top_blocker",
+                "top_labels",
+                "fronts",
+                "commands"
+            ])
+        );
     }
 
     // --robot-schema tests
@@ -1857,6 +1970,14 @@ mod tests {
                 "schema for {name} should be type: object"
             );
         }
+    }
+
+    #[test]
+    fn robot_schema_overview_has_summary_and_commands() {
+        let schemas = generate_robot_schemas();
+        let overview = &schemas.commands["robot-overview"];
+        assert!(overview["properties"]["summary"].is_object());
+        assert!(overview["properties"]["commands"].is_object());
     }
 
     // estimate_tokens tests

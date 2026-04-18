@@ -315,11 +315,11 @@ mod tests {
                 },
             },
             commands: crate::analysis::triage::TriageCommands {
-                claim_top: "br update A-1 --status=in_progress".to_string(),
-                show_top: "br show A-1".to_string(),
+                claim_top: Some("br update A-1 --status=in_progress".to_string()),
+                show_top: Some("br show A-1".to_string()),
                 list_ready: "br ready".to_string(),
                 list_blocked: "br list --status open --where blocked=true".to_string(),
-                refresh_triage: "bv --robot-triage".to_string(),
+                refresh_triage: "bvr --robot-triage".to_string(),
             },
         }
     }

@@ -572,8 +572,10 @@ pub struct TriageMeta {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TriageCommands {
-    pub claim_top: String,
-    pub show_top: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claim_top: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_top: Option<String>,
     pub list_ready: String,
     pub list_blocked: String,
     pub refresh_triage: String,
@@ -823,7 +825,12 @@ pub fn compute_triage(
         .filter(|issue| issue.is_open_like() && issue.normalized_status() == "in_progress")
         .count();
 
-    let top_id = top_picks.first().map_or_else(String::new, |p| p.id.clone());
+    let claim_top = top_picks
+        .first()
+        .map(|pick| format!("CI=1 br update {} --status in_progress --json", pick.id));
+    let show_top = top_picks
+        .first()
+        .map(|pick| format!("CI=1 br show {} --json", pick.id));
 
     let result = TriageResult {
         meta: TriageMeta {
@@ -855,11 +862,11 @@ pub fn compute_triage(
             actionable.len(),
         ),
         commands: TriageCommands {
-            claim_top: format!("CI=1 br update {top_id} --status in_progress --json"),
-            show_top: format!("CI=1 br show {top_id} --json"),
+            claim_top,
+            show_top,
             list_ready: "CI=1 br ready --json".to_string(),
             list_blocked: "CI=1 br blocked --json".to_string(),
-            refresh_triage: "bv --robot-triage".to_string(),
+            refresh_triage: "bvr --robot-triage".to_string(),
         },
     };
 
@@ -1494,6 +1501,24 @@ mod tests {
             !triage.result.recommendations_by_label.is_empty(),
             "should group by label"
         );
+    }
+
+    #[test]
+    fn triage_omits_top_commands_when_no_actionable_items_exist() {
+        let issues = vec![Issue {
+            id: "A".to_string(),
+            title: "Closed".to_string(),
+            status: "closed".to_string(),
+            issue_type: "task".to_string(),
+            ..Issue::default()
+        }];
+        let graph = IssueGraph::build(&issues);
+        let metrics = graph.compute_metrics();
+        let triage = compute_triage(&issues, &graph, &metrics, &TriageOptions::default());
+
+        assert!(triage.result.commands.claim_top.is_none());
+        assert!(triage.result.commands.show_top.is_none());
+        assert_eq!(triage.result.commands.list_ready, "CI=1 br ready --json");
     }
 
     // -- ImpactScore tests --

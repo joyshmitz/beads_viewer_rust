@@ -1,6 +1,5 @@
 ---
 source: src/tui.rs
-assertion_line: 22734
 expression: text
 ---
 bvr 1 Main b Board i Insights h History | mode=History ◉ Git | focus=list | issues=3/3 | filter=all

@@ -153,20 +153,21 @@ Every module includes inline `#[cfg(test)]` unit tests alongside the implementat
 - Edge cases (empty input, max values, boundary conditions)
 - Error conditions
 
-### Test Suite (1,787+ tests)
+### Test Suite (1,859+ tests)
 
 ```bash
 # Full suite via rch
 export TMPDIR=/data/tmp && rch exec -- cargo test --tests
 
 # Individual suites
-export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1331 unit tests
+export TMPDIR=/data/tmp && rch exec -- cargo test --lib                        # 1410 unit tests
+export TMPDIR=/data/tmp && rch exec -- cargo test --bin bvr                    # 50 binary tests
 export TMPDIR=/data/tmp && rch exec -- cargo test --test conformance           # 79 conformance
 export TMPDIR=/data/tmp && rch exec -- cargo test --test schema_validation     # 61 schema
-export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 62 e2e robot
-export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 34 e2e workspace
+export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_robot_matrix      # 65 e2e robot
+export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_workspace_history # 35 e2e workspace
 export TMPDIR=/data/tmp && rch exec -- cargo test --test e2e_export_pages      # 20 e2e pages
-export TMPDIR=/data/tmp && rch exec -- cargo test --test cli_model_validation  # 60 CLI model
+export TMPDIR=/data/tmp && rch exec -- cargo test --test cli_model_validation  # 90 CLI model
 export TMPDIR=/data/tmp && rch exec -- cargo test --test stress_fixtures       # 49 stress
 
 # Benchmarks
@@ -177,13 +178,14 @@ export TMPDIR=/data/tmp && rch exec -- cargo bench --bench triage              #
 
 | Suite | Count | Purpose |
 |-------|-------|---------|
-| Unit tests (`--lib`) | 1331 | Module-level with inline `#[cfg(test)]` |
+| Unit tests (`--lib`) | 1410 | Module-level with inline `#[cfg(test)]` |
+| Binary tests (`--bin bvr`) | 50 | CLI dispatch, robot output structs, workspace discovery |
 | Conformance (`--test conformance`) | 79 | Go reference fixture parity (100%) |
 | Schema validation | 61 | JSON schema compliance |
-| E2E robot matrix | 62 | Full robot command integration (39/39 commands) |
-| E2E workspace/history | 34 | Workspace and history flows |
+| E2E robot matrix | 65 | Full robot command integration (39/39 commands) |
+| E2E workspace/history | 35 | Workspace and history flows |
 | E2E export/pages | 20 | Pages export/preview/watch |
-| CLI model validation | 60 | CLI entrypoint and path semantics |
+| CLI model validation | 90 | CLI entrypoint and path semantics |
 | Stress fixtures | 49 | Large/pathological dataset handling |
 
 ### Shell E2E
@@ -206,7 +208,7 @@ If you aren't 100% sure how to use a third-party library, **SEARCH ONLINE** to f
 
 ### What It Does
 
-Loads issues from `.beads/beads.jsonl`, builds a dependency graph, and computes PageRank, betweenness centrality, HITS, eigenvector, k-core decomposition, critical path, and cycle detection. Outputs triage recommendations, forecasts, alerts, suggestions, history correlations, and more via `--robot-*` flags. Also provides an 11-mode interactive TUI and a static pages export pipeline.
+Loads issues from `.beads/beads.jsonl`, builds a dependency graph, and computes PageRank, betweenness centrality, HITS, eigenvector, k-core decomposition, critical path, and cycle detection. Outputs triage recommendations, forecasts, alerts, suggestions, history correlations, and more via `--robot-*` flags. Also provides a 12-mode interactive TUI and a static pages export pipeline.
 
 ### Architecture
 
@@ -215,20 +217,20 @@ JSONL → Loader → Issue Vec → Analyzer (IssueGraph + metrics) → Robot JSO
 ```
 
 **Two-phase analysis:**
-- **Phase 1 (instant):** degree, topo sort, density
-- **Phase 2 (async, 500ms timeout):** PageRank, betweenness, HITS, eigenvector, cycles
+- **Triage/runtime path:** `triage_runtime()` keeps the metrics used by recommendation flows: PageRank, betweenness, cycles, critical path, and articulation.
+- **Fast/slow background path:** `fast_phase()` computes PageRank, cycles, critical path, k-core, articulation, and slack immediately; `slow_phase()` later fills betweenness, eigenvector, and HITS for background/TUI flows.
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/main.rs` (198 KB) | CLI dispatch, robot mode routing, all `--robot-*` flag handling |
+| `src/main.rs` (198 KB) | CLI dispatch, robot mode routing, all `--robot-*` flag handling, and many concrete robot payload structs |
 | `src/tui.rs` (548 KB) | Interactive TUI with 11 view modes, keybindings, modals |
 | `src/lib.rs` | Library re-exports (analysis, model, loader, tui, robot, etc.) |
-| `src/model.rs` | `Issue` struct, status/priority/type enums, serialization |
-| `src/loader.rs` | JSONL/workspace loading, git history extraction |
-| `src/cli.rs` | `CliArgs` struct (clap derive) with all CLI flags |
-| `src/robot.rs` | `RobotEnvelope`, all robot output structs, TOON encoding |
+| `src/model.rs` | `Issue` struct, string-backed status/type fields, timestamps, dependencies/comments, validation helpers |
+| `src/loader.rs` | JSONL/workspace loading, path discovery, workspace namespacing, sprint loading |
+| `src/cli.rs` | `Cli` struct (clap derive) with all CLI flags |
+| `src/robot.rs` | `RobotEnvelope`, robot docs/schema generation, JSON/TOON rendering helpers |
 | `src/error.rs` | Typed error definitions |
 | `src/agents.rs` | Agent management CLI (`--agents-check/add/update/remove`) |
 | `src/export_md.rs` | Markdown report export |
@@ -263,7 +265,7 @@ JSONL → Loader → Issue Vec → Analyzer (IssueGraph + metrics) → Robot JSO
 | `brief.rs` | Priority and agent brief generation |
 | `cache.rs` | Analysis result caching |
 
-### TUI View Modes (11 total)
+### TUI View Modes (12 total)
 
 | Mode | Key | Description |
 |------|-----|-------------|
@@ -294,8 +296,10 @@ All robot commands output JSON to stdout with a shared envelope:
 
 - **TUI state fields** must be added to `BvrApp` struct AND all construction sites (15+ places in tests)
 - **New ViewMode variants** need: enum+label, BvrApp fields, key handler, guard fn, j/k nav, list/detail text, 5 match dispatches, all construction sites
-- **Robot output structs** use `#[serde(flatten)]` with `RobotEnvelope` for shared fields
+- **Robot payloads** commonly use `#[serde(flatten)]` with `RobotEnvelope` for shared fields, but many output structs live in `main.rs` and analysis modules rather than only in `src/robot.rs`
 - **IssueGraph** uses `Vec<Issue>` + `HashMap<String, usize>` (not `HashMap<String, Issue>`) for performance
+- **`Issue` remains string-backed** for status/type behavior; do not assume dedicated enums exist in `src/model.rs`
+- **Fast/slow analysis split** is mostly about background/TUI metric completion; the fast phase already includes PageRank and cycles
 - **Rust 2024 edition**: `std::env::set_var`/`remove_var` are unsafe — cannot use directly in tests
 - **Cycle detection**: reports ALL SCC members (sorted), not minimal DFS path within SCC
 - **Auto-diff**: `--diff-since` in non-TTY context auto-enables `--robot-diff`
@@ -418,6 +422,14 @@ br sync --flush-only  # Export to JSONL (NO git operations)
 4. **Complete**: Use `br close <id> --reason "..."`
 5. **Sync**: Run `br sync --flush-only` then manually commit
 
+### Tracker Health Note (Current Repo)
+
+- `bd-jhb6` is still open because normal `br` writes can destabilize `.beads/beads.db` in this repo even after the canonical DB has been repaired.
+- Confirmed sequential repro on 2026-04-09 with `br 0.1.34`: start from a clean DB (`PRAGMA integrity_check = ok`, `page_count = 338`, `freelist_count = 0`), run `br close ...`, observe `metadata.blocked_cache_state = stale`, then run `br ready --json`; the stale-cache marker clears, but `PRAGMA integrity_check` can start reporting `page N is never used` and the DB grows to 341 pages even when `blocked_issues_cache` still has 0 rows.
+- `PRAGMA wal_checkpoint(TRUNCATE)` did not fix the malformed-page warning in the confirmed repro; a direct SQLite `VACUUM` restored `integrity_check = ok` and shrank the DB back to 338 pages.
+- Until the upstream root cause is fixed, if `br doctor` reports `blocked_issues_cache is marked stale`, run `br ready --json`; if `sqlite.integrity_check` then warns about `page N is never used`, run a direct SQLite `VACUUM` on `.beads/beads.db` and rerun `br doctor`.
+- Prefer reproductions in an isolated copy of `.beads/` when investigating this bead so routine tracker writes do not churn the live repo state.
+
 ### Key Concepts
 
 - **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
@@ -427,17 +439,19 @@ br sync --flush-only  # Export to JSONL (NO git operations)
 
 ---
 
-## bv — Graph-Aware Triage Engine
+## bvr — Graph-Aware Triage Engine
 
-bv is bvr running in robot mode. It computes PageRank, betweenness, critical path, cycles, HITS, eigenvector, and k-core metrics deterministically.
+`bvr` is the binary produced by this repo. It computes PageRank, betweenness, critical path, cycles, HITS, eigenvector, and k-core metrics deterministically.
 
-**CRITICAL: Use ONLY `--robot-*` flags. Bare `bv` launches an interactive TUI that blocks your session.**
+**CRITICAL: Use ONLY `--robot-*` flags. Bare `bvr` launches an interactive TUI that blocks your session.**
+
+**When working from this checkout, prefer the repo-local binary** (`target/debug/bvr`, `target/release/bvr`, or a freshly built `bvr` in your PATH). Do **not** assume a global `bv` command matches this checkout; on shared machines it may point at an older install with a different flag surface.
 
 ### The Workflow: Start With Triage
 
 ```bash
-bv --robot-triage        # THE MEGA-COMMAND: start here
-bv --robot-next          # Minimal: just the single top pick + claim command
+bvr --robot-triage        # THE MEGA-COMMAND: start here
+bvr --robot-next          # Minimal: just the single top pick + claim command
 ```
 
 ### Command Reference
@@ -474,20 +488,20 @@ bv --robot-next          # Minimal: just the single top pick + claim command
 ### Scoping & Filtering
 
 ```bash
-bv --robot-plan --label backend              # Scope to label's subgraph
-bv --robot-insights --as-of HEAD~30          # Historical point-in-time
-bv --recipe actionable --robot-plan          # Pre-filter: ready to work
-bv --robot-triage --robot-triage-by-track    # Group by parallel work streams
-bv --robot-triage --robot-triage-by-label    # Group by domain
+bvr --robot-plan --label backend              # Scope to label's subgraph
+bvr --robot-insights --as-of HEAD~30          # Historical point-in-time
+bvr --recipe actionable --robot-plan          # Pre-filter: ready to work
+bvr --robot-triage --robot-triage-by-track    # Group by parallel work streams
+bvr --robot-triage --robot-triage-by-label    # Group by domain
 ```
 
 ### jq Quick Reference
 
 ```bash
-bv --robot-triage | jq '.triage.quick_ref'                  # At-a-glance summary
-bv --robot-triage | jq '.triage.recommendations[0]'         # Top recommendation
-bv --robot-plan | jq '.plan.summary.highest_impact'          # Best unblock target
-bv --robot-insights | jq '.Cycles'                           # Circular deps (must fix!)
+bvr --robot-triage | jq '.triage.quick_ref'                  # At-a-glance summary
+bvr --robot-triage | jq '.triage.recommendations[0]'         # Top recommendation
+bvr --robot-plan | jq '.plan.summary.highest_impact'         # Best unblock target
+bvr --robot-insights | jq '.Cycles'                          # Circular deps (must fix!)
 ```
 
 ---

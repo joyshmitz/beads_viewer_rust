@@ -52,22 +52,25 @@ cargo install --git https://github.com/Dicklesworthstone/beads_viewer_rust.git b
 # 1. Ask for the single best next move
 bvr --robot-next
 
-# 2. Get the full triage payload
+# 2. Get a compact orientation snapshot
+bvr --robot-overview
+
+# 3. Get the full triage payload
 bvr --robot-triage
 
-# 3. Inspect graph metrics and cycles
+# 4. Inspect graph metrics and cycles
 bvr --robot-insights
 
-# 4. See an execution plan grouped into parallel tracks
+# 5. See an execution plan grouped into parallel tracks
 bvr --robot-plan
 
-# 5. Search across issue text and metadata
+# 6. Search across issue text and metadata
 bvr --robot-search --search "auth" --search-limit 5
 
-# 6. Export a static bundle for sharing
+# 7. Export a static bundle for sharing
 bvr --export-pages ./bv-pages --pages-title "Sprint Dashboard"
 
-# 7. Preview it locally
+# 8. Preview it locally
 bvr --preview-pages ./bv-pages
 ```
 
@@ -269,6 +272,8 @@ cargo build --release
 ./target/release/bvr --robot-help
 ```
 
+When validating the current checkout, prefer the binary built from that checkout (`./target/debug/bvr` or `./target/release/bvr`). Do not assume a global `bv` wrapper or previously installed binary matches the source tree you are editing.
+
 ### 3. Install from a local checkout into your Cargo bin dir
 
 ```bash
@@ -317,6 +322,7 @@ bvr --workspace .bv/workspace.yaml --robot-plan
 
 ```bash
 bvr --robot-next
+bvr --robot-overview
 bvr --robot-triage
 bvr --robot-plan
 bvr --robot-insights
@@ -463,6 +469,7 @@ bvr --robot-schema
 
 ```bash
 bvr --robot-next
+bvr --robot-overview
 bvr --robot-triage
 bvr --robot-triage-by-track
 bvr --robot-triage-by-label
@@ -472,7 +479,7 @@ bvr --robot-alerts
 bvr --robot-suggest
 ```
 
-Use these when you want ranked recommendations, quick wins, blockers to clear, grouped tracks, or priority mismatch detection.
+Use these when you want a fast orientation snapshot, ranked recommendations, quick wins, blockers to clear, grouped tracks, or priority mismatch detection.
 
 ### Graph analysis and forecasting
 
@@ -779,11 +786,12 @@ BVR_E2E_ARTIFACT_DIR=target/bvr-e2e-artifacts cargo test --test e2e_robot_matrix
 
 ```bash
 bvr --robot-next
+bvr --robot-overview
 bvr --robot-triage
 bvr --robot-plan
 ```
 
-Start narrow, then expand. `--robot-next` gives the top pick, `--robot-triage` gives context, and `--robot-plan` tells you whether parallel work exists.
+Start narrow, then expand. `--robot-next` gives the top pick, `--robot-overview` gives a compact project snapshot, `--robot-triage` gives deeper context, and `--robot-plan` tells you whether parallel work exists.
 
 ### I am a human operator triaging a sprint
 

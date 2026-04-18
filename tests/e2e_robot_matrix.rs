@@ -268,6 +268,10 @@ fn e2e_robot_triage() {
     assert_valid_envelope(&json);
     assert!(validate_fields(&json, &["triage"], "").is_empty());
     assert!(validate_type_at(&json, "triage.recommendations", JsonType::Array).is_empty());
+    assert_eq!(
+        json["triage"]["commands"]["refresh_triage"],
+        "bvr --robot-triage"
+    );
 }
 
 #[test]
@@ -276,6 +280,18 @@ fn e2e_robot_next() {
     // robot-next has flat top-level fields, not a nested "recommendation" wrapper
     assert!(validate_fields(&json, &["generated_at", "data_hash"], "").is_empty());
     assert!(validate_fields(&json, &["id", "title", "score"], "").is_empty());
+}
+
+#[test]
+fn e2e_robot_overview() {
+    let json = run_robot(&["--robot-overview"], FIXTURE);
+    assert_valid_envelope(&json);
+    assert!(validate_fields(&json, &["summary", "commands"], "").is_empty());
+    assert!(
+        validate_type_at(&json, "summary.open_issues", JsonType::Number).is_empty(),
+        "overview summary should expose numeric counts: {json}"
+    );
+    assert_eq!(json["commands"]["next"], "bvr --robot-next");
 }
 
 #[test]
@@ -555,6 +571,56 @@ fn e2e_robot_search() {
         .is_empty()
     );
     assert!(validate_type_at(&json, "results", JsonType::Array).is_empty());
+}
+
+#[test]
+fn e2e_robot_search_hybrid_without_lexical_match_returns_no_results() {
+    let json = run_robot(
+        &[
+            "--robot-search",
+            "--search",
+            "zzzznotfound",
+            "--search-mode",
+            "hybrid",
+            "--search-limit",
+            "5",
+        ],
+        FIXTURE,
+    );
+    assert_valid_envelope(&json);
+    let results = json["results"].as_array().expect("results array");
+    assert!(
+        results.is_empty(),
+        "hybrid search should not return unrelated issues when the query has no lexical matches: {json}"
+    );
+}
+
+#[test]
+fn e2e_robot_search_honors_search_preset_env() {
+    let output = bvr()
+        .env("BV_SEARCH_PRESET", "text-only")
+        .args([
+            "--robot-search",
+            "--search",
+            "parity",
+            "--search-mode",
+            "hybrid",
+            "--beads-file",
+            COMPLEX_FIXTURE,
+        ])
+        .output()
+        .expect("failed to execute bvr");
+    assert!(
+        output.status.success(),
+        "env-driven search preset failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let json: Value = serde_json::from_slice(&output.stdout).expect("search json payload");
+    assert_valid_envelope(&json);
+    assert_eq!(json["preset"], "text-only");
+    assert_eq!(json["weights"]["text"], 1.0);
+    assert_eq!(json["weights"]["pagerank"], 0.0);
 }
 
 #[test]
@@ -959,4 +1025,12 @@ fn e2e_empty_fixture_returns_zero_open() {
         .as_i64()
         .unwrap_or(-1);
     assert_eq!(total, 0, "empty fixture should have 0 open issues");
+    assert!(
+        json["triage"]["commands"].get("claim_top").is_none(),
+        "empty fixture should omit claim_top when there is no recommendation: {json}"
+    );
+    assert!(
+        json["triage"]["commands"].get("show_top").is_none(),
+        "empty fixture should omit show_top when there is no recommendation: {json}"
+    );
 }

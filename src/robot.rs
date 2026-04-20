@@ -305,6 +305,8 @@ fn implemented_robot_command_names() -> &'static [&'static str] {
         "robot-drift",
         "robot-search",
         "robot-recipes",
+        "robot-economics",
+        "robot-delivery",
     ]
 }
 
@@ -779,6 +781,44 @@ fn robot_command_docs() -> BTreeMap<&'static str, CmdDoc> {
                 key_fields: vec!["recipes"],
                 params: vec![],
                 needs_issues: false,
+            },
+        ),
+        (
+            "robot-economics",
+            CmdDoc {
+                flag: "--robot-economics",
+                description: "Operating-cost projection: burn rate, throughput, cost-to-complete, cost-of-delay. Pure arithmetic over existing analyzer state plus a small opt-in overlay.",
+                key_fields: vec![
+                    "schema_version",
+                    "overlay_hash",
+                    "inputs.hourly_rate",
+                    "inputs.estimate_coverage_pct",
+                    "projections.burn_rate_per_day",
+                    "projections.cost_to_complete",
+                    "projections.cost_of_delay",
+                    "guards",
+                ],
+                params: vec![
+                    "--economics-overlay <path.json>",
+                    "--insight-limit <n>",
+                    "(env) BVR_ECONOMICS_OVERLAY",
+                ],
+                needs_issues: true,
+            },
+        ),
+        (
+            "robot-delivery",
+            CmdDoc {
+                flag: "--robot-delivery",
+                description: "Delivery posture: Reinertsen flow_distribution (Risk>Debt>Defects>Features), urgency_profile (Expedite>Fixed-Date>Intangible>Standard), and milestone_pressure. Classification only; no overlay required.",
+                key_fields: vec![
+                    "schema_version",
+                    "flow_distribution",
+                    "urgency_profile",
+                    "milestone_pressure",
+                ],
+                params: vec!["--insight-limit <n>"],
+                needs_issues: true,
             },
         ),
     ])
@@ -1735,6 +1775,137 @@ pub fn generate_robot_schemas() -> RobotSchemas {
                 "generated_at": schema_prop_dt(),
                 "data_hash": schema_prop("string"),
                 "recipes": {"type": "array"},
+            }),
+        ),
+    );
+    commands.insert(
+        "robot-economics".to_string(),
+        versioned_simple_command_schema(
+            "Robot Economics Output",
+            "Operating-cost projection: burn rate, cost-to-complete, cost-of-delay. Pure arithmetic over analyzer state + opt-in overlay.",
+            serde_json::json!({
+                "generated_at": schema_prop_dt(),
+                "data_hash": schema_prop("string"),
+                "schema_version": schema_prop("string"),
+                "overlay_hash": schema_prop("string"),
+                "inputs": {
+                    "type": "object",
+                    "properties": {
+                        "hourly_rate": schema_prop("number"),
+                        "hours_per_day": schema_prop("number"),
+                        "budget_envelope": schema_prop("number"),
+                        "currency": schema_prop("string"),
+                        "throughput_window_days": schema_prop("integer"),
+                        "project_age_days": schema_prop("integer"),
+                        "estimate_coverage_pct": schema_prop("number"),
+                        "open_issues": schema_prop("integer"),
+                        "closed_in_window": schema_prop("integer"),
+                    },
+                    "required": [
+                        "hourly_rate", "hours_per_day", "throughput_window_days",
+                        "project_age_days", "estimate_coverage_pct",
+                        "open_issues", "closed_in_window",
+                    ],
+                },
+                "projections": {
+                    "type": "object",
+                    "properties": {
+                        "burn_rate_per_day": schema_prop("number"),
+                        "throughput_issues_per_day": schema_prop("number"),
+                        "cost_to_complete": schema_prop("number"),
+                        "budget_utilization_pct": schema_prop("number"),
+                        "cost_of_delay": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": schema_prop("string"),
+                                    "title": schema_prop("string"),
+                                    "dependents_count": schema_prop("integer"),
+                                    "rate_per_day": schema_prop("number"),
+                                },
+                                "required": ["id", "dependents_count", "rate_per_day"],
+                            },
+                        },
+                    },
+                    "required": [
+                        "burn_rate_per_day", "throughput_issues_per_day", "cost_of_delay",
+                    ],
+                },
+                "guards": {
+                    "type": "object",
+                    "properties": {
+                        "estimate_coverage_below_threshold": schema_prop("boolean"),
+                        "project_too_young_for_throughput": schema_prop("boolean"),
+                        "zero_throughput": schema_prop("boolean"),
+                        "no_budget_envelope": schema_prop("boolean"),
+                    },
+                    "required": [
+                        "estimate_coverage_below_threshold",
+                        "project_too_young_for_throughput",
+                        "zero_throughput",
+                        "no_budget_envelope",
+                    ],
+                },
+            }),
+        ),
+    );
+    commands.insert(
+        "robot-delivery".to_string(),
+        versioned_simple_command_schema(
+            "Robot Delivery Output",
+            "Delivery posture: Reinertsen flow_distribution, urgency_profile, milestone_pressure. Classification only.",
+            serde_json::json!({
+                "generated_at": schema_prop_dt(),
+                "data_hash": schema_prop("string"),
+                "schema_version": schema_prop("string"),
+                "open_issues": schema_prop("integer"),
+                "window_days": schema_prop("integer"),
+                "flow_distribution": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": ["risk", "debt", "defects", "features"],
+                            },
+                            "count": schema_prop("integer"),
+                            "pct": schema_prop("number"),
+                        },
+                        "required": ["category", "count", "pct"],
+                    },
+                },
+                "urgency_profile": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": ["expedite", "fixed_date", "intangible", "standard"],
+                            },
+                            "count": schema_prop("integer"),
+                            "pct": schema_prop("number"),
+                        },
+                        "required": ["category", "count", "pct"],
+                    },
+                },
+                "milestone_pressure": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": schema_prop("string"),
+                            "title": schema_prop("string"),
+                            "due_date": schema_prop_dt(),
+                            "days_until_due": schema_prop("integer"),
+                            "is_overdue": schema_prop("boolean"),
+                            "is_blocked": schema_prop("boolean"),
+                        },
+                        "required": ["id", "due_date", "days_until_due", "is_overdue", "is_blocked"],
+                    },
+                },
             }),
         ),
     );

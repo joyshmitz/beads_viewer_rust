@@ -32,6 +32,28 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+fn load_economics_overlay(
+    cli_path: Option<&std::path::Path>,
+) -> std::result::Result<bvr::analysis::economics::EconomicsOverlay, String> {
+    // CLI flag takes precedence over env var so operators can override a
+    // machine-wide default on a per-invocation basis.
+    let path = cli_path
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("BVR_ECONOMICS_OVERLAY").map(std::path::PathBuf::from))
+        .ok_or_else(|| {
+            "--robot-economics requires --economics-overlay <path.json> or \
+             BVR_ECONOMICS_OVERLAY to be set"
+                .to_string()
+        })?;
+    let contents = std::fs::read_to_string(&path).map_err(|error| {
+        format!(
+            "failed to read economics overlay {}: {error}",
+            path.display()
+        )
+    })?;
+    bvr::analysis::economics::EconomicsOverlay::from_json_str(&contents)
+}
+
 fn analysis_config_for_cli(cli: &Cli) -> AnalysisConfig {
     if cli.robot_next
         || cli.robot_overview
@@ -1019,6 +1041,74 @@ fn main() -> ExitCode {
                 "jq '.recommendations | map({id,score,unblocks})'".to_string(),
             ],
         };
+
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+
+        return ExitCode::SUCCESS;
+    }
+
+    if cli.robot_economics {
+        let overlay = match load_economics_overlay(cli.economics_overlay.as_deref()) {
+            Ok(value) => value,
+            Err(error) => {
+                eprintln!("error: {error}");
+                return ExitCode::from(1);
+            }
+        };
+        let title_by_id: std::collections::BTreeMap<&str, &str> = issues
+            .iter()
+            .map(|issue| (issue.id.as_str(), issue.title.as_str()))
+            .collect();
+        let bottlenecks = bvr::analysis::economics::bottlenecks_from_blocks_count(
+            &analyzer.metrics.blocks_count,
+            &title_by_id,
+            cli.insight_limit.max(1),
+        );
+        let output = bvr::analysis::economics::compute_economics(
+            bvr::analysis::economics::EconomicsComputation {
+                issues: &issues,
+                overlay: &overlay,
+                bottlenecks: &bottlenecks,
+                now: Utc::now(),
+                cost_of_delay_limit: cli.insight_limit.max(1),
+            },
+        );
+
+        if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
+            eprintln!("error: {error}");
+            return ExitCode::from(1);
+        }
+
+        return ExitCode::SUCCESS;
+    }
+
+    if cli.robot_delivery {
+        // Build the set of issue IDs that have at least one open blocker, so
+        // delivery's milestone_pressure.is_blocked flag is coherent with the
+        // --robot-alerts / --robot-plan blocker sense.
+        let blocked_ids: std::collections::HashSet<String> = issues
+            .iter()
+            .filter(|issue| issue.is_open_like())
+            .filter_map(|issue| {
+                let blockers = analyzer.graph.blockers(&issue.id);
+                if blockers.is_empty() {
+                    None
+                } else {
+                    Some(issue.id.clone())
+                }
+            })
+            .collect();
+        let output = bvr::analysis::delivery::compute_delivery(
+            bvr::analysis::delivery::DeliveryComputation {
+                issues: &issues,
+                blocked_ids: &blocked_ids,
+                now: Utc::now(),
+                milestone_pressure_limit: cli.insight_limit.max(1),
+            },
+        );
 
         if let Err(error) = emit_with_stats(cli.format, &output, cli.stats) {
             eprintln!("error: {error}");
@@ -8197,7 +8287,10 @@ mod tests {
         // on triage score still surface. UNLOCK_KING must appear somewhere in
         // the output — as top_pick, a front representative, or an unlock
         // maximizer — but never simultaneously (the dedup logic prevents that).
-        let seen_in_top = output.top_pick.as_ref().is_some_and(|p| p.id == "UNLOCK_KING");
+        let seen_in_top = output
+            .top_pick
+            .as_ref()
+            .is_some_and(|p| p.id == "UNLOCK_KING");
         let seen_in_fronts = output
             .fronts
             .iter()

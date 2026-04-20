@@ -10764,7 +10764,7 @@ impl BvrApp {
 
     fn tree_list_render_text(&self, width: u16) -> RichText {
         if self.tree_flat_nodes.is_empty() {
-            return RichText::raw("(no dependency tree — all issues are independent)".to_string());
+            return RichText::raw("(no dependency tree — all issues are independent)");
         }
 
         let line_width = usize::from(width.saturating_sub(2)).max(24);

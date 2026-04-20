@@ -25,7 +25,7 @@ OVERLAY="${2:-.bv/economics.json}"
 OUT_DIR="${3:-.bv/runs}"
 
 if [[ ! -x ./target/release/bvr ]]; then
-  echo "triad: ./target/release/bvr not found; run \`rch exec -- cargo build --release --bin bvr\` first" >&2
+  echo "triad: ./target/release/bvr not found; run \`cargo build --release --bin bvr\` first" >&2
   exit 1
 fi
 

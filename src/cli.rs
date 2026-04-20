@@ -110,6 +110,25 @@ pub struct Cli {
     #[arg(long, action = ArgAction::SetTrue)]
     pub robot_alerts: bool,
 
+    /// Emit economics projections (burn rate, cost-to-complete, cost-of-delay).
+    /// Requires `--economics-overlay <path>` or `BVR_ECONOMICS_OVERLAY` env var
+    /// pointing at a JSON file with `hourly_rate` and `hours_per_day`.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_economics: bool,
+
+    /// Path to a JSON economics overlay file. Overrides `BVR_ECONOMICS_OVERLAY`
+    /// when both are set. Required for `--robot-economics` unless the env var
+    /// is set. Schema: `{"hourly_rate": f64, "hours_per_day": f64,
+    /// "budget_envelope": f64?, "throughput_window_days": u32?,
+    /// "currency": String?}`.
+    #[arg(long)]
+    pub economics_overlay: Option<std::path::PathBuf>,
+
+    /// Emit delivery posture classification (flow mix, urgency profile,
+    /// milestone pressure). No overlay required.
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub robot_delivery: bool,
+
     #[arg(long)]
     pub severity: Option<String>,
 
@@ -563,6 +582,8 @@ impl Cli {
             || self.robot_insights
             || self.robot_priority
             || self.robot_alerts
+            || self.robot_economics
+            || self.robot_delivery
             || self.robot_suggest
             || self.robot_diff
             || self.robot_history

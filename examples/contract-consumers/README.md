@@ -47,6 +47,12 @@ examples/contract-consumers/lenses/investor/brief.sh     # for finance
 jq -f examples/contract-consumers/lenses/erp/adapter.jq --arg project bvr .bv/runs/economics.json
 ```
 
+For an end-to-end walk-through in one command (triad + every lens):
+
+```bash
+examples/contract-consumers/demo.sh
+```
+
 Portfolio rollup across several repos:
 
 ```bash

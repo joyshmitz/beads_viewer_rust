@@ -64,6 +64,154 @@ All four consumers work off the same cached envelopes (one `triad.sh` run, one s
 - **Investor** — numbers- and provenance-oriented: input assumptions, projections, boolean guards relabeled as `TRIPPED` / `ok`, and a provenance footer grouping `data_hash` + `overlay_hash`. Deliberately no "on track" / "at risk" labels — the downstream consumer picks its own thresholds.
 - **ERP** — transport-shape-oriented: a normalized JSON structure with snake_case fields, currency at the top level, `guards_tripped` as a flat list, provenance as its own block. A finance system ingests this JSON without needing to know about `beads` or `bvr`.
 
+## Sample outputs
+
+Illustrative snapshots captured on 2026-04-20 against this project's own beads corpus (one open issue at the time). Numbers drift with the corpus — re-run `demo.sh` for a current view. Full captures live in each lens directory under `sample_output.*`.
+
+### Engineer — [`lenses/engineer/sample_output.txt`](lenses/engineer/sample_output.txt)
+
+```text
+== engineer brief — 2026-04-20T17:54:33.574019160+00:00 ==
+
+graph state:
+  open=1  in_progress=1  blocked=0  cycles=0
+
+next moves (unlock coverage):
+  bd-jhb6  +0 unlocks  — Investigate post-write .beads SQLite instability after normal br commands
+    claim: br update bd-jhb6 --status=in_progress
+
+flow mix (sanity check):
+  features: 1 (100.0%)
+
+top blockers by downstream reach:
+  bd-2bpl.3.6.3  deps=13  — Introduce structured responsive layout, pane geometry, hit-testing, and resize architecture for the TUI
+  bd-2bpl.3.6.4  deps=11  — Build semantic visual primitives and a stronger theme/token system for high-density triage screens
+  bd-33w.1.1  deps=11  — Build authoritative legacy->bvr command/flag parity ledger
+  bd-33w.1.3  deps=10  — Freeze phased implementation and dependency gates from spec contract
+  bd-1ru.1  deps=9  — Add output_format and version to generic RobotEnvelope struct
+
+guards:
+  * estimate_coverage_below_threshold
+```
+
+### Owner — [`lenses/owner/sample_output.txt`](lenses/owner/sample_output.txt)
+
+```text
+== delivery posture — 2026-04-20T17:54:33.583809004+00:00 ==
+
+active work: 1 open issue(s)
+
+flow mix (where capacity is going):
+  RISK:  0.0%  (0 items)
+  DEBT:  0.0%  (0 items)
+  DEFECTS:  0.0%  (0 items)
+  FEATURES:  100.0%  (1 item)
+
+urgency cohorts:
+  EXPEDITE:  0.0%  (0)
+  FIXED_DATE:  0.0%  (0)
+  INTANGIBLE:  0.0%  (0)
+  STANDARD:  100.0%  (1)
+
+milestone pressure:
+  none (no due_date items inside window)
+
+delivery-adjacent economics:
+  burn rate:       510.0/day
+  throughput:      4.57 items/day
+  cost to finish:  112 (at current pace)
+```
+
+### Investor — [`lenses/investor/sample_output.txt`](lenses/investor/sample_output.txt)
+
+```text
+== financial summary — 2026-04-20T17:54:33.593156519+00:00 ==
+
+inputs (what this projection assumes):
+  hourly rate:              85.0 USD/hour
+  staffed hours per day:    6.0
+  budget envelope:          50000.0 USD
+  throughput window:        30 days
+  project age:              61 days
+  estimate coverage:        0%
+  open items / closed in window: 1 / 137
+
+projections:
+  burn rate:           510.0 /day
+  throughput:          4.57 items/day
+  cost to complete:    112
+  budget utilization:  0.22%
+
+top sources of economic drag (cost-of-delay by downstream reach):
+  bd-2bpl.3.6.3  510.0/day × 13 dependents
+  bd-2bpl.3.6.4  510.0/day × 11 dependents
+  bd-33w.1.1  510.0/day × 11 dependents
+  bd-33w.1.3  510.0/day × 10 dependents
+  bd-1ru.1  510.0/day × 9 dependents
+
+guards (data-quality flags; downstream decides severity):
+  estimate_coverage_below_threshold: TRIPPED
+  project_too_young_for_throughput: ok
+  zero_throughput: ok
+  no_budget_envelope: ok
+
+capacity mix (what the burn is funding):
+  risk: 0.0%
+  debt: 0.0%
+  defects: 0.0%
+  features: 100.0%
+
+provenance:
+  data_hash:     c72da8c5590197c2
+  overlay_hash:  c937f589ec0fa76b
+  schema_ver:    1
+  bvr:           v0.1.0
+```
+
+### ERP (jq adapter) — [`lenses/erp/sample_output.json`](lenses/erp/sample_output.json)
+
+Shape excerpt (full 131-line capture in the linked file):
+
+```json
+{
+  "project": "bvr",
+  "period_end": "2026-04-20T17:54:33.593156519+00:00",
+  "currency": "USD",
+  "metrics": {
+    "daily_burn": 510.0,
+    "forecast_cost_to_complete": 111.67883211678833,
+    "budget_envelope": 50000.0,
+    "budget_utilization_fraction": 0.0022335766423357667,
+    "throughput_items_per_day": 4.566666666666666,
+    "open_items": 1,
+    "closed_items_in_window": 137,
+    "throughput_window_days": 30,
+    "project_age_days": 61
+  },
+  "cost_of_delay": [
+    {
+      "item_id": "bd-2bpl.3.6.3",
+      "dependents_count": 13,
+      "rate_per_day": 510.0
+    }
+    // … 19 more entries ranked by dependents_count
+  ],
+  "data_quality": {
+    "estimate_coverage_fraction": 0.0,
+    "guards_tripped": [
+      "estimate_coverage_below_threshold"
+    ]
+  },
+  "provenance": {
+    "data_hash": "c72da8c5590197c2",
+    "overlay_hash": "c937f589ec0fa76b",
+    "schema_version": "1",
+    "source_tool": "bvr",
+    "source_version": "v0.1.0"
+  }
+}
+```
+
 ## Why this validates the issue #12 architecture
 
 If economics or delivery had shipped as an HTML primitive inside `bvr` (as the original `AUDIENCE_EXPORT_THINKING_LOG` sketched), each of these four consumers would have to either parse HTML or maintain a parallel implementation of the same computation. Instead they all live off one payload, and the next reader — a Slack digest, a compliance archive, a CI gate — drops in without touching `bvr`.

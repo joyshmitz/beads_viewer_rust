@@ -1,0 +1,23 @@
+== delivery posture — 2026-04-20T17:54:33.583809004+00:00 ==
+
+active work: 1 open issue(s)
+
+flow mix (where capacity is going):
+  RISK:  0.0%  (0 items)
+  DEBT:  0.0%  (0 items)
+  DEFECTS:  0.0%  (0 items)
+  FEATURES:  100.0%  (1 item)
+
+urgency cohorts:
+  EXPEDITE:  0.0%  (0)
+  FIXED_DATE:  0.0%  (0)
+  INTANGIBLE:  0.0%  (0)
+  STANDARD:  100.0%  (1)
+
+milestone pressure:
+  none (no due_date items inside window)
+
+delivery-adjacent economics:
+  burn rate:       510.0/day
+  throughput:      4.57 items/day
+  cost to finish:  112 (at current pace)

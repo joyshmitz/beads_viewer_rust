@@ -8469,13 +8469,7 @@ impl BvrApp {
             .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
             .enumerate()
         {
-            let open_blockers = self
-                .analyzer
-                .metrics
-                .blocked_by_count
-                .get(&issue.id)
-                .copied()
-                .unwrap_or_default();
+            let open_blockers = self.analyzer.graph.open_blockers(&issue.id).len();
             let blocks_count = self
                 .analyzer
                 .metrics
@@ -9360,13 +9354,7 @@ impl BvrApp {
             let Some(issue) = self.analyzer.issues.get(index) else {
                 continue;
             };
-            let blocked_by = self
-                .analyzer
-                .metrics
-                .blocked_by_count
-                .get(&issue.id)
-                .copied()
-                .unwrap_or_default();
+            let blocked_by = self.analyzer.graph.open_blockers(&issue.id).len();
             let blocks = self
                 .analyzer
                 .metrics

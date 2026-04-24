@@ -1549,6 +1549,79 @@ mod tests {
     }
 
     #[test]
+    fn actionable_excludes_dependent_of_waits_for_blocker() {
+        // Regression for bvr #14: when a `waits-for` edge points at an open
+        // blocker, the dependent issue must NOT be actionable. Previously
+        // `is_blocking()` only matched `""` | `"blocks"`, so `waits-for`
+        // silently dropped out of the blocker graph and the dependent was
+        // classified as actionable / a valid top-pick.
+        let issues = vec![
+            Issue {
+                id: "BLOCKER".to_string(),
+                title: "blocker task".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                ..Issue::default()
+            },
+            Issue {
+                id: "DEP".to_string(),
+                title: "dependent task".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                dependencies: vec![Dependency {
+                    issue_id: "DEP".to_string(),
+                    depends_on_id: "BLOCKER".to_string(),
+                    dep_type: "waits-for".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+        ];
+
+        let graph = IssueGraph::build(&issues);
+        assert_eq!(graph.actionable_ids(), vec!["BLOCKER".to_string()]);
+        assert_eq!(
+            graph.blockers("DEP"),
+            vec!["BLOCKER".to_string()],
+            "DEP must list BLOCKER as a blocker"
+        );
+    }
+
+    #[test]
+    fn actionable_excludes_dependent_of_conditional_blocks() {
+        // Regression for bvr #14: `conditional-blocks` must also gate readiness.
+        let issues = vec![
+            Issue {
+                id: "B".to_string(),
+                title: "blocker".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                ..Issue::default()
+            },
+            Issue {
+                id: "D".to_string(),
+                title: "dependent".to_string(),
+                status: "open".to_string(),
+                issue_type: "task".to_string(),
+                priority: 2,
+                dependencies: vec![Dependency {
+                    issue_id: "D".to_string(),
+                    depends_on_id: "B".to_string(),
+                    dep_type: "conditional-blocks".to_string(),
+                    ..Dependency::default()
+                }],
+                ..Issue::default()
+            },
+        ];
+
+        let graph = IssueGraph::build(&issues);
+        assert_eq!(graph.actionable_ids(), vec!["B".to_string()]);
+    }
+
+    #[test]
     fn actionable_excludes_children_of_blocked_parent_epic() {
         // Parent epic E is blocked by blocker B.
         // Child task C has a parent-child dep on E.

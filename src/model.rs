@@ -98,8 +98,16 @@ pub struct Comment {
 impl Dependency {
     #[must_use]
     pub fn is_blocking(&self) -> bool {
+        // Mirrors beads_rust::model::DependencyType::is_blocking: the four
+        // edge kinds that gate readiness. `parent-child` is listed on the
+        // authoritative side for propagation-only purposes and is handled
+        // separately in `actionable_ids`; it must NOT be treated as a direct
+        // blocker here or blocker-graph edges would double up.
         let t = self.dep_type.trim().to_ascii_lowercase();
-        t.is_empty() || t == "blocks"
+        matches!(
+            t.as_str(),
+            "" | "blocks" | "waits-for" | "conditional-blocks"
+        )
     }
 
     #[must_use]
@@ -301,8 +309,43 @@ mod tests {
     }
 
     #[test]
+    fn dependency_is_blocking_for_waits_for_and_conditional_blocks() {
+        // Regression for bvr #14: waits-for and conditional-blocks were silently
+        // ignored, letting dependent issues surface as actionable/top-picks while
+        // `br ready` (the authoritative view) correctly excluded them.
+        for t in ["waits-for", "conditional-blocks"] {
+            let dep = Dependency {
+                dep_type: t.to_string(),
+                ..Default::default()
+            };
+            assert!(dep.is_blocking(), "{t} should be blocking");
+        }
+        // Case-insensitive + trim applies uniformly
+        let dep = Dependency {
+            dep_type: "  Waits-For  ".to_string(),
+            ..Default::default()
+        };
+        assert!(dep.is_blocking());
+        let dep = Dependency {
+            dep_type: "Conditional-Blocks".to_string(),
+            ..Default::default()
+        };
+        assert!(dep.is_blocking());
+    }
+
+    #[test]
     fn dependency_not_blocking_for_other_types() {
-        for t in ["parent-child", "related", "mentions", "unknown"] {
+        // `parent-child` is excluded deliberately: it's a propagation edge in
+        // beads_rust's blocked-cache rebuild (src/storage/sqlite.rs:3109-3115),
+        // not a direct blocker. `actionable_ids` handles parent-child
+        // transitively via epic-blocked propagation.
+        for t in [
+            "parent-child",
+            "related",
+            "mentions",
+            "discovered-from",
+            "unknown",
+        ] {
             let dep = Dependency {
                 dep_type: t.to_string(),
                 ..Default::default()

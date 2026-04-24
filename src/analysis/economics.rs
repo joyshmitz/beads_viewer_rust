@@ -30,10 +30,10 @@ use crate::model::Issue;
 /// across the single-PR noise of a ~3-engineer team.
 pub const DEFAULT_THROUGHPUT_WINDOW_DAYS: u32 = 30;
 
-/// Minimum fraction of open issues that must have `estimated_minutes` set
-/// before the estimate-based `cost_to_complete` is considered reliable
-/// enough to not trip the `estimate_coverage_below_threshold` guard.
+/// Minimum fraction of open issues that must have `estimated_minutes` set.
 ///
+/// Below this, the estimate-based `cost_to_complete` is considered
+/// unreliable and the `estimate_coverage_below_threshold` guard trips.
 /// The threshold is exposed as a constant rather than a flag because it
 /// influences guard output shape; downstream can still decide what to do
 /// with the boolean.
@@ -154,9 +154,11 @@ pub struct EconomicsInputs {
     pub closed_in_window: usize,
 }
 
-/// One entry per top open blocker, sized by `dependents_count`. Ordering is
-/// blocks_count desc — the same signal `--robot-overview`'s `top_blocker`
-/// and `--robot-insights`' `Bottlenecks` use, so consumers can cross-check.
+/// One entry per top open blocker, sized by `dependents_count`.
+///
+/// Ordering is blocks_count desc — the same signal `--robot-overview`'s
+/// `top_blocker` and `--robot-insights`' `Bottlenecks` use, so consumers
+/// can cross-check.
 #[derive(Debug, Clone, Serialize)]
 pub struct CostOfDelayEntry {
     pub id: String,

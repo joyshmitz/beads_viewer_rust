@@ -7659,7 +7659,9 @@ mod tests {
 
     #[test]
     fn analysis_config_routes_triage_oriented_commands_to_runtime_profile() {
-        let cases = [
+        // `Cli` is large; keep the cases on the heap to avoid a
+        // large-stack-arrays lint without changing test coverage.
+        let cases: Vec<Cli> = vec![
             Cli::parse_from(["bvr", "--robot-next"]),
             Cli::parse_from(["bvr", "--robot-triage"]),
             Cli::parse_from(["bvr", "--robot-triage-by-track"]),

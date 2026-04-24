@@ -10649,7 +10649,7 @@ impl BvrApp {
     }
 
     /// `zz` — recenter the viewport so the cursor is roughly centred.
-    fn tree_recenter_cursor(&mut self) {
+    fn tree_recenter_cursor(&self) {
         // The rendered tree text has header lines before the first node:
         // panel_header (1) + optional search banner (0-1) + separator (1).
         let header_lines = if self.tree_search_active || !self.tree_search_query.is_empty() {

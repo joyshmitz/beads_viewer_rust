@@ -1,10 +1,38 @@
 [package]
-name = "bvr"
-version = "0.2.0"
+name = "beads_viewer_rust"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
-description = "Spec-first Rust port of beads_viewer (bv)"
+description = "Spec-first Rust port of beads_viewer (bv) — graph-aware triage for beads issue trackers (CLI binary: bvr)"
 license-file = "LICENSE"
+repository = "https://github.com/Dicklesworthstone/beads_viewer_rust"
+keywords = ["beads", "triage", "graph", "cli", "tui"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+exclude = [
+    "legacy_beads_viewer_code/",
+    ".beads/",
+    ".github/",
+    ".claude/",
+    "tests/fixtures/big/**",
+    "*.png",
+    "*.webp",
+    "*.profile",
+    "*.test",
+    "*_test",
+    "*_profile",
+    "perf.data*",
+    "target/",
+    "target-*/",
+]
+
+# The package was originally published on crates.io under `bvr`, but the short
+# name was already taken by an unrelated crate (Avarel's bvr). Publish under
+# the longer canonical name and keep `bvr` as both the lib name (so internal
+# `bvr::*` paths in tests and benches resolve) and the binary entry point.
+[lib]
+name = "bvr"
+path = "src/lib.rs"
 
 [[bin]]
 name = "bvr"

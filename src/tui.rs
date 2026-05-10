@@ -8469,13 +8469,7 @@ impl BvrApp {
             .filter_map(|index| self.analyzer.issues.get(index).map(|issue| (index, issue)))
             .enumerate()
         {
-            let open_blockers = self
-                .analyzer
-                .metrics
-                .blocked_by_count
-                .get(&issue.id)
-                .copied()
-                .unwrap_or_default();
+            let open_blockers = self.analyzer.graph.open_blockers(&issue.id).len();
             let blocks_count = self
                 .analyzer
                 .metrics
@@ -9360,13 +9354,7 @@ impl BvrApp {
             let Some(issue) = self.analyzer.issues.get(index) else {
                 continue;
             };
-            let blocked_by = self
-                .analyzer
-                .metrics
-                .blocked_by_count
-                .get(&issue.id)
-                .copied()
-                .unwrap_or_default();
+            let blocked_by = self.analyzer.graph.open_blockers(&issue.id).len();
             let blocks = self
                 .analyzer
                 .metrics
@@ -10661,7 +10649,7 @@ impl BvrApp {
     }
 
     /// `zz` — recenter the viewport so the cursor is roughly centred.
-    fn tree_recenter_cursor(&mut self) {
+    fn tree_recenter_cursor(&self) {
         // The rendered tree text has header lines before the first node:
         // panel_header (1) + optional search banner (0-1) + separator (1).
         let header_lines = if self.tree_search_active || !self.tree_search_query.is_empty() {
@@ -10764,7 +10752,7 @@ impl BvrApp {
 
     fn tree_list_render_text(&self, width: u16) -> RichText {
         if self.tree_flat_nodes.is_empty() {
-            return RichText::raw("(no dependency tree — all issues are independent)".to_string());
+            return RichText::raw("(no dependency tree — all issues are independent)");
         }
 
         let line_width = usize::from(width.saturating_sub(2)).max(24);

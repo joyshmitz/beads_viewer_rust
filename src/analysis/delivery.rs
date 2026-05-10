@@ -133,10 +133,11 @@ pub struct RobotDeliveryOutput {
     pub window_days: i64,
 }
 
-/// Inputs to `compute_delivery`. `blocked_ids` is passed in so this module
-/// stays free of a direct dependency on the `Analyzer`/`IssueGraph` surface;
-/// the caller supplies the set of issue IDs that have at least one open
-/// blocker.
+/// Inputs to `compute_delivery`.
+///
+/// `blocked_ids` is passed in so this module stays free of a direct
+/// dependency on the `Analyzer`/`IssueGraph` surface; the caller supplies
+/// the set of issue IDs that have at least one open blocker.
 pub struct DeliveryComputation<'a> {
     pub issues: &'a [Issue],
     pub blocked_ids: &'a std::collections::HashSet<String>,

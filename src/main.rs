@@ -1058,13 +1058,13 @@ fn main() -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        let title_by_id: std::collections::BTreeMap<&str, &str> = issues
+        let issue_by_id: std::collections::BTreeMap<&str, &bvr::model::Issue> = issues
             .iter()
-            .map(|issue| (issue.id.as_str(), issue.title.as_str()))
+            .map(|issue| (issue.id.as_str(), issue))
             .collect();
         let bottlenecks = bvr::analysis::economics::bottlenecks_from_blocks_count(
             &analyzer.metrics.blocks_count,
-            &title_by_id,
+            &issue_by_id,
             cli.insight_limit.max(1),
         );
         let output = bvr::analysis::economics::compute_economics(

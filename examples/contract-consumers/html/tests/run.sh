@@ -22,7 +22,8 @@ NO_ECON="$TEST_ROOT/no-econ"
 MISMATCH="$TEST_ROOT/mismatch"
 NULL_ECON="$TEST_ROOT/null-econ"
 MISSING_PROJECTIONS="$TEST_ROOT/missing-projections"
-mkdir -p "$ACTUAL" "$NORMALIZED" "$SMOKE" "$NO_ECON" "$MISMATCH" "$NULL_ECON" "$MISSING_PROJECTIONS"
+STALE="$TEST_ROOT/stale"
+mkdir -p "$ACTUAL" "$NORMALIZED" "$SMOKE" "$NO_ECON" "$MISMATCH" "$NULL_ECON" "$MISSING_PROJECTIONS" "$STALE/.beads"
 
 cd "$ROOT_DIR"
 
@@ -150,12 +151,22 @@ for page in index.html engineer.html owner.html investor.html; do
   grep -Fq "data_hash mismatch" "$MISMATCH/pages/$page"
 done
 
+printf '{}\n' > "$STALE/.beads/issues.jsonl"
+touch -d '2026-01-01 00:00:00 UTC' "$STALE/.beads/issues.jsonl"
+touch -d '2026-01-02 00:00:00 UTC' "$STALE/.beads/beads.db"
+if examples/contract-consumers/triad.sh "$STALE/.beads/issues.jsonl" .bv/economics.json "$STALE/runs" \
+  >"$STALE/stdout" 2>"$STALE/stderr"; then
+  echo "html-tests: stale JSONL gate did not fail" >&2
+  exit 1
+fi
+grep -Fq "refusing stale JSONL input" "$STALE/stderr"
+
 mkdir -p .bv
 if [[ ! -f .bv/economics.json ]]; then
   cp examples/contract-consumers/economics.sample.json .bv/economics.json
 fi
 
-examples/contract-consumers/html/render.sh .beads/issues.jsonl .bv/economics.json "$SMOKE"
+BVR_TRIAD_ALLOW_STALE=1 examples/contract-consumers/html/render.sh .beads/issues.jsonl .bv/economics.json "$SMOKE"
 
 mapfile -t LIVE_HASHES < <(
   for json in .bv/runs/overview.json .bv/runs/delivery.json .bv/runs/economics.json; do

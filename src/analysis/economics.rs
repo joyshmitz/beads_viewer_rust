@@ -407,21 +407,24 @@ fn project_age_days(issues: &[Issue], now: DateTime<Utc>) -> i64 {
 /// `main.rs` do not have to reach into analyzer internals.
 pub fn bottlenecks_from_blocks_count(
     blocks_count: &std::collections::HashMap<String, usize>,
-    title_by_id: &BTreeMap<&str, &str>,
+    issue_by_id: &BTreeMap<&str, &Issue>,
     limit: usize,
 ) -> Vec<BottleneckRef> {
-    let mut entries: Vec<(&str, &usize)> = blocks_count
+    let mut entries: Vec<(&str, &usize, &Issue)> = blocks_count
         .iter()
         .filter(|(_, count)| **count > 0)
-        .map(|(id, count)| (id.as_str(), count))
+        .filter_map(|(id, count)| {
+            let issue = issue_by_id.get(id.as_str())?;
+            issue.is_open_like().then_some((id.as_str(), count, *issue))
+        })
         .collect();
     entries.sort_by(|left, right| right.1.cmp(left.1).then_with(|| left.0.cmp(right.0)));
     entries
         .into_iter()
         .take(limit)
-        .map(|(id, count)| BottleneckRef {
+        .map(|(id, count, issue)| BottleneckRef {
             id: id.to_string(),
-            title: title_by_id.get(id).copied().unwrap_or("").to_string(),
+            title: issue.title.clone(),
             dependents_count: *count,
         })
         .collect()
@@ -812,18 +815,25 @@ mod tests {
         // uses for Bottlenecks; this test pins the invariant the GH#12
         // regression-surface discussion called out.
         let now = Utc.with_ymd_and_hms(2026, 4, 20, 0, 0, 0).unwrap();
+        let issues = vec![
+            issue("TOP", "open", 1, now - Duration::days(120)),
+            issue("MID", "in_progress", 1, now - Duration::days(120)),
+            issue("LOW", "blocked", 1, now - Duration::days(120)),
+        ];
         let blocks_count: std::collections::HashMap<String, usize> = [
             ("TOP".to_string(), 7),
             ("MID".to_string(), 3),
             ("LOW".to_string(), 1),
         ]
         .into();
-        let title_by_id: BTreeMap<&str, &str> =
-            [("TOP", "top"), ("MID", "mid"), ("LOW", "low")].into();
-        let top = bottlenecks_from_blocks_count(&blocks_count, &title_by_id, 20);
+        let issue_by_id: BTreeMap<&str, &Issue> = issues
+            .iter()
+            .map(|issue| (issue.id.as_str(), issue))
+            .collect();
+        let top = bottlenecks_from_blocks_count(&blocks_count, &issue_by_id, 20);
 
         let output = compute_economics(EconomicsComputation {
-            issues: &[],
+            issues: &issues,
             overlay: &overlay_basic(),
             bottlenecks: &top,
             now,
@@ -836,5 +846,32 @@ mod tests {
             .map(|e| e.id.as_str())
             .collect();
         assert_eq!(ids, vec!["TOP", "MID", "LOW"]);
+    }
+
+    #[test]
+    fn bottlenecks_from_blocks_count_skips_closed_issues() {
+        let now = Utc.with_ymd_and_hms(2026, 4, 20, 0, 0, 0).unwrap();
+        let issues = [
+            issue("OPEN", "open", 1, now - Duration::days(120)),
+            issue("CLOSED", "closed", 1, now - Duration::days(120)),
+            issue("TOMBSTONE", "tombstone", 1, now - Duration::days(120)),
+        ];
+        let blocks_count: std::collections::HashMap<String, usize> = [
+            ("CLOSED".to_string(), 99),
+            ("TOMBSTONE".to_string(), 88),
+            ("OPEN".to_string(), 7),
+        ]
+        .into();
+        let issue_by_id: BTreeMap<&str, &Issue> = issues
+            .iter()
+            .map(|issue| (issue.id.as_str(), issue))
+            .collect();
+
+        let bottlenecks = bottlenecks_from_blocks_count(&blocks_count, &issue_by_id, 20);
+        let ids: Vec<&str> = bottlenecks.iter().map(|entry| entry.id.as_str()).collect();
+
+        assert_eq!(ids, vec!["OPEN"]);
+        assert_eq!(bottlenecks[0].title, "title of OPEN");
+        assert_eq!(bottlenecks[0].dependents_count, 7);
     }
 }

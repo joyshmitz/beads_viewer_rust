@@ -22,11 +22,18 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_RUNS_DIR = Path(".bv/runs")
 DEFAULT_OUT_DIR = Path(".bv/audience-html")
+EMPTY_VALUE = "—"
+PROJECTION_KEYS = [
+    "burn_rate_per_day",
+    "throughput_issues_per_day",
+    "cost_to_complete",
+    "budget_utilization_pct",
+]
 
 
 def esc(value: Any) -> str:
     if value is None:
-        return "-"
+        return EMPTY_VALUE
     return html.escape(str(value), quote=True)
 
 
@@ -44,7 +51,7 @@ def load_json(path: Path, required: bool) -> dict[str, Any] | None:
 
 def fmt_number(value: Any, digits: int = 2) -> str:
     if value is None:
-        return "-"
+        return EMPTY_VALUE
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
@@ -67,8 +74,28 @@ def currency_label(economics: dict[str, Any] | None) -> str:
 
 def fmt_money(value: Any, economics: dict[str, Any] | None) -> str:
     if value is None:
-        return "-"
+        return EMPTY_VALUE
     return f"{fmt_number(value)} {currency_label(economics)}"
+
+
+def fmt_percent_fraction(value: Any, digits: int = 2) -> str:
+    if value is None:
+        return EMPTY_VALUE
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    try:
+        pct = float(value) * 100
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{fmt_number(pct, digits)}%"
+
+
+def fmt_economic_value(key: str, value: Any, economics: dict[str, Any] | None) -> str:
+    if key.endswith("_pct"):
+        return fmt_percent_fraction(value)
+    if "cost" in key or "burn" in key or "budget" in key:
+        return fmt_money(value, economics)
+    return fmt_number(value)
 
 
 def pct_width(value: Any) -> str:
@@ -97,6 +124,7 @@ def tripped_guards(economics: dict[str, Any] | None) -> list[str]:
 
 
 def data_hash_warning(docs: list[dict[str, Any] | None]) -> str:
+    # Missing hashes are ignored; this banner flags known snapshot divergence.
     hashes = sorted({str(doc.get("data_hash")) for doc in docs if doc and doc.get("data_hash")})
     if len(hashes) <= 1:
         return ""
@@ -300,7 +328,7 @@ def render_owner(overview: dict[str, Any], delivery: dict[str, Any], economics: 
     body = [
         metric_grid(
             [
-                ("open", delivery.get("open_issues")),
+                ("open", summary_value(overview, "open_issues")),
                 ("in progress", summary_value(overview, "in_progress_issues")),
                 ("blocked", summary_value(overview, "blocked_issues")),
                 ("closed", summary_value(overview, "closed_issues")),
@@ -318,12 +346,20 @@ def render_owner(overview: dict[str, Any], delivery: dict[str, Any], economics: 
     return page("Owner lens", "Delivery posture, capacity mix, urgency, and milestone pressure.", "".join(body), overview, delivery, economics, css)
 
 
-def render_investor(overview: dict[str, Any], delivery: dict[str, Any], economics: dict[str, Any] | None, css: str) -> str:
+def render_investor(
+    overview: dict[str, Any],
+    delivery: dict[str, Any],
+    economics: dict[str, Any] | None,
+    css: str,
+    economics_path: Path,
+) -> str:
     if not economics:
+        economics_path_text = esc(str(economics_path))
         body = (
             '<section><h2>No economics overlay</h2>'
-            '<p class="empty">Missing .bv/runs/economics.json. Create .bv/economics.json and run '
-            '<code>bvr --robot-economics --economics-overlay .bv/economics.json &gt; .bv/runs/economics.json</code>.</p>'
+            f'<p class="empty">Missing {economics_path_text}. Create .bv/economics.json and run '
+            '<code>bvr --robot-economics --economics-overlay .bv/economics.json &gt; '
+            f'{economics_path_text}</code>.</p>'
             "</section>"
             + bars("Capacity mix", delivery.get("flow_distribution", []) or [])
         )
@@ -331,12 +367,14 @@ def render_investor(overview: dict[str, Any], delivery: dict[str, Any], economic
 
     inputs = economics.get("inputs", {})
     projections = economics.get("projections", {})
-    input_rows = [[esc(key), esc(fmt_number(value))] for key, value in inputs.items()]
+    input_rows = [[esc(key), esc(fmt_economic_value(key, value, economics))] for key, value in inputs.items()]
     projection_rows = []
-    for key, value in projections.items():
-        if key == "cost_of_delay":
-            continue
-        projection_rows.append([esc(key), esc(fmt_money(value, economics) if "cost" in key or "burn" in key else fmt_number(value))])
+    projection_keys = PROJECTION_KEYS + [
+        key for key in projections if key not in PROJECTION_KEYS and key != "cost_of_delay"
+    ]
+    for key in projection_keys:
+        value = projections.get(key)
+        projection_rows.append([esc(key), esc(fmt_economic_value(key, value, economics))])
     blocker_rows = []
     for item in (projections.get("cost_of_delay", []) or [])[:20]:
         blocker_rows.append(
@@ -389,7 +427,8 @@ def write_atomic(path: Path, contents: str) -> None:
 def render(runs_dir: Path, out_dir: Path, css_path: Path) -> list[Path]:
     overview = load_json(runs_dir / "overview.json", required=True)
     delivery = load_json(runs_dir / "delivery.json", required=True)
-    economics = load_json(runs_dir / "economics.json", required=False)
+    economics_path = runs_dir / "economics.json"
+    economics = load_json(economics_path, required=False)
     assert overview is not None
     assert delivery is not None
     css = css_path.read_text(encoding="utf-8")
@@ -397,7 +436,7 @@ def render(runs_dir: Path, out_dir: Path, css_path: Path) -> list[Path]:
         "index.html": render_index(overview, delivery, economics, css),
         "engineer.html": render_engineer(overview, delivery, economics, css),
         "owner.html": render_owner(overview, delivery, economics, css),
-        "investor.html": render_investor(overview, delivery, economics, css),
+        "investor.html": render_investor(overview, delivery, economics, css, economics_path),
     }
     written = []
     for name, contents in pages.items():

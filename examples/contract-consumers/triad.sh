@@ -50,6 +50,8 @@ check_jsonl_freshness() {
     return 0
   fi
 
+  # GNU stat is acceptable here: this repo's RCH/CI paths run on Linux.
+  # Deliberately ignore beads.db-shm; SQLite can touch it during read-only use.
   jsonl_mtime="$(stat -c %Y "$jsonl")"
   db_mtime="$(stat -c %Y "$db")"
   newest_mtime="$db_mtime"

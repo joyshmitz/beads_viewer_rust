@@ -1062,7 +1062,7 @@ fn main() -> ExitCode {
             .iter()
             .map(|issue| (issue.id.as_str(), issue))
             .collect();
-        let bottlenecks = bvr::analysis::economics::bottlenecks_from_blocks_count(
+        let bottlenecks = bvr::analysis::economics::open_bottlenecks_from_blocks_count(
             &analyzer.metrics.blocks_count,
             &issue_by_id,
             cli.insight_limit.max(1),

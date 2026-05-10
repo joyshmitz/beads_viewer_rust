@@ -166,6 +166,8 @@ if [[ ! -f .bv/economics.json ]]; then
   cp examples/contract-consumers/economics.sample.json .bv/economics.json
 fi
 
+# This repo can have a newer live SQLite tracker than checked-in JSONL; the
+# smoke test intentionally exercises rendering against the checked-in snapshot.
 BVR_TRIAD_ALLOW_STALE=1 examples/contract-consumers/html/render.sh .beads/issues.jsonl .bv/economics.json "$SMOKE"
 
 mapfile -t LIVE_HASHES < <(

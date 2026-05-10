@@ -347,6 +347,8 @@ pub fn compute_economics(computation: EconomicsComputation<'_>) -> RobotEconomic
     //      summing rate * day-held without needing to know the graph.
     // `dependents_count` is retained so consumers can still order or
     // threshold by scope-of-block separately from $/day.
+    // Follow-up needed: decide whether `zero_throughput` should suppress these
+    // burn-rate entries or surface an explicit confidence caveat per entry.
     let cost_of_delay = bottlenecks
         .iter()
         .filter(|b| b.dependents_count > 0)
@@ -403,9 +405,36 @@ fn project_age_days(issues: &[Issue], now: DateTime<Utc>) -> i64 {
         .unwrap_or(0)
 }
 
-/// Facade hiding the construction of [`BottleneckRef`] so callers in
-/// `main.rs` do not have to reach into analyzer internals.
+/// Facade hiding the construction of [`BottleneckRef`] so callers do not have
+/// to reach into analyzer internals.
 pub fn bottlenecks_from_blocks_count(
+    blocks_count: &std::collections::HashMap<String, usize>,
+    title_by_id: &BTreeMap<&str, &str>,
+    limit: usize,
+) -> Vec<BottleneckRef> {
+    let mut entries: Vec<(&str, &usize)> = blocks_count
+        .iter()
+        .filter(|(_, count)| **count > 0)
+        .map(|(id, count)| (id.as_str(), count))
+        .collect();
+    entries.sort_by(|left, right| right.1.cmp(left.1).then_with(|| left.0.cmp(right.0)));
+    entries
+        .into_iter()
+        .take(limit)
+        .map(|(id, count)| BottleneckRef {
+            id: id.to_string(),
+            title: title_by_id.get(id).copied().unwrap_or("").to_string(),
+            dependents_count: *count,
+        })
+        .collect()
+}
+
+/// Like [`bottlenecks_from_blocks_count`], but only returns open-like issues.
+///
+/// `--robot-economics` uses this helper because closed and tombstoned issues
+/// cannot be current economic drag even if historical graph metrics still
+/// carry downstream counts for them.
+pub fn open_bottlenecks_from_blocks_count(
     blocks_count: &std::collections::HashMap<String, usize>,
     issue_by_id: &BTreeMap<&str, &Issue>,
     limit: usize,
@@ -830,7 +859,7 @@ mod tests {
             .iter()
             .map(|issue| (issue.id.as_str(), issue))
             .collect();
-        let top = bottlenecks_from_blocks_count(&blocks_count, &issue_by_id, 20);
+        let top = open_bottlenecks_from_blocks_count(&blocks_count, &issue_by_id, 20);
 
         let output = compute_economics(EconomicsComputation {
             issues: &issues,
@@ -849,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn bottlenecks_from_blocks_count_skips_closed_issues() {
+    fn open_bottlenecks_from_blocks_count_skips_closed_issues() {
         let now = Utc.with_ymd_and_hms(2026, 4, 20, 0, 0, 0).unwrap();
         let issues = [
             issue("OPEN", "open", 1, now - Duration::days(120)),
@@ -867,7 +896,7 @@ mod tests {
             .map(|issue| (issue.id.as_str(), issue))
             .collect();
 
-        let bottlenecks = bottlenecks_from_blocks_count(&blocks_count, &issue_by_id, 20);
+        let bottlenecks = open_bottlenecks_from_blocks_count(&blocks_count, &issue_by_id, 20);
         let ids: Vec<&str> = bottlenecks.iter().map(|entry| entry.id.as_str()).collect();
 
         assert_eq!(ids, vec!["OPEN"]);

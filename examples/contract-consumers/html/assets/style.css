@@ -1,15 +1,21 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #f3f5f7;
+  --bg-rail: #e7ebef;
   --panel: #ffffff;
-  --ink: #20242c;
-  --muted: #697386;
-  --line: #d8dde6;
-  --accent: #2364aa;
-  --accent-soft: #e7f0fb;
-  --warn: #9a5b00;
-  --warn-bg: #fff4dc;
-  --ok: #146c43;
+  --panel-soft: #f8fafb;
+  --ink: #17202a;
+  --muted: #5d6c7e;
+  --line: #d7dee7;
+  --line-strong: #b7c3d0;
+  --accent: #0f766e;
+  --accent-ink: #0b4f4a;
+  --accent-soft: #e4f3f1;
+  --warn: #9a5200;
+  --warn-bg: #fff3d6;
+  --ok: #136f48;
+  --danger: #a7382f;
+  --shadow: 0 16px 36px rgba(23, 32, 42, 0.09);
 }
 
 * {
@@ -18,38 +24,54 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    linear-gradient(90deg, var(--bg-rail) 0 1px, transparent 1px 100%) 0 0 / 56px 56px,
+    linear-gradient(180deg, #fbfcfd 0, var(--bg) 280px);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.45;
+  font-size: 15px;
 }
 
 a {
   color: var(--accent);
+  text-underline-offset: 3px;
 }
 
 .shell {
-  max-width: 980px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 28px 18px 48px;
+  padding: 28px 22px 56px;
 }
 
 .top {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 24px;
   align-items: flex-start;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 18px;
-  margin-bottom: 18px;
+  background: #17202a;
+  color: white;
+  border: 1px solid #263342;
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 26px;
+  margin-bottom: 14px;
 }
 
 .top h1 {
-  margin: 0 0 4px;
-  font-size: 28px;
+  margin: 0 0 8px;
+  font-size: 34px;
+  font-weight: 720;
+  line-height: 1.05;
 }
 
-.top p,
+.top p {
+  max-width: 660px;
+  margin: 0;
+  color: #c7d0dc;
+  font-size: 16px;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -58,28 +80,42 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+  min-width: 260px;
 }
 
 .nav a {
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 6px;
-  padding: 6px 10px;
-  background: var(--panel);
+  padding: 7px 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
   text-decoration: none;
   font-size: 14px;
+  font-weight: 600;
+}
+
+.nav a:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .provenance,
 .warning {
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 11px 13px;
   margin: 12px 0;
   font-size: 13px;
+  border: 1px solid transparent;
 }
 
 .provenance {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--accent-soft);
-  color: #17375f;
+  color: var(--accent-ink);
+  border-color: #b8dfda;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.08);
 }
 
 .warning {
@@ -91,7 +127,7 @@ a {
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .card,
@@ -99,20 +135,47 @@ section {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 16px;
-  margin: 14px 0;
+  box-shadow: 0 10px 24px rgba(23, 32, 42, 0.055);
+}
+
+.card {
+  display: block;
+  padding: 17px;
+  margin: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+section {
+  padding: 20px;
+  margin: 16px 0;
+  overflow: hidden;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.13);
 }
 
 .card h2,
 section h2 {
-  margin: 0 0 10px;
-  font-size: 18px;
+  margin: 0 0 12px;
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.card p {
+  margin: 8px 0 0;
+  color: var(--muted);
 }
 
 .metric {
   display: block;
-  font-size: 26px;
-  font-weight: 650;
+  margin-bottom: 3px;
+  font-size: 30px;
+  font-weight: 740;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 code,
@@ -121,58 +184,127 @@ td:first-child {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  background: #f0f3f6;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 5px;
+  color: #263342;
+  font-size: 13px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
+  margin-top: 4px;
+  font-size: 14px;
 }
 
 th,
 td {
   border-bottom: 1px solid var(--line);
-  padding: 8px 6px;
+  padding: 9px 7px;
   text-align: left;
   vertical-align: top;
 }
 
 th {
-  color: var(--muted);
+  background: var(--panel-soft);
+  color: #405064;
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
+  font-weight: 720;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody tr:hover {
+  background: #fbfcfd;
 }
 
 .bar-row {
   display: grid;
-  grid-template-columns: 110px 1fr 90px;
-  gap: 10px;
+  grid-template-columns: minmax(96px, 150px) 1fr minmax(74px, auto);
+  gap: 12px;
   align-items: center;
-  margin: 8px 0;
+  margin: 10px 0;
+  font-size: 14px;
 }
 
 .bar-track {
-  height: 10px;
-  background: #eef1f5;
+  height: 12px;
+  background: #e9edf2;
   border-radius: 999px;
   overflow: hidden;
+  border: 1px solid #dce3eb;
 }
 
 .bar-fill {
   height: 100%;
   background: var(--accent);
+  border-radius: inherit;
 }
 
 .status-ok {
   color: var(--ok);
+  font-weight: 650;
 }
 
 .status-trip {
-  color: var(--warn);
-  font-weight: 650;
+  color: var(--danger);
+  font-weight: 740;
 }
 
 .empty {
   color: var(--muted);
   font-style: italic;
+  margin-bottom: 0;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 16px 12px 36px;
+  }
+
+  .top {
+    display: block;
+    padding: 20px;
+  }
+
+  .top h1 {
+    font-size: 28px;
+  }
+
+  .nav {
+    justify-content: flex-start;
+    min-width: 0;
+    margin-top: 16px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  section {
+    padding: 16px;
+  }
+
+  .bar-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
 }
 
 @media print {
@@ -189,8 +321,15 @@ th {
     display: none;
   }
 
+  .top,
   .card,
   section {
+    box-shadow: none;
     break-inside: avoid;
+  }
+
+  .provenance {
+    position: static;
+    box-shadow: none;
   }
 }

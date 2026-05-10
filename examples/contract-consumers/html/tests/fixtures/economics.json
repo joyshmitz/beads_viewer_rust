@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-10T00:00:00Z",
+  "data_hash": "fixturehash1234",
+  "output_format": "json",
+  "version": "v0.2.1",
+  "schema_version": "1",
+  "overlay_hash": "overlayhash5678",
+  "inputs": {
+    "hourly_rate": 100.0,
+    "hours_per_day": 6.0,
+    "budget_envelope": 20000.0,
+    "currency": "USD",
+    "throughput_window_days": 30,
+    "project_age_days": 60,
+    "estimate_coverage_pct": 0.75,
+    "open_issues": 4,
+    "closed_in_window": 8
+  },
+  "projections": {
+    "burn_rate_per_day": 600.0,
+    "throughput_issues_per_day": 0.27,
+    "cost_to_complete": 2400.0,
+    "budget_utilization_pct": 0.18,
+    "cost_of_delay": [
+      {
+        "id": "bd-blocker",
+        "title": "Remove release blocker",
+        "dependents_count": 9,
+        "rate_per_day": 600.0
+      }
+    ]
+  },
+  "guards": {
+    "estimate_coverage_below_threshold": false,
+    "project_too_young_for_throughput": false,
+    "zero_throughput": false,
+    "no_budget_envelope": false
+  }
+}

@@ -3,6 +3,8 @@
 target/
 a.out
 .ruff_cache/
+__pycache__/
+*.pyc
 
 # SQLite runtime files
 storage.sqlite3

@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-05-10T00:00:00Z",
+  "data_hash": "fixturehash1234",
+  "output_format": "json",
+  "version": "v0.2.1",
+  "summary": {
+    "open_issues": 4,
+    "actionable_issues": 2,
+    "blocked_issues": 1,
+    "in_progress_issues": 1,
+    "closed_issues": 12,
+    "cycle_count": 0
+  },
+  "unlock_maximizers": [
+    {
+      "id": "bd-safe",
+      "title": "Fix <script>alert(1)</script> escaping in reports",
+      "marginal_unlocks": 3,
+      "cumulative_unlocks": 3,
+      "claim_command": "br update bd-safe --status=in_progress"
+    }
+  ],
+  "commands": {
+    "next": "bvr --robot-next"
+  },
+  "usage_hints": []
+}

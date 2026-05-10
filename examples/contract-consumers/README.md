@@ -13,6 +13,8 @@ examples/contract-consumers/
 │   ├── owner/brief.sh          # delivery posture for a delivery lead
 │   ├── investor/brief.sh       # finance-style view with provenance
 │   └── erp/adapter.jq          # normalizer into a finance-shaped schema
+├── html/
+│   └── render.sh               # static HTML audience report from the same triad
 ├── portfolio/
 │   └── rollup.sh               # aggregator across N projects
 └── README.md                   # this file
@@ -45,6 +47,9 @@ examples/contract-consumers/lenses/engineer/brief.sh     # for yourself
 examples/contract-consumers/lenses/owner/brief.sh        # for a delivery lead
 examples/contract-consumers/lenses/investor/brief.sh     # for finance
 jq -f examples/contract-consumers/lenses/erp/adapter.jq --arg project bvr .bv/runs/economics.json
+
+# 5. Render static HTML lenses
+examples/contract-consumers/html/render.sh
 ```
 
 For an end-to-end walk-through in one command (triad + every lens):
@@ -69,6 +74,7 @@ All four consumers work off the same cached envelopes (one `triad.sh` run, one s
 - **Owner** — aggregate-oriented: flow distribution, urgency cohorts, milestone pressure. No claim commands; a delivery lead is not claiming tasks from this view, though milestone pressure still names specific issues when due dates are tight.
 - **Investor** — numbers- and provenance-oriented: input assumptions, projections, boolean guards relabeled as `TRIPPED` / `ok`, and a provenance footer grouping `data_hash` + `overlay_hash`. Deliberately no "on track" / "at risk" labels — the downstream consumer picks its own thresholds.
 - **ERP** — transport-shape-oriented: a normalized JSON structure with snake_case fields, currency at the top level, `guards_tripped` as a flat list, provenance as its own block. A finance system ingests this JSON without needing to know about `beads` or `bvr`.
+- **HTML** — static one-project report: index, engineer, owner, and investor pages rendered from the same `overview.json`, `delivery.json`, and optional `economics.json` contracts.
 
 ## Sample outputs
 
@@ -235,7 +241,7 @@ The portfolio rollup makes this explicit: N projects × `--robot-economics` beco
 A map of where these examples can grow:
 
 - **Developer** (engineer): add a git-blame-adjusted prompt that auto-tags issues where human attention has been sparse.
-- **Delivery lead** (owner): a CSS-only HTML PMO dashboard, rendered from `delivery.json` + `economics.json` via a nightly cron.
+- **Delivery lead** (owner): extend the CSS-only HTML PMO dashboard with richer nightly cron publishing.
 - **Investor / finance / board**: a PDF report from the same two files, with `overlay_hash` as the audit anchor.
 - **ERP**: a real adapter into the format that SAP S/4HANA / NetSuite / an internal OLAP system will accept.
 - **Compliance / audit**: `git checkout <ref>` followed by a re-run of `triad.sh` reconstructs state at any historical date.

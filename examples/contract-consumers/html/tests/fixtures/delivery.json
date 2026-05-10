@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-10T00:00:00Z",
+  "data_hash": "fixturehash1234",
+  "output_format": "json",
+  "version": "v0.2.1",
+  "schema_version": "1",
+  "open_issues": 4,
+  "flow_distribution": [
+    {"category": "risk", "count": 1, "pct": 25.0},
+    {"category": "debt", "count": 1, "pct": 25.0},
+    {"category": "defects", "count": 1, "pct": 25.0},
+    {"category": "features", "count": 1, "pct": 25.0}
+  ],
+  "urgency_profile": [
+    {"category": "expedite", "count": 1, "pct": 25.0},
+    {"category": "fixed_date", "count": 1, "pct": 25.0},
+    {"category": "intangible", "count": 1, "pct": 25.0},
+    {"category": "standard", "count": 1, "pct": 25.0}
+  ],
+  "milestone_pressure": [
+    {
+      "id": "bd-date",
+      "title": "Ship stakeholder dashboard",
+      "due_date": "2026-05-12T00:00:00Z",
+      "days_until_due": 2,
+      "is_overdue": false,
+      "is_blocked": true
+    }
+  ],
+  "window_days": 14
+}
